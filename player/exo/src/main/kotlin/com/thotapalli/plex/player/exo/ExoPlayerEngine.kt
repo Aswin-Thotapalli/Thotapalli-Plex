@@ -10,6 +10,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import androidx.media3.common.util.ExperimentalApi
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -80,6 +81,11 @@ class ExoPlayerEngine(
 
     val player: ExoPlayer by lazy { buildPlayer() }
 
+    // experimentalSetDynamicSchedulingEnabled carries its own opt-in marker on top of
+    // UnstableApi. The marker is a Java @RequiresOptIn checked by Android Lint, so it needs
+    // androidx.annotation.OptIn rather than Kotlin's, which has no effect on it.
+    // It reduces playback loop wake-ups. See CLAUDE.md section 8 point 3.
+    @androidx.annotation.OptIn(ExperimentalApi::class)
     private fun buildPlayer(): ExoPlayer {
         val renderers = DefaultRenderersFactory(context)
             // The bundled FFmpeg decoder handles audio formats the device decoder rejects,
