@@ -1,0 +1,44 @@
+-- Progress recorded while the server was unreachable, replayed on reconnection.
+-- Only the newest row per rating key is sent, since Plex stores a position rather than
+-- a history. See CLAUDE.md sections 7 and 11.
+CREATE TABLE pending_timeline (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  rating_key TEXT NOT NULL,
+  position_ms INTEGER NOT NULL,
+  duration_ms INTEGER NOT NULL,
+  state TEXT NOT NULL,
+  recorded_at INTEGER NOT NULL
+);
+
+CREATE INDEX pending_timeline_rating_key ON pending_timeline(rating_key, recorded_at);
+
+insert:
+INSERT INTO pending_timeline(rating_key, position_ms, duration_ms, state, recorded_at)
+VALUES (?, ?, ?, ?, ?);
+
+-- The collapsed queue: newest row per rating key, oldest first for replay.
+selectCollapsed:
+SELECT p.* FROM pending_timeline p
+INNER JOIN (
+  SELECT rating_key, MAX(recorded_at) AS newest
+  FROM pending_timeline
+  GROUP BY rating_key
+) newest_rows
+  ON p.rating_key = newest_rows.rating_key AND p.recorded_at = newest_rows.newest
+ORDER BY p.recorded_at ASC;
+
+selectAll:
+SELECT * FROM pending_timeline ORDER BY recorded_at ASC;
+
+count:
+SELECT COUNT(*) FROM pending_timeline;
+
+-- Rows are deleted only after the server accepts them.
+deleteForItem:
+DELETE FROM pending_timeline WHERE rating_key = ?;
+
+deleteUpTo:
+DELETE FROM pending_timeline WHERE rating_key = ? AND recorded_at <= ?;
+
+deleteAll:
+DELETE FROM pending_timeline;

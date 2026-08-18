@@ -1,0 +1,48 @@
+[
+  {
+    "name": "Home Server", "product": "Plex Media Server", "productVersion": "1.42.0.1",
+    "platform": "Linux", "platformVersion": "6.8.0", "device": "PC",
+    "clientIdentifier": "aaaaaaaabbbbbbbbccccccccdddddddd00000001",
+    "createdAt": "2021-01-01T00:00:00Z", "lastSeenAt": "2026-08-18T00:00:00Z",
+    "provides": "server", "ownerId": null, "sourceTitle": null,
+    "publicAddress": "203.0.113.10", "accessToken": "server-access-token-owned",
+    "owned": true, "home": true, "synced": false, "relay": true, "presence": true,
+    "httpsRequired": false, "publicAddressMatches": true, "dnsRebindingProtection": true,
+    "natLoopbackSupported": true,
+    "connections": [
+      { "protocol": "https", "address": "192.168.1.50", "port": 32400,
+        "uri": "https://192-168-1-50.aaaa.plex.direct:32400", "local": true, "relay": false, "IPv6": false },
+      { "protocol": "https", "address": "203.0.113.10", "port": 32400,
+        "uri": "https://203-0-113-10.aaaa.plex.direct:32400", "local": false, "relay": false, "IPv6": false },
+      { "protocol": "https", "address": "10.20.30.40", "port": 443,
+        "uri": "https://relay-01.plex.direct:443", "local": false, "relay": true, "IPv6": false }
+    ]
+  },
+  {
+    "name": "Shared Library", "product": "Plex Media Server", "productVersion": "1.42.0.1",
+    "platform": "Windows", "device": "PC",
+    "clientIdentifier": "aaaaaaaabbbbbbbbccccccccdddddddd00000002",
+    "provides": "server", "sourceTitle": "A Friend",
+    "accessToken": "server-access-token-shared", "owned": false, "home": false,
+    "relay": false, "presence": true, "httpsRequired": true, "publicAddressMatches": false,
+    "connections": [
+      { "protocol": "https", "address": "198.51.100.7", "port": 32400,
+        "uri": "https://198-51-100-7.bbbb.plex.direct:32400", "local": false, "relay": false, "IPv6": false }
+    ]
+  },
+  {
+    "name": "Someone's Phone", "product": "Plex for Android",
+    "clientIdentifier": "aaaaaaaabbbbbbbbccccccccdddddddd00000003",
+    "provides": "client,player,pubsub-player,provider-playback",
+    "accessToken": "not-a-server-token", "owned": true, "connections": []
+  },
+  {
+    "name": "Tokenless Server", "product": "Plex Media Server",
+    "clientIdentifier": "aaaaaaaabbbbbbbbccccccccdddddddd00000004",
+    "provides": "server", "accessToken": null, "owned": false,
+    "connections": [
+      { "protocol": "https", "address": "198.51.100.9", "port": 32400,
+        "uri": "https://198-51-100-9.cccc.plex.direct:32400", "local": false, "relay": false, "IPv6": false }
+    ]
+  }
+]

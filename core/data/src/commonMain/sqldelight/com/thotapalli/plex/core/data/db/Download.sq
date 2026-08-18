@@ -1,0 +1,43 @@
+-- The download queue. See CLAUDE.md sections 7 and 11.
+CREATE TABLE download (
+  rating_key TEXT NOT NULL PRIMARY KEY,
+  part_id TEXT NOT NULL,
+  local_path TEXT NOT NULL,
+  total_bytes INTEGER NOT NULL,
+  received_bytes INTEGER NOT NULL DEFAULT 0,
+  state TEXT NOT NULL,
+  queued_at INTEGER NOT NULL
+);
+
+insert:
+INSERT OR REPLACE INTO download(
+  rating_key, part_id, local_path, total_bytes, received_bytes, state, queued_at
+) VALUES (?, ?, ?, ?, ?, ?, ?);
+
+selectAll:
+SELECT * FROM download ORDER BY queued_at ASC;
+
+selectByRatingKey:
+SELECT * FROM download WHERE rating_key = ?;
+
+-- One item at a time, so a serial queue takes the oldest waiting row.
+selectNextQueued:
+SELECT * FROM download WHERE state = 'QUEUED' ORDER BY queued_at ASC LIMIT 1;
+
+selectCompleted:
+SELECT * FROM download WHERE state = 'COMPLETED' ORDER BY queued_at DESC;
+
+updateProgress:
+UPDATE download SET received_bytes = ? WHERE rating_key = ?;
+
+updateState:
+UPDATE download SET state = ? WHERE rating_key = ?;
+
+updateStateAndProgress:
+UPDATE download SET state = ?, received_bytes = ? WHERE rating_key = ?;
+
+delete:
+DELETE FROM download WHERE rating_key = ?;
+
+totalBytesOnDisk:
+SELECT SUM(received_bytes) FROM download WHERE state = 'COMPLETED';

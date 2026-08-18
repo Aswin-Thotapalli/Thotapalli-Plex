@@ -30,6 +30,9 @@ import java.net.URI
  *   gradlew :app:desktop:harness --args="servers"
  *   gradlew :app:desktop:harness --args="token"
  *   gradlew :app:desktop:harness --args="identity"
+ *   gradlew :app:desktop:harness --args="libraries"
+ *   gradlew :app:desktop:harness --args="continue"
+ *   gradlew :app:desktop:harness --args="search blade"
  */
 fun main(argv: Array<String>) {
     val command = argv.firstOrNull() ?: "help"
@@ -48,6 +51,9 @@ fun main(argv: Array<String>) {
             "signin" -> runBlocking { signIn(api, tokens) }
             "servers" -> runBlocking { servers(api, identity, tokens, plain) }
             "token" -> readBackToken(tokens, identity)
+            "libraries", "continue", "search" -> runBlocking {
+                LibraryHarness(identity, tokens, plain).run(command, argv.drop(1).joinToString(" ").ifBlank { null })
+            }
             "signout" -> {
                 tokens.signOut()
                 println("Signed out. The client identifier is deliberately kept:")
@@ -70,6 +76,9 @@ private fun printHelp() {
           servers    list servers and the connection chosen for each
           token      read the stored token back, proving it survived a restart
           signout    clear the token, keeping the client identifier
+          libraries  list every library and a sample of its contents
+          continue   print Continue Watching with resume positions
+          search <q> search across every library
         """.trimIndent(),
     )
 }

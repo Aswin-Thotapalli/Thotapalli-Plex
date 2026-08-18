@@ -1,0 +1,31 @@
+{
+  "MediaContainer": {
+    "size": 3, "identifier": "com.plexapp.plugins.library",
+    "key": "20501", "parentTitle": "A Long Running Series", "title2": "A Long Running Series",
+    "Metadata": [
+      {
+        "ratingKey": "20549", "key": "/library/metadata/20549/children", "type": "season",
+        "title": "Specials", "index": 0,
+        "parentRatingKey": "20501", "parentTitle": "A Long Running Series",
+        "parentThumb": "/library/metadata/20501/thumb/1755110000",
+        "summary": "", "leafCount": 2, "viewedLeafCount": 0,
+        "addedAt": 1700001200, "updatedAt": 1755110200
+      },
+      {
+        "ratingKey": "20550", "key": "/library/metadata/20550/children", "type": "season",
+        "title": "Season 3", "index": 3, "thumb": "/library/metadata/20550/thumb/1755110500",
+        "parentRatingKey": "20501", "parentTitle": "A Long Running Series",
+        "summary": "The third season.", "leafCount": 12, "viewedLeafCount": 6,
+        "addedAt": 1700001300, "updatedAt": 1755110500
+      },
+      {
+        "ratingKey": "20551", "key": "/library/metadata/20551/children", "type": "season",
+        "title": "Season 1", "index": 1,
+        "parentRatingKey": "20501", "parentTitle": "A Long Running Series",
+        "parentThumb": "/library/metadata/20501/thumb/1755110000",
+        "summary": "", "leafCount": 10, "viewedLeafCount": 10,
+        "addedAt": 1700001250, "updatedAt": 1755110300
+      }
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+-- External subtitles download separately. Embedded tracks need no action.
+-- See CLAUDE.md section 11.
+CREATE TABLE download_subtitle (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  rating_key TEXT NOT NULL,
+  stream_id TEXT NOT NULL,
+  language TEXT NOT NULL,
+  local_path TEXT NOT NULL
+);
+
+CREATE INDEX download_subtitle_rating_key ON download_subtitle(rating_key);
+
+insert:
+INSERT INTO download_subtitle(rating_key, stream_id, language, local_path)
+VALUES (?, ?, ?, ?);
+
+selectForItem:
+SELECT * FROM download_subtitle WHERE rating_key = ?;
+
+deleteForItem:
+DELETE FROM download_subtitle WHERE rating_key = ?;

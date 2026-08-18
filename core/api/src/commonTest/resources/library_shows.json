@@ -1,0 +1,25 @@
+{
+  "MediaContainer": {
+    "size": 2, "totalSize": 2, "offset": 0,
+    "librarySectionID": "2", "librarySectionTitle": "Television",
+    "Metadata": [
+      {
+        "ratingKey": "20501", "key": "/library/metadata/20501/children", "type": "show",
+        "title": "A Long Running Series", "librarySectionKey": "/library/sections/2",
+        "summary": "Eight seasons of it.", "year": 2014,
+        "thumb": "/library/metadata/20501/thumb/1755110000", "art": "/library/metadata/20501/art/1755110000",
+        "duration": 2700000, "childCount": 8, "leafCount": 92, "viewedLeafCount": 61,
+        "addedAt": 1700001000, "updatedAt": 1755110000
+      },
+      {
+        "ratingKey": "20502", "key": "/library/metadata/20502/children", "type": "show",
+        "title": "The Newcomer", "titleSort": "Newcomer, The",
+        "librarySectionKey": "/library/sections/2",
+        "summary": "One season, none of it watched.", "year": 2025,
+        "thumb": "/library/metadata/20502/thumb/1755110001",
+        "childCount": 1, "leafCount": 6, "viewedLeafCount": 0,
+        "addedAt": 1700001100, "updatedAt": 1755110001
+      }
+    ]
+  }
+}

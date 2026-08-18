@@ -1,0 +1,85 @@
+-- Cached items. Never the source of truth for anything the server also knows.
+-- See CLAUDE.md section 7.
+CREATE TABLE media_item (
+  rating_key TEXT NOT NULL PRIMARY KEY,
+  library_key TEXT NOT NULL,
+  parent_key TEXT,
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL,
+  title_sort TEXT NOT NULL,
+  year INTEGER,
+  summary TEXT NOT NULL DEFAULT '',
+  thumb_path TEXT,
+  art_path TEXT,
+  duration_ms INTEGER NOT NULL DEFAULT 0,
+  view_offset_ms INTEGER NOT NULL DEFAULT 0,
+  view_count INTEGER NOT NULL DEFAULT 0,
+  season_index INTEGER,
+  episode_index INTEGER,
+  show_rating_key TEXT,
+  show_title TEXT,
+  child_count INTEGER NOT NULL DEFAULT 0,
+  leaf_count INTEGER NOT NULL DEFAULT 0,
+  viewed_leaf_count INTEGER NOT NULL DEFAULT 0,
+  refreshed_at INTEGER NOT NULL
+);
+
+CREATE INDEX media_item_library ON media_item(library_key, title_sort);
+CREATE INDEX media_item_parent  ON media_item(parent_key, season_index, episode_index);
+
+upsert:
+INSERT OR REPLACE INTO media_item(
+  rating_key, library_key, parent_key, kind, title, title_sort, year, summary,
+  thumb_path, art_path, duration_ms, view_offset_ms, view_count,
+  season_index, episode_index, show_rating_key, show_title,
+  child_count, leaf_count, viewed_leaf_count, refreshed_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectByRatingKey:
+SELECT * FROM media_item WHERE rating_key = ?;
+
+-- The library grid. Sorted by title ascending, which is fixed and has no control.
+selectInLibrary:
+SELECT * FROM media_item
+WHERE library_key = ? AND kind = ?
+ORDER BY title_sort COLLATE NOCASE ASC;
+
+selectUnwatchedInLibrary:
+SELECT * FROM media_item
+WHERE library_key = ? AND kind = ? AND view_count = 0
+ORDER BY title_sort COLLATE NOCASE ASC;
+
+-- Seasons of a show, or episodes of a season.
+selectChildren:
+SELECT * FROM media_item
+WHERE parent_key = ?
+ORDER BY season_index ASC, episode_index ASC;
+
+selectEpisodesOfShow:
+SELECT * FROM media_item
+WHERE show_rating_key = ? AND kind = 'EPISODE'
+ORDER BY season_index ASC, episode_index ASC;
+
+-- Continue watching, newest first, driven by the server's resume positions.
+selectInProgress:
+SELECT * FROM media_item
+WHERE view_offset_ms > 0 AND duration_ms > 0 AND view_offset_ms < duration_ms
+ORDER BY refreshed_at DESC;
+
+updateProgress:
+UPDATE media_item SET view_offset_ms = ?, view_count = ? WHERE rating_key = ?;
+
+deleteInLibrary:
+DELETE FROM media_item WHERE library_key = ? AND kind = ?;
+
+countInLibrary:
+SELECT COUNT(*) FROM media_item WHERE library_key = ? AND kind = ?;
+
+newestRefreshInLibrary:
+SELECT MAX(refreshed_at) FROM media_item WHERE library_key = ? AND kind = ?;
+
+search:
+SELECT * FROM media_item
+WHERE title LIKE '%' || ? || '%'
+ORDER BY title_sort COLLATE NOCASE ASC
+LIMIT ?;

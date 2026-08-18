@@ -1,0 +1,29 @@
+-- Library sections cached from the server. See CLAUDE.md section 7.
+-- uuid is not in the section 7 schema, but the section 6 Library carries one. Without the
+-- column a cached read returns a Library with a blank uuid where a fresh read returns the
+-- real one, so the same call answers differently depending on cache state. That is a
+-- defect, so the column is here.
+CREATE TABLE library (
+  key TEXT NOT NULL PRIMARY KEY,
+  title TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  uuid TEXT NOT NULL DEFAULT '',
+  server_id TEXT NOT NULL,
+  refreshed_at INTEGER NOT NULL
+);
+
+selectAll:
+SELECT * FROM library WHERE server_id = ? ORDER BY title COLLATE NOCASE ASC;
+
+selectByKey:
+SELECT * FROM library WHERE key = ?;
+
+upsert:
+INSERT OR REPLACE INTO library(key, title, kind, uuid, server_id, refreshed_at)
+VALUES (?, ?, ?, ?, ?, ?);
+
+deleteForServer:
+DELETE FROM library WHERE server_id = ?;
+
+oldestRefresh:
+SELECT MIN(refreshed_at) FROM library WHERE server_id = ?;

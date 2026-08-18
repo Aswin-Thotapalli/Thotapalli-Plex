@@ -1,0 +1,52 @@
+{
+  "MediaContainer": {
+    "size": 1, "identifier": "com.plexapp.plugins.library",
+    "librarySectionID": 2, "librarySectionTitle": "Television",
+    "Metadata": [
+      {
+        "ratingKey": "20601", "key": "/library/metadata/20601", "type": "episode",
+        "title": "The One With The Markers",
+        "grandparentRatingKey": "20501", "grandparentTitle": "A Long Running Series",
+        "grandparentThumb": "/library/metadata/20501/thumb/1755110000",
+        "grandparentArt": "/library/metadata/20501/art/1755110000",
+        "parentRatingKey": "20550", "parentTitle": "Season 3", "parentIndex": 3,
+        "parentThumb": "/library/metadata/20550/thumb/1755110500",
+        "index": 7, "summary": "Carries both an intro and a credits marker.",
+        "year": 2016, "thumb": "/library/metadata/20601/thumb/1755130000",
+        "duration": 2712000, "viewOffset": 900000, "viewCount": 0,
+        "addedAt": 1700003000, "updatedAt": 1755130000,
+        "Media": [
+          {
+            "id": "77101", "duration": 2712000, "bitrate": 4100, "width": 1920, "height": 1080,
+            "audioCodec": "aac", "videoCodec": "hevc", "container": "mp4", "videoFrameRate": "PAL",
+            "Part": [
+              {
+                "id": "88101", "key": "/library/parts/88101/1700003000/file.mp4",
+                "file": "/media/tv/A Long Running Series/Season 03/s03e07.mp4",
+                "size": 1394182144, "duration": 2712000, "container": "mp4", "indexes": "sd",
+                "Stream": [
+                  {
+                    "id": "99101", "streamType": 1, "default": true, "codec": "hevc",
+                    "frameRate": 25.0, "height": 1080, "width": 1920, "bitDepth": 10,
+                    "colorTrc": "smpte2084", "displayTitle": "1080p HDR (HEVC Main 10)"
+                  },
+                  {
+                    "id": "99102", "streamType": 2, "selected": true, "codec": "aac",
+                    "channels": 2, "language": "English", "languageCode": "eng",
+                    "displayTitle": "English (AAC Stereo)"
+                  }
+                ]
+              }
+            ]
+          }
+        ],
+        "Marker": [
+          { "id": "5001", "type": "intro", "startTimeOffset": 12000, "endTimeOffset": 92000 },
+          { "id": "5002", "type": "credits", "startTimeOffset": 2610000, "endTimeOffset": 2712000, "final": true },
+          { "id": "5003", "type": "commercial", "startTimeOffset": 1000000, "endTimeOffset": 1030000 }
+        ],
+        "Chapter": []
+      }
+    ]
+  }
+}

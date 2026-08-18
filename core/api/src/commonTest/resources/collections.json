@@ -1,0 +1,22 @@
+{
+  "MediaContainer": {
+    "size": 2, "librarySectionID": "1", "librarySectionTitle": "Films",
+    "Metadata": [
+      {
+        "ratingKey": "30901", "key": "/library/collections/30901/children", "type": "collection",
+        "title": "The Trilogy", "titleSort": "Trilogy, The",
+        "librarySectionKey": "/library/sections/1",
+        "summary": "Three films that belong together.",
+        "thumb": "/library/collections/30901/composite/1755120000",
+        "childCount": 3, "addedAt": 1700002000, "updatedAt": 1755120000,
+        "subtype": "movie", "smart": "0"
+      },
+      {
+        "ratingKey": "30902", "key": "/library/collections/30902/children", "type": "collection",
+        "title": "Award Winners", "librarySectionKey": "/library/sections/1",
+        "summary": "", "thumb": "/library/collections/30902/composite/1755120001",
+        "childCount": 11, "addedAt": 1700002100, "updatedAt": 1755120001, "smart": "1"
+      }
+    ]
+  }
+}
