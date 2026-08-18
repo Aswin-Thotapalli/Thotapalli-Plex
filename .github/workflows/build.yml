@@ -1,0 +1,88 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GRADLE_OPTS: -Dorg.gradle.daemon=false
+
+jobs:
+  android:
+    name: Android and shared modules
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Confirms gradle-wrapper.jar is the checksummed original and not a substitute.
+      - name: Validate the Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v3
+
+      # compileSdk 37 per CLAUDE.md section 4. The runner image does not carry it.
+      - name: Install the Android platform and build tools
+        run: sdkmanager --install "platforms;android-37.0" "build-tools;37.0.0"
+
+      - name: Report the Gradle version
+        run: ./gradlew --version
+
+      - name: Resolve every declared coordinate
+        run: |
+          ./gradlew \
+            :core:model:dependencies :core:api:dependencies :core:session:dependencies \
+            :core:data:dependencies :core:playback:dependencies :core:download:dependencies \
+            :ui:design:dependencies :ui:shared:dependencies \
+            :player:exo:dependencies :player:mpv:dependencies \
+            :app:mobile:dependencies :app:tv:dependencies :app:desktop:dependencies
+
+      - name: Build
+        run: ./gradlew build --stacktrace
+
+      - name: Upload debug APKs
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apks
+          path: |
+            app/mobile/build/outputs/apk/debug/*.apk
+            app/tv/build/outputs/apk/debug/*.apk
+          if-no-files-found: ignore
+
+  windows:
+    name: Windows desktop
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Validate the Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # The desktop module is pure JVM, so no Android SDK is needed for it.
+      - name: Build the desktop application
+        run: ./gradlew :app:desktop:build --stacktrace

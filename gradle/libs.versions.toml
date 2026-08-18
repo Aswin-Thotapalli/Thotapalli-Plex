@@ -1,0 +1,118 @@
+# Single source of truth for every version in this build.
+# No module declares a version inline. See CLAUDE.md section 4.
+
+[versions]
+agp = "9.3.0"
+kotlin = "2.4.10"
+composeMultiplatform = "1.11.1"
+composeBom = "2026.04.01"
+media3 = "1.11.0"
+ktor = "3.4.0"
+sqldelight = "2.3.2"
+coil = "3.5.0"
+jna = "5.17.0"
+okio = "3.9.1"
+
+# Beyond CLAUDE.md section 4. Everything below was required to build what section 16 asks for
+# and was verified resolvable against Maven Central or Google Maven on 18 August 2026.
+# Compose Multiplatform material3 runs on its own version line, not the plugin's.
+composeMaterial3 = "1.9.0"
+composeLifecycle = "2.11.0"
+composeNavigation = "2.9.2"
+coroutines = "1.10.2"
+serialization = "1.9.0"
+datetime = "0.6.2"
+androidxActivity = "1.11.0"
+androidxCore = "1.17.0"
+androidxSecurity = "1.1.0"
+androidxBrowser = "1.9.0"
+androidxTv = "1.1.0"
+
+[libraries]
+ktor-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+ktor-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
+ktor-java = { module = "io.ktor:ktor-client-java", version.ref = "ktor" }
+ktor-contentneg = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
+ktor-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
+ktor-logging = { module = "io.ktor:ktor-client-logging", version.ref = "ktor" }
+
+sqldelight-android = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
+sqldelight-jvm = { module = "app.cash.sqldelight:sqlite-driver", version.ref = "sqldelight" }
+sqldelight-coroutines = { module = "app.cash.sqldelight:coroutines-extensions", version.ref = "sqldelight" }
+
+coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
+coil-network = { module = "io.coil-kt.coil3:coil-network-ktor3", version.ref = "coil" }
+
+media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }
+media3-ui = { module = "androidx.media3:media3-ui", version.ref = "media3" }
+media3-ui-compose = { module = "androidx.media3:media3-ui-compose", version.ref = "media3" }
+media3-hls = { module = "androidx.media3:media3-exoplayer-hls", version.ref = "media3" }
+media3-ds-okhttp = { module = "androidx.media3:media3-datasource-okhttp", version.ref = "media3" }
+# NOT PUBLISHED TO ANY MAVEN REPOSITORY. Google ships every media3 native decoder
+# extension as source only; it must be built with the NDK from the media3 repository.
+# Declared here to match CLAUDE.md section 4 verbatim. Deliberately not wired into
+# player/exo, because doing so breaks dependency resolution for the whole build.
+# Resolve before Phase 5 step 2. See CLAUDE.md section 8, "Extension renderers preferred".
+media3-ffmpeg = { module = "androidx.media3:media3-decoder-ffmpeg", version.ref = "media3" }
+
+jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
+jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
+okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
+
+# --- Compose Multiplatform, declared directly ---------------------------------------------
+# The plugin's compose.runtime / compose.foundation / compose.material3 / compose.ui accessors
+# are deprecated in 1.11.1 in favour of explicit coordinates.
+compose-runtime = { module = "org.jetbrains.compose.runtime:runtime", version.ref = "composeMultiplatform" }
+compose-foundation = { module = "org.jetbrains.compose.foundation:foundation", version.ref = "composeMultiplatform" }
+compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "composeMultiplatform" }
+compose-ui-tooling-preview = { module = "org.jetbrains.compose.ui:ui-tooling-preview", version.ref = "composeMultiplatform" }
+compose-ui-backhandler = { module = "org.jetbrains.compose.ui:ui-backhandler", version.ref = "composeMultiplatform" }
+compose-material3 = { module = "org.jetbrains.compose.material3:material3", version.ref = "composeMaterial3" }
+compose-components-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "composeMultiplatform" }
+
+compose-lifecycle-viewmodel = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "composeLifecycle" }
+compose-lifecycle-runtime = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "composeLifecycle" }
+compose-navigation = { module = "org.jetbrains.androidx.navigation:navigation-compose", version.ref = "composeNavigation" }
+
+# --- Kotlin libraries ----------------------------------------------------------------------
+coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "coroutines" }
+coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "datetime" }
+
+# --- AndroidX ------------------------------------------------------------------------------
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidxActivity" }
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
+# EncryptedSharedPreferences, for the account token on Android. CLAUDE.md section 5 step 4.
+androidx-security-crypto = { module = "androidx.security:security-crypto", version.ref = "androidxSecurity" }
+# Custom tab for the plex.tv PIN approval page. CLAUDE.md section 5 step 2.
+androidx-browser = { module = "androidx.browser:browser", version.ref = "androidxBrowser" }
+# Television focus and surface treatments. CLAUDE.md section 13.
+androidx-tv-material = { module = "androidx.tv:tv-material", version.ref = "androidxTv" }
+media3-common = { module = "androidx.media3:media3-common", version.ref = "media3" }
+
+# --- SQLDelight and test -------------------------------------------------------------------
+sqldelight-runtime = { module = "app.cash.sqldelight:runtime", version.ref = "sqldelight" }
+sqldelight-primitive-adapters = { module = "app.cash.sqldelight:primitive-adapters", version.ref = "sqldelight" }
+ktor-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+# Android Gradle Plugin 9 rejects com.android.library alongside the multiplatform plugin and
+# directs multiplatform libraries at this one instead. core/*, ui/* use it; player/exo, which is
+# Android only and not multiplatform, keeps the plain library plugin above.
+android-kmp-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+sqldelight = { id = "app.cash.sqldelight", version.ref = "sqldelight" }
+
+# Added beyond CLAUDE.md section 4. Section 3 requires app/mobile, app/tv and app/desktop to be
+# non-multiplatform subprojects, which means they need the single-platform Kotlin plugins. The
+# section 4 catalogue declares only the multiplatform one, so these two are structurally required.
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }

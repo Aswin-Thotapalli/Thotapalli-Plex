@@ -1,0 +1,29 @@
+# Gradle
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+local.properties
+
+# Android
+*.apk
+*.aab
+*.ap_
+*.dex
+release/
+captures/
+
+# Keystores. CLAUDE.md section 17: the release keystore lives outside this repository.
+*.jks
+*.keystore
+
+# Native binaries fetched at set up time, not committed
+app/desktop/native/windows-x64/*.dll
+
+# IDE
+.idea/
+*.iml
+.kotlin/
+
+# OS
+.DS_Store
+Thumbs.db
