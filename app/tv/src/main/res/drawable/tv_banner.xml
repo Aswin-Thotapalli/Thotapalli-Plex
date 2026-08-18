@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Placeholder. The real 320 by 180 banner from CLAUDE.md section 15 is produced in phase 7,
+  step 3. The manifest references a banner, so something has to exist before then.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#16181C" />
+        </shape>
+    </item>
+    <item android:gravity="center" android:width="120dp" android:height="12dp">
+        <shape android:shape="rectangle">
+            <solid android:color="#F5A623" />
+            <corners android:radius="6dp" />
+        </shape>
+    </item>
+</layer-list>

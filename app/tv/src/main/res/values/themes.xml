@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      A bare window theme. Every colour the user sees comes from the section 12 tokens in
+      ui/design, so this deliberately carries no palette of its own; it exists only to give
+      the activity a translucent-status-bar window before Compose takes over.
+    -->
+    <style name="Theme.ThotapalliPlex" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/background_dark</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

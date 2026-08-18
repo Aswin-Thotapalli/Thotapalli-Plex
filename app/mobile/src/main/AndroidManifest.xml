@@ -4,4 +4,27 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <application
+        android:name=".ThotapalliApplication"
+        android:allowBackup="false"
+        android:label="Thotapalli Plex"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.ThotapalliPlex">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="Thotapalli Plex"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density"
+            android:theme="@style/Theme.ThotapalliPlex">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+    </application>
+
 </manifest>

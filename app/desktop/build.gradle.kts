@@ -34,6 +34,16 @@ dependencies {
  *
  *   gradlew :app:desktop:harness --args="signin"
  */
+/** The phase 4 design gallery: every token, every component, the responsive grid. */
+val gallery by tasks.registering(JavaExec::class) {
+    group = "verification"
+    description = "Opens the design gallery window."
+    mainClass.set("com.thotapalli.plex.desktop.GalleryKt")
+    classpath = sourceSets["main"].runtimeClasspath
+    // Rendered at a fixed density so a captured screenshot is comparable between machines.
+    systemProperty("skiko.win.exception.logger.enabled", "true")
+}
+
 val harness by tasks.registering(JavaExec::class) {
     group = "verification"
     description = "Runs the Plex account and server access harness."

@@ -4,4 +4,34 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- A television has no touchscreen and no camera, and declaring leanback is what
+         makes this build eligible for the Android TV launcher. -->
+    <uses-feature android:name="android.software.leanback" android:required="true" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+
+    <application
+        android:name=".ThotapalliApplication"
+        android:allowBackup="false"
+        android:banner="@drawable/tv_banner"
+        android:label="Thotapalli Plex"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.ThotapalliPlex">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="Thotapalli Plex"
+            android:launchMode="singleTask"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density"
+            android:theme="@style/Theme.ThotapalliPlex">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <!-- LEANBACK_LAUNCHER rather than LAUNCHER: a television has no app drawer. -->
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+    </application>
+
 </manifest>
