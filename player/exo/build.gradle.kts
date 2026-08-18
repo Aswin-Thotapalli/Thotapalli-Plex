@@ -16,7 +16,9 @@ kotlin {
 }
 
 dependencies {
-    implementation(project(":core:playback"))
+    api(project(":core:playback"))
+    implementation(libs.media3.common)
+    implementation(libs.coroutines.android)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.ui)
     implementation(libs.media3.hls)
