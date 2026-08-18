@@ -1,0 +1,14 @@
+# Normalise to LF in the repository. gradlew runs on the Linux CI runner and a CRLF
+# shebang line breaks it.
+* text=auto eol=lf
+
+gradlew         text eol=lf
+*.bat           text eol=crlf
+*.cmd           text eol=crlf
+
+*.jar           binary
+*.png           binary
+*.ico           binary
+*.dll           binary
+*.keystore      binary
+*.jks           binary
