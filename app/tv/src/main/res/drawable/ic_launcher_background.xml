@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Adaptive icon background, CLAUDE.md section 15.
+    The plate gradient #262A30 -> #101215, full bleed across the 108dp canvas.
+    The launcher mask rounds the corners, so the plate shape is not drawn here.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M0,0L108,0L108,108L0,108Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0"
+                android:startY="0"
+                android:endX="37.8"
+                android:endY="108">
+                <item android:offset="0" android:color="#262A30" />
+                <item android:offset="1" android:color="#101215" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

@@ -1,18 +1,67 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Placeholder. The real 320 by 180 banner from CLAUDE.md section 15 is produced in phase 7,
-  step 3. The manifest references a banner, so something has to exist before then.
+    Android TV banner, CLAUDE.md section 15: 320 by 180, mark left, wordmark right.
+
+    The plate gradient runs full bleed rather than sitting as an inset square. At
+    320 by 180 an inset plate would be plate-on-plate and read as a flat block, so
+    the banner itself is the plate and the amber forms sit directly on it. Only the
+    two section 15 gradients appear.
+
+    FONT SUBSTITUTION: section 15 specifies Inter SemiBold. Inter is not installed on
+    the build machine, so the wordmark outlines below were taken from Segoe UI
+    Semibold (C:\Windows\Fonts\seguisb.ttf) at 25px with -1% tracking, converted to
+    path data. Regenerate from Inter SemiBold when the font is available.
 -->
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item>
-        <shape android:shape="rectangle">
-            <solid android:color="#16181C" />
-        </shape>
-    </item>
-    <item android:gravity="center" android:width="120dp" android:height="12dp">
-        <shape android:shape="rectangle">
-            <solid android:color="#F5A623" />
-            <corners android:radius="6dp" />
-        </shape>
-    </item>
-</layer-list>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <path android:pathData="M0,0L320,0L320,180L0,180Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0"
+                android:startY="0"
+                android:endX="112"
+                android:endY="180">
+                <item android:offset="0" android:color="#262A30" />
+                <item android:offset="1" android:color="#101215" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:pathData="M31.281,46L106.219,46A9.281,9.281 0 0 1 106.219,64.562L31.281,64.562A9.281,9.281 0 0 1 31.281,46Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="31.35"
+                android:startY="46"
+                android:endX="106.15"
+                android:endY="64.562">
+                <item android:offset="0" android:color="#FFCE63" />
+                <item android:offset="0.5" android:color="#F5A623" />
+                <item android:offset="1" android:color="#D4820C" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:pathData="M54.312,74.875L54.312,131.25Q54.312,135.375 58.094,133.312L110.688,105.125Q114.469,103.062 110.688,101L58.094,72.812Q54.312,70.75 54.312,74.875Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="60.139"
+                android:startY="72.126"
+                android:endX="106.752"
+                android:endY="133.999">
+                <item android:offset="0" android:color="#FFCE63" />
+                <item android:offset="0.5" android:color="#F5A623" />
+                <item android:offset="1" android:color="#D4820C" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <group android:translateX="136" android:translateY="77.875">
+        <path
+            android:fillColor="#F2F3F5"
+            android:pathData="M12.95,3.45L7.92,3.45L7.92,18.50L5.02,18.50L5.02,3.45L0.00,3.45L0.00,1.00L12.95,1.00L12.95,3.45ZM26.06,18.50L23.23,18.50L23.23,11.66Q23.23,7.95 20.75,7.95Q19.50,7.95 18.64,9.03Q17.79,10.09 17.79,11.78L17.79,18.50L14.95,18.50L14.95,0.00L17.79,0.00L17.79,8.08L17.84,8.08Q19.26,5.70 21.90,5.70Q26.06,5.70 26.06,10.80L26.06,18.50ZM34.80,18.80Q31.91,18.80 30.17,17.05Q28.44,15.30 28.44,12.39Q28.44,9.25 30.24,7.48Q32.05,5.70 35.09,5.70Q38.03,5.70 39.66,7.44Q41.30,9.16 41.30,12.20Q41.30,15.19 39.53,17.00Q37.77,18.80 34.80,18.80ZM34.92,7.97Q33.27,7.97 32.30,9.13Q31.34,10.28 31.34,12.33Q31.34,14.28 32.31,15.42Q33.30,16.55 34.92,16.55Q36.59,16.55 37.49,15.44Q38.39,14.33 38.39,12.28Q38.39,10.22 37.49,9.09Q36.59,7.97 34.92,7.97ZM50.52,18.36Q49.70,18.78 48.34,18.78Q44.70,18.78 44.70,15.30L44.70,8.22L42.62,8.22L42.62,6.00L44.70,6.00L44.70,3.11L47.52,2.30L47.52,6.00L50.52,6.00L50.52,8.22L47.52,8.22L47.52,14.47Q47.52,15.58 47.93,16.06Q48.34,16.53 49.27,16.53Q49.99,16.53 50.52,16.13L50.52,18.36ZM62.31,18.50L59.56,18.50L59.56,16.55L59.51,16.55Q58.21,18.80 55.71,18.80Q53.87,18.80 52.82,17.80Q51.79,16.80 51.79,15.14Q51.79,11.61 55.87,11.02L59.57,10.48Q59.57,7.81 57.04,7.81Q54.81,7.81 53.01,9.36L53.01,6.88Q54.98,5.70 57.57,5.70Q62.31,5.70 62.31,10.38L62.31,18.50ZM59.57,12.36L56.95,12.72Q55.73,12.89 55.10,13.33Q54.49,13.75 54.49,14.84Q54.49,15.63 55.06,16.14Q55.64,16.64 56.59,16.64Q57.87,16.64 58.71,15.73Q59.57,14.83 59.57,13.45L59.57,12.36ZM68.39,16.66L68.34,16.66L68.34,24.25L65.51,24.25L65.51,6.00L68.34,6.00L68.34,8.20L68.39,8.20Q69.84,5.70 72.64,5.70Q75.03,5.70 76.36,7.38Q77.68,9.05 77.68,11.88Q77.68,15.00 76.18,16.88Q74.68,18.75 72.08,18.75Q69.68,18.75 68.39,16.66ZM68.33,11.72L68.33,13.28Q68.33,14.64 69.18,15.59Q70.06,16.55 71.40,16.55Q72.98,16.55 73.87,15.33Q74.78,14.09 74.78,11.89Q74.78,10.05 73.93,9.02Q73.11,7.97 71.68,7.97Q70.17,7.97 69.25,9.05Q68.33,10.11 68.33,11.72ZM89.92,18.50L87.17,18.50L87.17,16.55L87.12,16.55Q85.83,18.80 83.33,18.80Q81.48,18.80 80.44,17.80Q79.40,16.80 79.40,15.14Q79.40,11.61 83.48,11.02L87.19,10.48Q87.19,7.81 84.65,7.81Q82.42,7.81 80.62,9.36L80.62,6.88Q82.59,5.70 85.19,5.70Q89.92,5.70 89.92,10.38L89.92,18.50ZM87.19,12.36L84.56,12.72Q83.34,12.89 82.72,13.33Q82.11,13.75 82.11,14.84Q82.11,15.63 82.67,16.14Q83.25,16.64 84.20,16.64Q85.48,16.64 86.33,15.73Q87.19,14.83 87.19,13.45L87.19,12.36ZM95.97,18.50L93.13,18.50L93.13,0.00L95.97,0.00L95.97,18.50ZM102.25,18.50L99.41,18.50L99.41,0.00L102.25,0.00L102.25,18.50ZM107.11,3.38Q106.42,3.38 105.92,2.92Q105.44,2.47 105.44,1.78Q105.44,1.08 105.92,0.63Q106.42,0.16 107.11,0.16Q107.83,0.16 108.33,0.63Q108.84,1.08 108.84,1.78Q108.84,2.44 108.33,2.91Q107.83,3.38 107.11,3.38ZM108.52,18.50L105.69,18.50L105.69,6.00L108.52,6.00L108.52,18.50ZM121.79,12.16L121.79,18.50L118.90,18.50L118.90,1.00L124.22,1.00Q127.23,1.00 128.89,2.41Q130.56,3.80 130.56,6.36Q130.56,8.91 128.82,10.53Q127.09,12.16 124.14,12.16L121.79,12.16ZM121.79,3.39L121.79,9.78L123.68,9.78Q125.54,9.78 126.51,8.92Q127.50,8.05 127.50,6.47Q127.50,3.39 123.92,3.39L121.79,3.39ZM135.80,18.50L132.95,18.50L132.95,0.00L135.80,0.00L135.80,18.50ZM149.81,13.02L141.30,13.02Q141.34,14.75 142.36,15.69Q143.39,16.63 145.17,16.63Q147.17,16.63 148.84,15.44L148.84,17.72Q147.12,18.80 144.33,18.80Q141.56,18.80 139.98,17.09Q138.42,15.39 138.42,12.30Q138.42,9.38 140.15,7.55Q141.89,5.70 144.45,5.70Q147.01,5.70 148.40,7.36Q149.81,9.00 149.81,11.94L149.81,13.02ZM147.08,11.02Q147.08,9.48 146.36,8.64Q145.65,7.80 144.40,7.80Q143.19,7.80 142.34,8.69Q141.50,9.58 141.30,11.02L147.08,11.02ZM162.72,6.00L158.55,12.33L162.67,18.50L159.37,18.50L157.19,14.63Q156.98,14.28 156.70,13.73L156.64,13.73Q156.59,13.84 156.14,14.63L153.90,18.50L150.62,18.50L154.87,12.38L150.84,6.00L154.14,6.00L156.31,10.06Q156.55,10.52 156.78,11.00L156.81,11.00L159.61,6.00L162.72,6.00Z" />
+    </group>
+</vector>

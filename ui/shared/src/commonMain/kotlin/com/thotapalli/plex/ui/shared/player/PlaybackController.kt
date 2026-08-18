@@ -17,6 +17,7 @@ import com.thotapalli.plex.core.playback.PlayerEngine
 import com.thotapalli.plex.core.playback.TimelineReporter
 import com.thotapalli.plex.core.playback.TimelineSink
 import com.thotapalli.plex.core.playback.TimelineState
+import com.thotapalli.plex.core.download.OfflineTimelineQueue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -44,6 +45,11 @@ class PlaybackController(
     private val identityHeaders: Map<String, String>,
     private val scope: CoroutineScope,
     private val nowMs: () -> Long,
+    /**
+     * Where progress goes when the server is unreachable. Null means it is simply lost,
+     * which is only acceptable on a target with no offline support at all.
+     */
+    private val offlineTimeline: OfflineTimelineQueue? = null,
     /** Only Android phone and tablet has a second engine to retry through. */
     hasSecondaryEngine: Boolean = false,
     private val onRequestSecondaryEngine: (() -> Unit)? = null,
@@ -386,7 +392,13 @@ class PlaybackController(
             "E${it.episodeIndex.toString().padStart(2, '0')}  ${it.title}"
     }
 
-    /** Reports to the server. Phase 6 puts the offline queue behind the same interface. */
+    /**
+     * Reports to the server, falling back to the offline queue.
+     *
+     * A report that cannot reach the server is written to pending_timeline and replayed on
+     * reconnection, which is what makes a position recorded in aeroplane mode show up on
+     * the server afterwards. See CLAUDE.md section 11.
+     */
     private inner class ServerTimelineSink : TimelineSink {
         override suspend fun timeline(
             ratingKey: String,
@@ -394,22 +406,35 @@ class PlaybackController(
             positionMs: Long,
             durationMs: Long,
         ) {
-            api.timeline(
-                scope = serverScope,
-                ratingKey = ratingKey,
-                state = when (state) {
-                    TimelineState.PLAYING -> ApiTimelineState.PLAYING
-                    TimelineState.PAUSED -> ApiTimelineState.PAUSED
-                    TimelineState.STOPPED -> ApiTimelineState.STOPPED
-                },
-                positionMs = positionMs,
-                durationMs = durationMs,
-                sessionIdentifier = sessionIdentifier,
-            )
+            runCatching {
+                api.timeline(
+                    scope = serverScope,
+                    ratingKey = ratingKey,
+                    state = when (state) {
+                        TimelineState.PLAYING -> ApiTimelineState.PLAYING
+                        TimelineState.PAUSED -> ApiTimelineState.PAUSED
+                        TimelineState.STOPPED -> ApiTimelineState.STOPPED
+                    },
+                    positionMs = positionMs,
+                    durationMs = durationMs,
+                    sessionIdentifier = sessionIdentifier,
+                )
+            }.onFailure {
+                offlineTimeline?.record(ratingKey, positionMs, durationMs, state.name.lowercase())
+            }
         }
 
         override suspend fun scrobble(ratingKey: String) {
-            api.scrobble(serverScope, ratingKey)
+            runCatching { api.scrobble(serverScope, ratingKey) }.onFailure {
+                // Recorded at the full duration, so the replay marks it watched rather than
+                // leaving it a few seconds short forever.
+                offlineTimeline?.record(
+                    ratingKey,
+                    _state.value.durationMs,
+                    _state.value.durationMs,
+                    "stopped",
+                )
+            }
         }
     }
 

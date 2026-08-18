@@ -30,6 +30,7 @@ kotlin {
             api(project(":core:model"))
             api(project(":core:api"))
             implementation(project(":core:session"))
+            api(project(":core:download"))
             implementation(libs.sqldelight.runtime)
             implementation(libs.sqldelight.coroutines)
             implementation(libs.coroutines.core)

@@ -11,8 +11,14 @@
     </linearGradient>
   </defs>
 
+  <!--
+    Section 15 permits two colours only, the plate gradient and the mark gradient. Every
+    derived asset (adaptive icon, television banner, Windows ICO, raster fallbacks) is
+    generated from the geometry below, so nothing else may appear here.
+
+    Mark bounding box: x 120..392, y 140..396. Centre 256, 268.
+  -->
   <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#plate)"/>
-  <rect x="17.5" y="17.5" width="477" height="477" rx="110" fill="none" stroke="#343941" stroke-width="3"/>
 
   <rect x="120" y="140" width="272" height="54" rx="27" fill="url(#amber)"/>
 

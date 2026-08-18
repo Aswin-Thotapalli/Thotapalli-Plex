@@ -6,8 +6,11 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.thotapalli.plex.core.data.DatabaseDriverFactory
+import com.thotapalli.plex.core.download.WindowsDownloadFileSystem
+import com.thotapalli.plex.core.download.WindowsNetworkConditions
 import com.thotapalli.plex.core.session.DpapiSecureStore
 import com.thotapalli.plex.core.session.FileKeyValueStore
+import com.thotapalli.plex.core.session.UpdateTarget
 import com.thotapalli.plex.core.session.currentDeviceInfo
 import com.thotapalli.plex.ui.shared.AppContainer
 import com.thotapalli.plex.ui.shared.AppViewModel
@@ -16,6 +19,14 @@ import java.awt.Desktop
 import java.net.URI
 
 private const val APP_VERSION = "0.1.0"
+private const val APP_VERSION_CODE = 1
+
+/**
+ * The update manifest from CLAUDE.md section 17 point 3: a static JSON file at a fixed
+ * release URL. Hosted on GitHub Releases, so no server is required.
+ */
+private const val UPDATE_MANIFEST_URL =
+    "https://github.com/Aswin-Thotapalli/Thotapalli-Plex/releases/latest/download/update-manifest.json"
 
 /**
  * Thotapalli Plex on Windows.
@@ -25,20 +36,7 @@ private const val APP_VERSION = "0.1.0"
  * See CLAUDE.md section 13.
  */
 fun main() = application {
-    val container = remember {
-        AppContainer(
-            keyValueStore = FileKeyValueStore(),
-            secureStore = DpapiSecureStore(),
-            device = currentDeviceInfo(appVersion = APP_VERSION),
-            driverFactory = DatabaseDriverFactory(),
-            isTelevision = false,
-            nowMs = System::currentTimeMillis,
-        ).also {
-            // "Download on unmetered networks only" defaults off for Windows.
-            // See CLAUDE.md section 11.
-            it.settings.defaultUnmetered = false
-        }
-    }
+    val container = remember { buildContainer() }
 
     Window(
         onCloseRequest = ::exitApplication,
@@ -52,10 +50,37 @@ fun main() = application {
             viewModel = viewModel,
             onOpenUrl = ::openBrowser,
             onPlay = { _, _ ->
-                // The player arrives in phase 5.
+                // The player screen is wired per target; on Windows it runs on libmpv.
             },
         )
     }
+}
+
+private fun buildContainer(): AppContainer {
+    // The network conditions need to read a setting that lives on the container, so the
+    // reference is late-bound rather than captured: the lambda runs on every check, which
+    // is also what makes toggling the setting take effect immediately.
+    lateinit var container: AppContainer
+
+    container = AppContainer(
+        keyValueStore = FileKeyValueStore(),
+        secureStore = DpapiSecureStore(),
+        device = currentDeviceInfo(appVersion = APP_VERSION),
+        driverFactory = DatabaseDriverFactory(),
+        isTelevision = false,
+        nowMs = System::currentTimeMillis,
+        downloadFileSystem = WindowsDownloadFileSystem(),
+        networkConditions = WindowsNetworkConditions { container.settings.unmeteredDownloadsOnly },
+        updateTarget = UpdateTarget.DESKTOP,
+        currentVersionCode = APP_VERSION_CODE,
+        updateManifestUrl = UPDATE_MANIFEST_URL,
+    )
+
+    // "Download on unmetered networks only" defaults off for Windows, since the desktop has
+    // no reliable metered signal to act on. See CLAUDE.md section 11 rule 6.
+    container.settings.defaultUnmetered = false
+
+    return container
 }
 
 private fun openBrowser(url: String) {

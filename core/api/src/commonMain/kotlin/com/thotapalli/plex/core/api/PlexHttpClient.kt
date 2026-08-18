@@ -4,6 +4,8 @@ import io.ktor.client.HttpClient
 import io.ktor.client.HttpClientConfig
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.get
+import io.ktor.client.statement.bodyAsText
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 
@@ -37,6 +39,20 @@ class PlexHttp internal constructor(
 
     override fun close() {
         client.close()
+    }
+
+    /**
+     * Fetches a plain document and returns it as text.
+     *
+     * Exists for the update manifest in CLAUDE.md section 17, which is a static JSON file
+     * on a release host rather than a Plex endpoint: it carries no identity headers and no
+     * token. Returning a String keeps Ktor from leaking into the caller, which is what
+     * lets core/session read the manifest without an HTTP dependency of its own.
+     */
+    suspend fun fetchText(url: String): String {
+        val response = client.get(url)
+        response.requireSuccess("fetch ${'$'}url")
+        return response.bodyAsText()
     }
 
     companion object {

@@ -22,6 +22,10 @@ dependencies {
     implementation(compose.desktop.currentOs)
     implementation(libs.coroutines.core)
     implementation(libs.coroutines.swing)
+    // AppViewModel extends androidx.lifecycle.ViewModel, so its supertype has to be on the
+    // desktop compile classpath too.
+    implementation(libs.compose.lifecycle.viewmodel)
+    implementation(libs.compose.lifecycle.runtime)
     implementation(libs.compose.runtime)
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
@@ -63,6 +67,7 @@ compose.desktop {
             vendor = "Thotapalli"
 
             windows {
+                iconFile.set(project.file("src/main/resources/icon.ico"))
                 // Stable so every MSI upgrades the previous install rather than sitting
                 // beside it. Generated once; never regenerate.
                 upgradeUuid = "6E5F3A21-9C42-4B7E-8D10-2F4A6B8C1D3E"

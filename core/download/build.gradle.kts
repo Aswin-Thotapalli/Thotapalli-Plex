@@ -19,9 +19,17 @@ kotlin {
 
     sourceSets {
         commonMain.dependencies {
-            implementation(project(":core:model"))
-            implementation(project(":core:api"))
+            api(project(":core:model"))
+            // Deliberately no dependency on :core:api. The transport, the one part of a
+            // download that speaks HTTP, is implemented there against the interface declared
+            // here, so the edge runs :core:api -> :core:download and Ktor stays in one module.
+            implementation(libs.coroutines.core)
             implementation(libs.okio)
+        }
+
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+            implementation(libs.coroutines.test)
         }
     }
 }

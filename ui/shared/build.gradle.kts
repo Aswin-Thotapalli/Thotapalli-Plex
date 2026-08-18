@@ -40,5 +40,10 @@ kotlin {
             implementation(libs.coil.compose)
             implementation(libs.coil.network)
         }
+
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+            implementation(libs.coroutines.test)
+        }
     }
 }

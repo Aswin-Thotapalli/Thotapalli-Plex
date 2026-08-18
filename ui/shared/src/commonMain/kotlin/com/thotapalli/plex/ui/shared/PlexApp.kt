@@ -29,6 +29,8 @@ import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
 import com.thotapalli.plex.ui.design.ThotapalliTheme
 import com.thotapalli.plex.ui.shared.screens.DetailScreen
+import com.thotapalli.plex.ui.shared.screens.DownloadsScreen
+import com.thotapalli.plex.ui.shared.screens.SettingsScreen
 import com.thotapalli.plex.ui.shared.screens.HomeScreen
 import com.thotapalli.plex.ui.shared.screens.HomeUserPicker
 import com.thotapalli.plex.ui.shared.screens.LibraryScreen
@@ -61,7 +63,10 @@ fun PlexApp(
     val state by viewModel.state.collectAsStateWithLifecycle()
     var destination by remember { mutableStateOf(Destination.HOME) }
 
-    LaunchedEffect(Unit) { viewModel.start() }
+    LaunchedEffect(Unit) {
+        viewModel.onOpenUrl = onOpenUrl
+        viewModel.start()
+    }
 
     WithSizeClass(isTelevision = container.isTelevision) { sizeClass ->
         ThotapalliTheme(sizeClass = sizeClass) {
@@ -114,7 +119,7 @@ private fun ReadyContent(
                 server = server,
                 state = state.detail,
                 onPlay = onPlay,
-                onDownload = { /* wired in phase 6 */ },
+                onDownload = viewModel::download,
                 onToggleWatched = { /* wired in phase 5 */ },
                 onSeasonSelected = viewModel::selectSeason,
                 modifier = bodyModifier,
@@ -138,11 +143,26 @@ private fun ReadyContent(
                 modifier = bodyModifier,
             )
 
-            destination == Destination.DOWNLOADS ->
-                Centered("Downloads arrive in phase 6.", bodyModifier)
+            destination == Destination.DOWNLOADS -> DownloadsScreen(
+                entries = state.downloads,
+                totalBytesOnDisk = state.downloadBytesOnDisk,
+                onPause = viewModel::pauseDownload,
+                onResume = viewModel::resumeDownload,
+                onDelete = viewModel::deleteDownload,
+                modifier = bodyModifier,
+            )
 
-            destination == Destination.SETTINGS ->
-                Centered("Settings arrive in phase 7.", bodyModifier)
+            destination == Destination.SETTINGS -> SettingsScreen(
+                state = viewModel.settingsState(),
+                onMatchDisplayRateChange = viewModel::setMatchDisplayRate,
+                onUnmeteredOnlyChange = viewModel::setUnmeteredOnly,
+                onAudioLanguageChange = viewModel::setAudioLanguage,
+                onSubtitleLanguageChange = viewModel::setSubtitleLanguage,
+                onSubtitlesOnChange = viewModel::setSubtitlesOn,
+                onSelectServer = viewModel::selectServer,
+                onSignOut = viewModel::signOut,
+                modifier = bodyModifier,
+            )
 
             else -> HomeScreen(
                 server = server,

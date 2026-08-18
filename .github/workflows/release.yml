@@ -1,0 +1,278 @@
+# The release artefacts and the update manifest from CLAUDE.md section 16 phase 7 step 4 and
+# section 17. Building here rather than on a workstation keeps the signed artefacts and the
+# manifest that advertises them produced by one run, from one commit, in one place.
+#
+# The MSI job runs on Windows because jpackage, which the Compose Desktop packageMsi task
+# drives, can only produce an MSI on Windows. See docs/RELEASING.md for the secrets this needs.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# The release job creates a GitHub Release and uploads assets to it.
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GRADLE_OPTS: -Dorg.gradle.daemon=false
+
+jobs:
+  android:
+    name: Signed phone and television APKs
+    runs-on: ubuntu-latest
+    outputs:
+      versionName: ${{ steps.version.outputs.versionName }}
+      versionCode: ${{ steps.version.outputs.versionCode }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Confirms gradle-wrapper.jar is the checksummed original and not a substitute.
+      - name: Validate the Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v3
+
+      # compileSdk 37 per CLAUDE.md section 4. The runner image does not carry it.
+      - name: Install the Android platform and build tools
+        run: sdkmanager --install "platforms;android-37.0" "build-tools;37.0.0"
+
+      # gradle.properties is the single source of the version, so the tag has to agree with it
+      # rather than becoming a second place the version is declared.
+      - name: Read the version and check it against the tag
+        id: version
+        run: |
+          versionName="$(sed -n 's/^thotapalli\.versionName=//p' gradle.properties)"
+          versionCode="$(sed -n 's/^thotapalli\.versionCode=//p' gradle.properties)"
+          if [ -z "$versionName" ] || [ -z "$versionCode" ]; then
+            echo "gradle.properties carries no thotapalli.versionName or thotapalli.versionCode" >&2
+            exit 1
+          fi
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME}" != "v${versionName}" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not match thotapalli.versionName=${versionName}" >&2
+            echo "bump gradle.properties and re-tag, so the manifest and the artefacts agree" >&2
+            exit 1
+          fi
+          echo "versionName=${versionName}" >> "$GITHUB_OUTPUT"
+          echo "versionCode=${versionCode}" >> "$GITHUB_OUTPUT"
+
+      # Written to the runner's temporary directory, never into the checkout, so no keystore
+      # can be picked up by a later git operation. The runner is discarded after the job.
+      - name: Restore the release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "the KEYSTORE_BASE64 secret is not set; see docs/RELEASING.md" >&2
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "${RUNNER_TEMP}/release.jks"
+          echo "THOTAPALLI_KEYSTORE_FILE=${RUNNER_TEMP}/release.jks" >> "$GITHUB_ENV"
+
+      # One key for both artefacts, per CLAUDE.md section 17 point 1, so either one upgrades
+      # an installation of the other instead of being refused as a different application.
+      - name: Assemble the signed APKs
+        env:
+          THOTAPALLI_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          THOTAPALLI_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          THOTAPALLI_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: ./gradlew :app:mobile:assembleRelease :app:tv:assembleRelease --stacktrace
+
+      # Named for the download URL the manifest will advertise, rather than left as the
+      # module name AGP gives them.
+      - name: Collect the APKs
+        run: |
+          set -e
+          version="${{ steps.version.outputs.versionName }}"
+          mkdir -p artefacts
+          for module in mobile tv; do
+            apk="$(find "app/${module}/build/outputs/apk/release" -name '*.apk' | head -n 1)"
+            if [ -z "$apk" ]; then
+              echo "assembleRelease produced no APK for app/${module}" >&2
+              exit 1
+            fi
+            cp "$apk" "artefacts/thotapalli-plex-${module}-${version}.apk"
+          done
+
+      # A release that quietly shipped an unsigned APK would install for nobody, so this is
+      # checked rather than assumed. Checked with apksigner rather than by looking for a
+      # META-INF certificate: minSdk is 31, so AGP leaves v1 signing off and there is none.
+      - name: Confirm both APKs are signed
+        run: |
+          set -e
+          apksigner="${ANDROID_HOME}/build-tools/37.0.0/apksigner"
+          for apk in artefacts/*.apk; do
+            "$apksigner" verify --print-certs "$apk"
+          done
+
+      - name: Upload the APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-artefacts
+          path: artefacts/*.apk
+          if-no-files-found: error
+          retention-days: 7
+
+  windows:
+    name: Windows MSI
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Validate the Gradle wrapper
+        uses: gradle/actions/wrapper-validation@v4
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # libmpv-2.dll is not committed, and the MSI bundles it so the user performs no separate
+      # install step. CLAUDE.md section 4 sources it from SourceForge, which has no stable
+      # direct URL, so the release mirrors it and names that mirror in a repository variable.
+      - name: Fetch libmpv
+        shell: pwsh
+        env:
+          LIBMPV_DOWNLOAD_URL: ${{ vars.LIBMPV_DOWNLOAD_URL }}
+        run: |
+          $target = "app/desktop/native/windows-x64/libmpv-2.dll"
+          New-Item -ItemType Directory -Force (Split-Path $target) | Out-Null
+          if (-not (Test-Path $target)) {
+            if ([string]::IsNullOrWhiteSpace($env:LIBMPV_DOWNLOAD_URL)) {
+              Write-Error "libmpv-2.dll is absent and the LIBMPV_DOWNLOAD_URL variable is unset; see docs/RELEASING.md"
+              exit 1
+            }
+            Invoke-WebRequest -Uri $env:LIBMPV_DOWNLOAD_URL -OutFile $target
+          }
+          if ((Get-Item $target).Length -lt 1MB) {
+            Write-Error "libmpv-2.dll looks truncated; check LIBMPV_DOWNLOAD_URL"
+            exit 1
+          }
+
+      # The MSI carries no code signature. Windows will show a SmartScreen prompt on first run;
+      # docs/RELEASING.md records that as a known state rather than a defect.
+      - name: Package the MSI
+        run: ./gradlew :app:desktop:packageMsi --stacktrace
+
+      - name: Collect the MSI
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path gradle.properties -Pattern '^thotapalli\.versionName=(.+)$').Matches[0].Groups[1].Value
+          $msi = Get-ChildItem -Path app/desktop/build/compose/binaries/main/msi -Filter *.msi | Select-Object -First 1
+          if ($null -eq $msi) {
+            Write-Error "packageMsi produced no .msi"
+            exit 1
+          }
+          New-Item -ItemType Directory -Force artefacts | Out-Null
+          # Renamed without the space in the package name so the download URL needs no escaping.
+          Copy-Item $msi.FullName "artefacts/ThotapalliPlex-$version.msi"
+
+      - name: Upload the MSI
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-artefacts
+          path: artefacts/*.msi
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish the release and the update manifest
+    runs-on: ubuntu-latest
+    needs: [android, windows]
+    # A workflow_dispatch run builds and keeps the artefacts but publishes nothing. Only a
+    # v* tag produces a release, so the manifest never advertises an unversioned build.
+    if: github.ref_type == 'tag'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download every artefact
+        uses: actions/download-artifact@v4
+        with:
+          path: artefacts
+          merge-multiple: true
+
+      # CLAUDE.md section 17 point 3. Sizes are measured from the artefacts about to be
+      # uploaded, so the manifest cannot describe something other than what was shipped.
+      - name: Generate the update manifest
+        env:
+          VERSION_NAME: ${{ needs.android.outputs.versionName }}
+          VERSION_CODE: ${{ needs.android.outputs.versionCode }}
+          REPOSITORY: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -e
+          base="https://github.com/${REPOSITORY}/releases/download/${TAG}"
+          notes="https://github.com/${REPOSITORY}/releases/tag/${TAG}"
+          mobile="thotapalli-plex-mobile-${VERSION_NAME}.apk"
+          tv="thotapalli-plex-tv-${VERSION_NAME}.apk"
+          desktop="ThotapalliPlex-${VERSION_NAME}.msi"
+
+          for asset in "$mobile" "$tv" "$desktop"; do
+            if [ ! -f "artefacts/${asset}" ]; then
+              echo "artefacts/${asset} is missing; the manifest would advertise a broken link" >&2
+              exit 1
+            fi
+          done
+
+          jq -n \
+            --argjson schema 1 \
+            --argjson versionCode "${VERSION_CODE}" \
+            --arg versionName "${VERSION_NAME}" \
+            --arg releasedAt "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg notes "${notes}" \
+            --arg mobileUrl "${base}/${mobile}" \
+            --argjson mobileSize "$(stat -c%s "artefacts/${mobile}")" \
+            --arg tvUrl "${base}/${tv}" \
+            --argjson tvSize "$(stat -c%s "artefacts/${tv}")" \
+            --arg desktopUrl "${base}/${desktop}" \
+            --argjson desktopSize "$(stat -c%s "artefacts/${desktop}")" \
+            '{
+              schema: $schema,
+              versionCode: $versionCode,
+              versionName: $versionName,
+              releasedAt: $releasedAt,
+              targets: {
+                mobile:  { versionCode: $versionCode, versionName: $versionName, url: $mobileUrl,  sizeBytes: $mobileSize,  notesUrl: $notes },
+                tv:      { versionCode: $versionCode, versionName: $versionName, url: $tvUrl,      sizeBytes: $tvSize,      notesUrl: $notes },
+                desktop: { versionCode: $versionCode, versionName: $versionName, url: $desktopUrl, sizeBytes: $desktopSize, notesUrl: $notes }
+              }
+            }' > artefacts/update-manifest.json
+
+          cat artefacts/update-manifest.json
+
+      # The client reads /releases/latest/download/update-manifest.json, which GitHub keeps
+      # pointing at the newest non-prerelease release. That is the fixed URL in section 17
+      # point 3, and it is why this must not be published as a prerelease or a draft.
+      - name: Publish the release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Thotapalli Plex ${{ needs.android.outputs.versionName }}
+          tag_name: ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
+          files: |
+            artefacts/thotapalli-plex-mobile-${{ needs.android.outputs.versionName }}.apk
+            artefacts/thotapalli-plex-tv-${{ needs.android.outputs.versionName }}.apk
+            artefacts/ThotapalliPlex-${{ needs.android.outputs.versionName }}.msi
+            artefacts/update-manifest.json

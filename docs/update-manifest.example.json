@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "versionCode": 7,
+  "versionName": "0.7.0",
+  "releasedAt": "2026-08-18T09:15:00Z",
+  "targets": {
+    "mobile": {
+      "versionCode": 7,
+      "versionName": "0.7.0",
+      "url": "https://github.com/OWNER/REPO/releases/download/v0.7.0/thotapalli-plex-mobile-0.7.0.apk",
+      "sizeBytes": 41884672,
+      "notesUrl": "https://github.com/OWNER/REPO/releases/tag/v0.7.0"
+    },
+    "tv": {
+      "versionCode": 7,
+      "versionName": "0.7.0",
+      "url": "https://github.com/OWNER/REPO/releases/download/v0.7.0/thotapalli-plex-tv-0.7.0.apk",
+      "sizeBytes": 41902080,
+      "notesUrl": "https://github.com/OWNER/REPO/releases/tag/v0.7.0"
+    },
+    "desktop": {
+      "versionCode": 7,
+      "versionName": "0.7.0",
+      "url": "https://github.com/OWNER/REPO/releases/download/v0.7.0/ThotapalliPlex-0.7.0.msi",
+      "sizeBytes": 118293504,
+      "notesUrl": "https://github.com/OWNER/REPO/releases/tag/v0.7.0"
+    }
+  }
+}

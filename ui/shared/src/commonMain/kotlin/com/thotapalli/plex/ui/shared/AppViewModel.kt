@@ -13,6 +13,10 @@ import com.thotapalli.plex.core.model.MediaDetail
 import com.thotapalli.plex.core.model.MediaItem
 import com.thotapalli.plex.core.model.Season
 import com.thotapalli.plex.core.model.Show
+import com.thotapalli.plex.core.download.DownloadQueue
+import com.thotapalli.plex.core.download.OfflineResolver
+import com.thotapalli.plex.ui.shared.screens.DownloadEntry
+import com.thotapalli.plex.ui.shared.screens.SettingsScreenState
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +38,17 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     val state: StateFlow<AppState> = _state.asStateFlow()
 
     private var searchJob: Job? = null
+
+    /** Set by the platform so the update notice can open the artefact in a browser. */
+    var onOpenUrl: ((String) -> Unit)? = null
+
+    /**
+     * Present only once the platform supplies a file system, a transport and a network
+     * signal. Null on a target that has not wired them, so the Downloads screen shows an
+     * honest empty list rather than the application refusing to start.
+     */
+    private val downloads: DownloadQueue? get() = container.downloadQueue
+    private val offline: OfflineResolver? get() = container.offlineResolver
 
     fun start() {
         viewModelScope.launch {
@@ -110,9 +125,13 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             scope = ServerScope(target.baseUri, target.accessToken),
             urls = PlexUrls(target.baseUri, target.accessToken),
         )
-        _state.update { it.copy(server = active, phase = AppPhase.READY) }
+        container.bindDownloadServer(active.scope)
+        val servers = runCatching { container.session.servers() }.getOrDefault(emptyList())
+        _state.update { it.copy(server = active, allServers = servers, phase = AppPhase.READY) }
 
         refreshHome(active)
+        refreshDownloads()
+        checkForUpdate()
     }
 
     fun refreshHome(server: ActiveServer = requireServer()) {
@@ -259,6 +278,143 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         _state.update { it.copy(search = SearchState()) }
     }
 
+    // --- downloads --------------------------------------------------------------------
+
+    fun refreshDownloads() {
+        val queue = downloads ?: return
+        viewModelScope.launch {
+            // Rows whose files have gone are dropped first, so the screen never lists an
+            // item that will not play.
+            offline?.reconcileWithDisk()
+
+            val rows = container.downloadStore?.all().orEmpty()
+            val entries = rows.map { row ->
+                DownloadEntry(
+                    row = row,
+                    title = container.repository.cachedItem(row.ratingKey)?.title ?: row.ratingKey,
+                )
+            }
+            _state.update {
+                it.copy(
+                    downloads = entries,
+                    downloadBytesOnDisk = container.downloadStore?.totalBytesOnDisk() ?: 0L,
+                )
+            }
+            queue.start()
+        }
+    }
+
+    fun download(item: MediaItem) {
+        val queue = downloads ?: return
+        val server = _state.value.server ?: return
+        viewModelScope.launch {
+            val detail = runCatching { container.repository.detail(server.scope, item.ratingKey) }.getOrNull()
+            val part = detail?.primaryPart ?: return@launch
+
+            // Record the keys before queueing, so the transport never has to invent a path.
+            container.downloadKeys.record(part)
+
+            queue.enqueue(
+                com.thotapalli.plex.core.download.DownloadRequest(
+                    ratingKey = item.ratingKey,
+                    partId = part.partId,
+                    container = part.container.ifBlank { "mkv" },
+                    sizeBytes = part.sizeBytes,
+                    // External subtitles download separately; embedded tracks need no action.
+                    subtitles = part.subtitleStreams
+                        .filter { it.external && it.key != null }
+                        .map { stream ->
+                            com.thotapalli.plex.core.download.SubtitleRequest(
+                                streamId = stream.id,
+                                language = stream.languageCode ?: "und",
+                                localPath = container.downloadSubtitlePath(
+                                    item.ratingKey,
+                                    stream.id,
+                                    stream.languageCode ?: "und",
+                                ),
+                            )
+                        },
+                ),
+            )
+            refreshDownloads()
+        }
+    }
+
+    fun pauseDownload(ratingKey: String) {
+        viewModelScope.launch { downloads?.pause(ratingKey); refreshDownloads() }
+    }
+
+    fun resumeDownload(ratingKey: String) {
+        viewModelScope.launch { downloads?.resume(ratingKey); refreshDownloads() }
+    }
+
+    fun deleteDownload(ratingKey: String) {
+        viewModelScope.launch { downloads?.delete(ratingKey); refreshDownloads() }
+    }
+
+    /**
+     * The launch update check. At most once per 24 hours, and it never blocks anything:
+     * a failure says nothing at all. See CLAUDE.md section 17 point 4.
+     */
+    private fun checkForUpdate() {
+        val checker = container.updateChecker ?: return
+        viewModelScope.launch {
+            val result = checker.check()
+            if (result is com.thotapalli.plex.core.session.UpdateCheckResult.Available) {
+                _state.update { it.copy(availableUpdate = result.update) }
+            }
+        }
+    }
+
+    // --- settings ---------------------------------------------------------------------
+
+    fun settingsState(): SettingsScreenState {
+        val settings = container.settings
+        return SettingsScreenState(
+            matchDisplayRate = settings.matchDisplayRate,
+            unmeteredOnly = settings.unmeteredDownloadsOnly,
+            audioLanguage = settings.preferredAudioLanguage,
+            subtitleLanguage = settings.preferredSubtitleLanguage,
+            subtitlesOn = settings.subtitlesOnByDefault,
+            servers = _state.value.allServers,
+            activeServerId = _state.value.server?.machineIdentifier,
+            signedInAs = container.session.accountToken()?.let { _ -> _state.value.homeUser?.title },
+            updateAvailable = _state.value.availableUpdate?.versionName,
+            onDownloadUpdate = { _state.value.availableUpdate?.let { onOpenUrl?.invoke(it.downloadUrl) } },
+        )
+    }
+
+    fun setMatchDisplayRate(value: Boolean) {
+        container.settings.matchDisplayRate = value
+        _state.update { it.copy(settingsRevision = it.settingsRevision + 1) }
+    }
+
+    fun setUnmeteredOnly(value: Boolean) {
+        container.settings.unmeteredDownloadsOnly = value
+        downloads?.onNetworkChanged()
+        _state.update { it.copy(settingsRevision = it.settingsRevision + 1) }
+    }
+
+    fun setAudioLanguage(code: String) {
+        container.settings.preferredAudioLanguage = code
+        _state.update { it.copy(settingsRevision = it.settingsRevision + 1) }
+    }
+
+    fun setSubtitleLanguage(code: String) {
+        container.settings.preferredSubtitleLanguage = code
+        _state.update { it.copy(settingsRevision = it.settingsRevision + 1) }
+    }
+
+    fun setSubtitlesOn(value: Boolean) {
+        container.settings.subtitlesOnByDefault = value
+        _state.update { it.copy(settingsRevision = it.settingsRevision + 1) }
+    }
+
+    fun selectServer(server: com.thotapalli.plex.core.model.PlexServer) {
+        container.session.selectServer(server)
+        viewModelScope.launch { loadHome() }
+    }
+
     private fun requireServer(): ActiveServer =
         checkNotNull(_state.value.server) { "no active server" }
 
@@ -285,6 +441,12 @@ data class AppState(
     val library: LibraryState? = null,
     val detail: DetailState? = null,
     val search: SearchState = SearchState(),
+    val downloads: List<DownloadEntry> = emptyList(),
+    val downloadBytesOnDisk: Long = 0,
+    val allServers: List<com.thotapalli.plex.core.model.PlexServer> = emptyList(),
+    /** Bumped so a settings change recomposes; the values themselves live in the store. */
+    val settingsRevision: Int = 0,
+    val availableUpdate: com.thotapalli.plex.core.session.AvailableUpdate? = null,
     val error: String? = null,
 )
 

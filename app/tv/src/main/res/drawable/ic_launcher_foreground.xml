@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Adaptive icon foreground, CLAUDE.md section 15.
+    The horizontal bar above the play triangle, in the mark gradient
+    #FFCE63 -> #F5A623 -> #D4820C.
+
+    Safe zone: the guaranteed visible area of a 108dp adaptive icon is the centre
+    66dp. The ink box below spans x 23..85 and y 24.82..83.18, inside that zone on
+    both axes, so no launcher mask clips the mark.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path android:pathData="M29.154,24.824L78.846,24.824A6.154,6.154 0 0 1 78.846,37.132L29.154,37.132A6.154,6.154 0 0 1 29.154,24.824Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="29.2"
+                android:startY="24.824"
+                android:endX="78.8"
+                android:endY="37.132">
+                <item android:offset="0" android:color="#FFCE63" />
+                <item android:offset="0.5" android:color="#F5A623" />
+                <item android:offset="1" android:color="#D4820C" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:pathData="M44.426,43.971L44.426,81.353Q44.426,84.088 46.934,82.721L81.809,64.029Q84.316,62.662 81.809,61.294L46.934,42.603Q44.426,41.235 44.426,43.971Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="48.29"
+                android:startY="42.148"
+                android:endX="79.199"
+                android:endY="83.176">
+                <item android:offset="0" android:color="#FFCE63" />
+                <item android:offset="0.5" android:color="#F5A623" />
+                <item android:offset="1" android:color="#D4820C" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

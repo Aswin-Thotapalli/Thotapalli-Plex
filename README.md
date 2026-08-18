@@ -60,9 +60,39 @@ not committed.
 Against the build plan in CLAUDE.md section 16.
 
 - [x] **Phase 1** — project skeleton
-- [ ] **Phase 2** — account and server access
-- [ ] **Phase 3** — library data
-- [ ] **Phase 4** — shared interface
-- [ ] **Phase 5** — the player
-- [ ] **Phase 6** — downloads and offline
-- [ ] **Phase 7** — television, Windows and release
+- [x] **Phase 2** — account and server access
+- [x] **Phase 3** — library data
+- [x] **Phase 4** — shared interface
+- [x] **Phase 5** — the player
+- [x] **Phase 6** — downloads and offline
+- [x] **Phase 7** — television, Windows and release
+
+Two things need a real Plex account and real hardware, and are the only steps not yet
+observed end to end:
+
+- Phase 2 steps 2 and 3 need a browser approval. Run
+  `gradlew :app:desktop:harness --args="signin"`, approve the device, then `servers`.
+- Phase 4 step 3 and phase 5 steps 2 to 8 need a device. The code builds and is unit
+  tested; playing a real file is the remaining confirmation.
+
+The JSON fixtures under `core/api/src/commonTest/resources/` were authored from the
+documented response shapes rather than recorded from a live server. Replace them with real
+recordings once the account is signed in; the mapper tests should keep passing unchanged.
+
+## Verification
+
+```bash
+./gradlew build
+```
+
+The design gallery, which needs no server:
+
+```bash
+./gradlew :app:desktop:gallery
+```
+
+The command line harness, which needs an account:
+
+```bash
+./gradlew :app:desktop:harness --args="signin"
+```

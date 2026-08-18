@@ -20,6 +20,10 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(project(":core:model"))
+            // RangedDownloadSource implements DownloadTransport, which is declared there.
+            // api rather than implementation because that type is in this module's public
+            // API. :core:download deliberately does not depend back on this module.
+            api(project(":core:download"))
             implementation(libs.ktor.core)
             implementation(libs.ktor.contentneg)
             implementation(libs.ktor.json)
