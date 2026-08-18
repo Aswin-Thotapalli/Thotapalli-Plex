@@ -16,11 +16,29 @@ kotlin {
 
     jvm()
 
-
     sourceSets {
         commonMain.dependencies {
-            implementation(project(":core:model"))
-            implementation(project(":core:api"))
+            api(project(":core:model"))
+            api(project(":core:api"))
+            implementation(libs.coroutines.core)
+        }
+
+        androidMain.dependencies {
+            // EncryptedSharedPreferences for the account token. CLAUDE.md section 5 step 4.
+            implementation(libs.androidx.security.crypto)
+            implementation(libs.androidx.core.ktx)
+            implementation(libs.androidx.browser)
+        }
+
+        jvmMain.dependencies {
+            // DPAPI through JNA, CryptProtectData scoped to the current user.
+            implementation(libs.jna)
+            implementation(libs.jna.platform)
+        }
+
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+            implementation(libs.coroutines.test)
         }
     }
 }

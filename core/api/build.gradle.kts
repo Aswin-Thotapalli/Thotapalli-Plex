@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
     alias(libs.plugins.android.kmp.library)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 kotlin {
@@ -16,14 +17,15 @@ kotlin {
 
     jvm()
 
-
     sourceSets {
         commonMain.dependencies {
-            implementation(project(":core:model"))
+            api(project(":core:model"))
             implementation(libs.ktor.core)
             implementation(libs.ktor.contentneg)
             implementation(libs.ktor.json)
             implementation(libs.ktor.logging)
+            implementation(libs.serialization.json)
+            implementation(libs.coroutines.core)
         }
 
         androidMain.dependencies {
@@ -32,6 +34,12 @@ kotlin {
 
         jvmMain.dependencies {
             implementation(libs.ktor.java)
+        }
+
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+            implementation(libs.ktor.mock)
+            implementation(libs.coroutines.test)
         }
     }
 }

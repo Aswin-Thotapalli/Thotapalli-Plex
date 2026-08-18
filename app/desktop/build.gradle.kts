@@ -20,10 +20,26 @@ dependencies {
     implementation(project(":core:download"))
     implementation(project(":player:mpv"))
     implementation(compose.desktop.currentOs)
+    implementation(libs.coroutines.core)
+    implementation(libs.coroutines.swing)
     implementation(libs.compose.runtime)
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
     implementation(libs.compose.ui)
+}
+
+/**
+ * The phase 2 command line harness from CLAUDE.md section 16. Not part of the shipped
+ * application; it exists so each phase 2 step has an observable output.
+ *
+ *   gradlew :app:desktop:harness --args="signin"
+ */
+val harness by tasks.registering(JavaExec::class) {
+    group = "verification"
+    description = "Runs the Plex account and server access harness."
+    mainClass.set("com.thotapalli.plex.desktop.harness.HarnessKt")
+    classpath = sourceSets["main"].runtimeClasspath
+    standardInput = System.`in`
 }
 
 compose.desktop {
