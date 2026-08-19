@@ -1,0 +1,25 @@
+# Audio decoders compiled into the Media3 FFmpeg extension.
+#
+# One decoder name per line, FFmpeg's own naming. This is the input to
+# .github/workflows/ffmpeg-decoder.yml: change it and the workflow rebuilds the decoder AAR
+# and commits the new one. It exists so the enabled set is declared in one readable place
+# rather than buried in a workflow.
+#
+# These are the audio formats from CLAUDE.md section 10 that a device may be unable to decode
+# on its own. Video is deliberately left to the hardware decoder; the extension handles audio
+# only, which is what avoids a full server transcode triggered by audio alone (section 8).
+aac
+ac3
+eac3
+dca
+mlp
+truehd
+flac
+mp3
+opus
+vorbis
+alac
+pcm_mulaw
+pcm_alaw
+pcm_s16le
+pcm_s24le

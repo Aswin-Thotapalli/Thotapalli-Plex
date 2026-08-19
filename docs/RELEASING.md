@@ -104,15 +104,20 @@ no personal access token.
 
 ### Repository variables
 
-| Variable | Contents |
-|---|---|
-| `LIBMPV_DOWNLOAD_URL` | Direct URL to a 64 bit `libmpv-2.dll`. |
+None are required. The keystore secrets above are the only mandatory configuration.
+
+| Variable | Contents | Required |
+|---|---|---|
+| `LIBMPV_DOWNLOAD_URL` | Direct URL to a 64 bit `libmpv-2.dll`, or to a `.7z` containing one. | No |
 
 CLAUDE.md section 4 sources libmpv from SourceForge, which offers no stable direct link and
-ships a `.7z` archive. The DLL is not committed, so mirror the extracted `libmpv-2.dll`
-somewhere the runner can fetch it with a plain HTTPS GET and name that URL here. The Windows job
-fails loudly when the DLL is absent and the variable is unset, rather than producing an MSI that
-cannot play anything.
+ships a `.7z` archive. Rather than have a human mirror it, the Windows job resolves the newest
+official libmpv development build automatically from the `zhongfly/mpv-winbuild` release feed
+and extracts the one DLL. Nothing needs to be set for an ordinary release.
+
+Set `LIBMPV_DOWNLOAD_URL` only to override that: to pin a specific libmpv version, or to build
+somewhere without access to that feed. It accepts either a direct URL to the DLL or a URL to a
+`.7z` archive that carries `libmpv-2.dll` at its root.
 
 ---
 
@@ -225,12 +230,38 @@ Rules it enforces, all covered by `UpdateCheckerTest`:
 Only `UpdateCheckResult.Available` shows anything: one non-blocking notice with a download
 action, per section 17 point 4.
 
-`UpdateChecker` is not yet wired into any application module. The notice itself, and the call
-at launch that produces it, belong to the interface layer and are still outstanding.
+`UpdateChecker` is wired through `AppContainer` and driven from `AppViewModel` at launch: on
+each platform the container is given its `UpdateTarget`, its `currentVersionCode` and the
+manifest URL, and an `Available` result raises the non-blocking notice whose download action
+opens the artefact in the browser.
 
 ---
 
-## 5. Known limits
+## 5. The FFmpeg audio decoder
+
+The Media3 FFmpeg decoder lets the phone and television apps decode audio formats their
+hardware rejects — DTS, TrueHD and the like — on the device, instead of asking the server to
+transcode the whole file. See CLAUDE.md sections 8 and 10.
+
+Google publishes no binary of it to any Maven repository and ships it as source that needs an
+NDK build. So `.github/workflows/ffmpeg-decoder.yml` builds it in CI and commits the resulting
+AAR into `player/exo/libs/`, from where `player/exo/build.gradle.kts` picks it up. **No NDK is
+needed to build the app**, and nothing is required of a release author: the AAR is already in
+the repository.
+
+- The enabled codecs are listed, one per line, in `player/exo/ffmpeg-codecs.txt`. Edit that
+  file and the workflow rebuilds the AAR and commits the new one.
+- The build is skipped when the codec list and the Media3 version already match the committed
+  AAR, so an ordinary push does not trigger a twenty minute native build.
+- The decoder is **additive**. A checkout without the AAR still builds; unsupported audio simply
+  falls back to a server transcode until the AAR is present. Playback is never blocked on it.
+
+To rebuild by hand — after changing the FFmpeg branch, say — run the **FFmpeg decoder** workflow
+from the Actions tab (it has a `workflow_dispatch` trigger).
+
+---
+
+## 6. Known limits
 
 1. **The MSI is not code signed.** Windows SmartScreen warns on first run. Authenticode signing
    needs a certificate from a commercial authority, which section 17 does not call for.

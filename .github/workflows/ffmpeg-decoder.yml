@@ -1,0 +1,146 @@
+# Builds the Media3 FFmpeg audio decoder and commits the AAR into player/exo/libs.
+#
+# Google publishes no binary of this decoder to any Maven repository and ships it as source
+# that needs an NDK build (CLAUDE.md sections 8 and 10). This does that build once, in CI,
+# and commits the result, so nobody needs the NDK to build the app and every build — local
+# and CI — decodes those audio formats on the device rather than falling back to a server
+# transcode.
+#
+# It rebuilds only when the enabled codec set or the Media3 version actually changes; a build
+# whose inputs match the committed AAR exits without doing the expensive work again.
+name: FFmpeg decoder
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'player/exo/ffmpeg-codecs.txt'
+      - 'gradle/libs.versions.toml'
+      - '.github/workflows/ffmpeg-decoder.yml'
+  workflow_dispatch:
+
+# The job commits the built AAR back to main.
+permissions:
+  contents: write
+
+concurrency:
+  group: ffmpeg-decoder
+  cancel-in-progress: false
+
+env:
+  # The FFmpeg release branch to build against. Media3 1.11 builds cleanly on 7.1.
+  FFMPEG_BRANCH: release/7.1
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v4
+
+      # The inputs that decide whether a rebuild is needed: the codec list and the Media3
+      # version. When their fingerprint matches the one recorded beside the committed AAR,
+      # nothing has changed and the rest of the job is skipped.
+      - name: Decide whether a rebuild is needed
+        id: guard
+        run: |
+          set -e
+          media3="$(sed -n 's/^media3 = "\(.*\)"/\1/p' gradle/libs.versions.toml)"
+          echo "media3=${media3}" >> "$GITHUB_OUTPUT"
+          fingerprint="$(cat player/exo/ffmpeg-codecs.txt; echo "media3=${media3}"; echo "ffmpeg=${FFMPEG_BRANCH}")"
+          id="$(printf '%s' "$fingerprint" | sha256sum | cut -d' ' -f1)"
+          echo "id=${id}" >> "$GITHUB_OUTPUT"
+          marker="player/exo/libs/.ffmpeg-build-id"
+          if [ -f "player/exo/libs/lib-decoder-ffmpeg-release.aar" ] && [ -f "$marker" ] && [ "$(cat "$marker")" = "$id" ]; then
+            echo "The committed AAR already matches the current inputs; nothing to build."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out Media3
+        if: steps.guard.outputs.skip != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: androidx/media
+          ref: ${{ steps.guard.outputs.media3 }}
+          path: media3
+
+      - name: Set up JDK 17
+        if: steps.guard.outputs.skip != 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up the Android SDK
+        if: steps.guard.outputs.skip != 'true'
+        uses: android-actions/setup-android@v3
+
+      - name: Install the FFmpeg build tools
+        if: steps.guard.outputs.skip != 'true'
+        run: sudo apt-get update && sudo apt-get install -y nasm pkg-config
+
+      - name: Build FFmpeg and the decoder AAR
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          set -e
+          # The NDK preinstalled on the runner, rather than one fetched through sdkmanager.
+          ndk="${ANDROID_NDK_LATEST_HOME:-$ANDROID_NDK_ROOT}"
+          if [ -z "$ndk" ] || [ ! -d "$ndk" ]; then
+            echo "no NDK found on the runner" >&2
+            exit 1
+          fi
+          echo "Using NDK at $ndk"
+
+          ffmpeg_module="$(pwd)/media3/libraries/decoder_ffmpeg/src/main"
+
+          # The audio decoders to compile in, read from the single declared list.
+          mapfile -t decoders < <(grep -vE '^\s*#|^\s*$' player/exo/ffmpeg-codecs.txt)
+          echo "Enabling decoders: ${decoders[*]}"
+
+          # FFmpeg source, at the branch this build targets.
+          cd "${ffmpeg_module}/jni"
+          git clone --depth 1 --branch "${FFMPEG_BRANCH}" https://github.com/FFmpeg/FFmpeg.git ffmpeg
+
+          # Builds the static FFmpeg libraries for every Android ABI Media3 supports.
+          ./build_ffmpeg.sh "${ffmpeg_module}" "${ndk}" "linux-x86_64" "${decoders[@]}"
+
+          # The AAR that wraps those libraries and the JNI decoder.
+          cd "$GITHUB_WORKSPACE/media3"
+          ./gradlew :lib-decoder-ffmpeg:assembleRelease --stacktrace
+
+      - name: Collect the AAR
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          set -e
+          aar="$(find media3 -path '*decoder_ffmpeg*' -name '*-release.aar' | head -n 1)"
+          if [ -z "$aar" ]; then
+            echo "the decoder build produced no AAR" >&2
+            find media3 -name '*.aar' -print >&2
+            exit 1
+          fi
+          echo "Built $aar ($(stat -c%s "$aar") bytes)"
+          cp "$aar" player/exo/libs/lib-decoder-ffmpeg-release.aar
+          printf '%s' "${{ steps.guard.outputs.id }}" > player/exo/libs/.ffmpeg-build-id
+
+      - name: Commit the AAR
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f player/exo/libs/lib-decoder-ffmpeg-release.aar player/exo/libs/.ffmpeg-build-id
+          if git diff --cached --quiet; then
+            echo "The AAR is unchanged; nothing to commit."
+          else
+            media3="${{ steps.guard.outputs.media3 }}"
+            git commit -m "Build the Media3 ${media3} FFmpeg audio decoder
+
+Compiled from the androidx/media source at ${media3} against FFmpeg ${FFMPEG_BRANCH},
+with the audio codecs in player/exo/ffmpeg-codecs.txt. Committed by the FFmpeg decoder
+workflow so no NDK is needed to build the app.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+            git push origin HEAD:main
+          fi

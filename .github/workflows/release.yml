@@ -149,25 +149,60 @@ jobs:
 
       # libmpv-2.dll is not committed, and the MSI bundles it so the user performs no separate
       # install step. CLAUDE.md section 4 sources it from SourceForge, which has no stable
-      # direct URL, so the release mirrors it and names that mirror in a repository variable.
+      # direct URL. Rather than make a human find and mirror it, this resolves the newest
+      # official libmpv development build automatically from the well known mpv-winbuild
+      # release feed and extracts the one DLL. LIBMPV_DOWNLOAD_URL still overrides, for a
+      # pinned or air-gapped build, but nothing needs to be set for an ordinary release.
       - name: Fetch libmpv
         shell: pwsh
         env:
           LIBMPV_DOWNLOAD_URL: ${{ vars.LIBMPV_DOWNLOAD_URL }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          $ErrorActionPreference = "Stop"
           $target = "app/desktop/native/windows-x64/libmpv-2.dll"
           New-Item -ItemType Directory -Force (Split-Path $target) | Out-Null
-          if (-not (Test-Path $target)) {
-            if ([string]::IsNullOrWhiteSpace($env:LIBMPV_DOWNLOAD_URL)) {
-              Write-Error "libmpv-2.dll is absent and the LIBMPV_DOWNLOAD_URL variable is unset; see docs/RELEASING.md"
-              exit 1
-            }
-            Invoke-WebRequest -Uri $env:LIBMPV_DOWNLOAD_URL -OutFile $target
+
+          if (Test-Path $target) {
+            Write-Host "libmpv-2.dll already present; using it."
           }
-          if ((Get-Item $target).Length -lt 1MB) {
-            Write-Error "libmpv-2.dll looks truncated; check LIBMPV_DOWNLOAD_URL"
+          else {
+            $url = $env:LIBMPV_DOWNLOAD_URL
+            if ([string]::IsNullOrWhiteSpace($url)) {
+              # The x86_64 libmpv development package: it carries libmpv-2.dll and the import
+              # library. Not the v3 (AVX2) build, which will not start on older processors.
+              $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; "User-Agent" = "thotapalli-plex-release" }
+              $release = Invoke-RestMethod -Headers $headers `
+                -Uri "https://api.github.com/repos/zhongfly/mpv-winbuild/releases/latest"
+              $asset = $release.assets |
+                Where-Object { $_.name -match '^mpv-dev-x86_64-\d' -and $_.name -notmatch 'v3' -and $_.name -like '*.7z' } |
+                Select-Object -First 1
+              if ($null -eq $asset) {
+                Write-Error "no mpv-dev-x86_64 asset on the latest mpv-winbuild release; set LIBMPV_DOWNLOAD_URL"
+                exit 1
+              }
+              $url = $asset.browser_download_url
+              Write-Host "Resolved libmpv build: $($asset.name)"
+            }
+
+            $archive = "$env:RUNNER_TEMP/libmpv-package"
+            if ($url -like '*.7z') {
+              $archive = "$archive.7z"
+              Invoke-WebRequest -Uri $url -OutFile $archive
+              # The dev package holds libmpv-2.dll at the archive root; extract just that.
+              & 7z e $archive "libmpv-2.dll" "-o$(Split-Path $target)" -y | Out-Null
+            }
+            else {
+              # A direct URL to the DLL itself.
+              Invoke-WebRequest -Uri $url -OutFile $target
+            }
+          }
+
+          if (-not (Test-Path $target) -or (Get-Item $target).Length -lt 1MB) {
+            Write-Error "libmpv-2.dll is missing or looks truncated after fetch"
             exit 1
           }
+          Write-Host "libmpv-2.dll is $((Get-Item $target).Length) bytes."
 
       # The MSI carries no code signature. Windows will show a SmartScreen prompt on first run;
       # docs/RELEASING.md records that as a known state rather than a defect.
