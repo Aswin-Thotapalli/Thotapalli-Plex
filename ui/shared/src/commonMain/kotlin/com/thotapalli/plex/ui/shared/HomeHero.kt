@@ -21,6 +21,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.thotapalli.plex.core.model.MediaItem
 import com.thotapalli.plex.core.model.progress
+import com.thotapalli.plex.ui.shared.motion.gyroParallax
+import com.thotapalli.plex.ui.shared.motion.kenBurns
+import com.thotapalli.plex.ui.shared.material.cinematicTexture
 import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
@@ -64,6 +67,9 @@ fun HomeHero(
             contentDescription = primaryLine(item),
             fallbackTitle = primaryLine(item),
             modifier = Modifier.fillMaxSize(),
+            // Bias the crop toward the top so a wide 16:9 backdrop keeps the subjects' faces
+            // in frame rather than cropping their heads off at the top edge.
+            alignment = Alignment.TopCenter,
         )
 
         // A cinematic bed: dark from the left and up from the bottom, so display-size white
@@ -140,10 +146,10 @@ private fun heroMetadata(item: MediaItem): String? {
 }
 
 private fun heroHeight(sizeClass: SizeClass): Dp = when (sizeClass) {
-    SizeClass.COMPACT -> 440.dp
-    SizeClass.MEDIUM -> 480.dp
-    SizeClass.EXPANDED -> 520.dp
-    SizeClass.TELEVISION -> 600.dp
+    SizeClass.COMPACT -> 380.dp
+    SizeClass.MEDIUM -> 420.dp
+    SizeClass.EXPANDED -> 460.dp
+    SizeClass.TELEVISION -> 560.dp
 }
 
 /** On wide screens the resume bar need not run the whole width to read. */

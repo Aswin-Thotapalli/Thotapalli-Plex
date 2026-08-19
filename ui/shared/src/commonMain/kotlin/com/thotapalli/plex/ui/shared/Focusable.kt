@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import com.thotapalli.plex.ui.design.Layout
 import com.thotapalli.plex.ui.design.Motion
 import com.thotapalli.plex.ui.design.PlexTheme
+import com.thotapalli.plex.ui.shared.motion.rememberHaptics
 
 /**
  * The television focus treatment from CLAUDE.md section 12: scale 1.08 over 120 ms with a
@@ -44,6 +45,7 @@ fun Modifier.plexFocusable(
     val focused by interactionSource.collectIsFocusedAsState()
     val hovered by interactionSource.collectIsHoveredAsState()
     val colours = PlexTheme.colours
+    val haptics = rememberHaptics()
 
     val active = focused || hovered
 
@@ -78,7 +80,7 @@ fun Modifier.plexFocusable(
                     // top of poster artwork reads as a smudge.
                     indication = null,
                     enabled = enabled,
-                    onClick = onClick,
+                    onClick = { haptics.press(); onClick() },
                 )
             } else {
                 Modifier.focusable(enabled = enabled, interactionSource = interactionSource)

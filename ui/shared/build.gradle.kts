@@ -53,6 +53,9 @@ kotlin {
         jvmMain.dependencies {
             // The libmpv engine for Windows. Also depends only on core:playback.
             implementation(project(":player:mpv"))
+            // JNA, to read the AWT canvas's native window handle so mpv renders inside the
+            // application window rather than opening its own.
+            implementation(libs.jna)
         }
 
         commonTest.dependencies {

@@ -279,19 +279,7 @@ fun LibraryCard(
             modifier = Modifier.fillMaxWidth().padding(Spacing.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(
-                Modifier
-                    .width(56.dp)
-                    .height(84.dp)
-                    .clip(Radius.poster),
-            ) {
-                Artwork(
-                    url = artworkUrl,
-                    contentDescription = null,
-                    fallbackTitle = title,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+            LibraryCardMark(title = title, artworkUrl = artworkUrl)
 
             Spacer(Modifier.width(Spacing.md))
 
@@ -301,6 +289,55 @@ fun LibraryCard(
                     text = subtitle,
                     style = PlexTheme.type.caption,
                     colour = colours.textSecondary,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The little poster slot on a library card. Library cards carry no poster of their own, so a
+ * plain fallback would wrap and clip the title inside a 2:3 box. Instead this shows a quiet
+ * branded plate — a soft vertical gradient with the library's first initial centred — and only
+ * falls through to real artwork on the rare card that is handed one.
+ */
+@Composable
+private fun LibraryCardMark(
+    title: String,
+    artworkUrl: String?,
+    modifier: Modifier = Modifier,
+) {
+    val colours = PlexTheme.colours
+    Box(
+        modifier = modifier
+            .width(64.dp)
+            .height(96.dp)
+            .clip(Radius.poster),
+    ) {
+        if (!artworkUrl.isNullOrBlank()) {
+            Artwork(
+                url = artworkUrl,
+                contentDescription = null,
+                fallbackTitle = title,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to colours.surfaceElevated,
+                            1f to colours.accent.copy(alpha = 0.16f),
+                        ),
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                PlexText(
+                    text = title.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?",
+                    style = PlexTheme.type.display,
+                    colour = colours.accent,
                     maxLines = 1,
                 )
             }

@@ -11,7 +11,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import com.thotapalli.plex.ui.shared.motion.gyroParallax
 import com.thotapalli.plex.ui.shared.motion.kenBurns
+import com.thotapalli.plex.ui.shared.material.cinematicTexture
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
@@ -54,8 +56,11 @@ fun CinematicBackdrop(
             url = url,
             contentDescription = title,
             fallbackTitle = title,
-            modifier = Modifier.fillMaxSize().kenBurns(),
+            modifier = Modifier.fillMaxSize().kenBurns().gyroParallax(),
         )
+
+        // A faint film grain and vignette, so the image reads as cinema rather than a photo.
+        Box(Modifier.fillMaxSize().cinematicTexture())
 
         // Bottom fade into the page. Transparent across the top half, then a firm ramp onto
         // the background token so the image and the screen become one surface.

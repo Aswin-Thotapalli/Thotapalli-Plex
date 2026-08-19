@@ -1,14 +1,18 @@
+@file:OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+
 package com.thotapalli.plex.ui.shared.player
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.awt.SwingPanel
 import androidx.compose.ui.graphics.Color
+import com.sun.jna.Native
 import com.thotapalli.plex.core.playback.PlaybackSource
 import com.thotapalli.plex.core.playback.PlaybackState
 import com.thotapalli.plex.core.playback.PlayerEngine
@@ -16,16 +20,17 @@ import com.thotapalli.plex.player.mpv.MpvPlayerEngine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.awt.Canvas as AwtCanvas
 
 /**
- * The Windows video surface, backed by libmpv.
+ * The Windows video surface, backed by libmpv rendering into this window.
  *
- * TODO(desktop): libmpv opens its own window when handed no HWND. Compositing the mpv
- * surface beneath the Compose overlay inside the same window (through the `wid` option and
- * an AWT/Skia native handle) is future work. For now the engine is still created and fully
- * driven — timeline reporting, markers, auto-play and the overlay controls all function —
- * so the desktop build compiles and runs; only in-window video compositing is outstanding.
- * Android is the priority target. See CLAUDE.md section 8, libmpv setup.
+ * mpv draws straight to a native window handle. Rather than let it open a window of its own
+ * — which stole focus, ignored the keyboard (input is disabled by the section 8 config) and
+ * left the viewer with no way back — a heavyweight AWT [AwtCanvas] is embedded in the Compose
+ * window and its HWND handed to mpv through the `wid` option. The picture is now inside the
+ * application, the Compose window keeps focus so Escape leaves the player, and the Compose
+ * overlay composites above the video. See CLAUDE.md section 8, libmpv setup.
  */
 @Composable
 actual fun VideoSurface(
@@ -33,16 +38,33 @@ actual fun VideoSurface(
     modifier: Modifier,
 ) {
     val scope = rememberCoroutineScope()
-    val engine = remember {
-        // LibMpv.load() throws when the native library is absent (every non-Windows JVM),
-        // so a missing DLL degrades to a dark screen rather than crashing the app.
-        runCatching { MpvPlayerEngine(scope).also { it.initialise(null) } }
-            .getOrElse { UnavailablePlayerEngine() }
+    var engine by remember { mutableStateOf<PlayerEngine?>(null) }
+
+    val canvas = remember {
+        object : AwtCanvas() {
+            override fun addNotify() {
+                super.addNotify()
+                // The peer, and therefore the HWND, exists only once the canvas is realised.
+                val handle = runCatching { Native.getComponentID(this) }.getOrNull()
+                engine = runCatching {
+                    MpvPlayerEngine(scope).also { it.initialise(handle) }
+                }.getOrElse { UnavailablePlayerEngine() }
+            }
+        }.apply {
+            background = java.awt.Color.BLACK
+            // Non-focusable so key events (Escape to leave) reach the Compose window rather
+            // than being swallowed by this heavyweight component.
+            isFocusable = false
+        }
     }
 
-    LaunchedEffect(engine) { bind(engine) }
+    LaunchedEffect(engine) { engine?.let(bind) }
 
-    Box(modifier.fillMaxSize().background(Color.Black))
+    SwingPanel(
+        background = Color.Black,
+        factory = { canvas },
+        modifier = modifier,
+    )
 }
 
 /**

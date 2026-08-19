@@ -27,6 +27,7 @@ fun Artwork(
     fallbackTitle: String,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
+    alignment: Alignment = Alignment.Center,
 ) {
     val colours = PlexTheme.colours
 
@@ -38,6 +39,7 @@ fun Artwork(
                 model = url,
                 contentDescription = contentDescription,
                 contentScale = contentScale,
+                alignment = alignment,
                 modifier = Modifier.fillMaxSize(),
             )
         }

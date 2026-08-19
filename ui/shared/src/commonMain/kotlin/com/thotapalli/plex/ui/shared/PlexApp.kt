@@ -34,6 +34,7 @@ import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
 import com.thotapalli.plex.ui.design.ThotapalliTheme
+import com.thotapalli.plex.ui.shared.material.glass
 import com.thotapalli.plex.ui.shared.player.PlayerScreen
 import com.thotapalli.plex.ui.shared.screens.DetailScreen
 import com.thotapalli.plex.ui.shared.screens.DownloadsScreen
@@ -260,7 +261,7 @@ private fun NavigationBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(colours.surface)
+                .glass(shape = androidx.compose.ui.graphics.RectangleShape)
                 .windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(vertical = Spacing.xs),
             horizontalArrangement = Arrangement.spacedBy(Spacing.lg, Alignment.CenterHorizontally),
@@ -271,7 +272,7 @@ private fun NavigationBar(
             modifier = Modifier
                 .width(96.dp)
                 .fillMaxHeight()
-                .background(colours.surface)
+                .glass(shape = androidx.compose.ui.graphics.RectangleShape)
                 .windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(vertical = Spacing.md),
             verticalArrangement = Arrangement.spacedBy(Spacing.lg),

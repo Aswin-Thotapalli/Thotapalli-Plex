@@ -39,7 +39,14 @@ private const val UPDATE_MANIFEST_URL =
  * [PlexApp] handles by measuring rather than by reading a value captured at start up.
  * See CLAUDE.md section 13.
  */
-fun main() = application {
+fun main() {
+    // Lets Compose content (the player overlay) composite over the embedded heavyweight mpv
+    // video canvas instead of being hidden behind it.
+    System.setProperty("compose.interop.blending", "true")
+    ui()
+}
+
+private fun ui() = application {
     val container = remember { buildContainer() }
     val viewModel = remember { AppViewModel(container) }
 
