@@ -1,6 +1,10 @@
 package com.thotapalli.plex.desktop
 
 import androidx.compose.runtime.remember
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
@@ -37,21 +41,27 @@ private const val UPDATE_MANIFEST_URL =
  */
 fun main() = application {
     val container = remember { buildContainer() }
+    val viewModel = remember { AppViewModel(container) }
 
     Window(
         onCloseRequest = ::exitApplication,
         title = "Thotapalli Plex",
         state = rememberWindowState(width = 1280.dp, height = 800.dp),
+        // Escape pops the in-app stack (player, detail, library) the same way Back does on
+        // Android, so the whole application is operable from the keyboard alone.
+        onKeyEvent = { event ->
+            if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
+                viewModel.back()
+            } else {
+                false
+            }
+        },
     ) {
-        val viewModel = remember { AppViewModel(container) }
-
         PlexApp(
             container = container,
             viewModel = viewModel,
             onOpenUrl = ::openBrowser,
-            onPlay = { _, _ ->
-                // The player screen is wired per target; on Windows it runs on libmpv.
-            },
+            onPlay = viewModel::play,
         )
     }
 }

@@ -22,6 +22,17 @@ data class PlexColours(
     val focusRing: Color,
     val scrim: Color,
     val error: Color,
+    /**
+     * The colour cast into a [androidx.compose.ui.draw.shadow] under a raised tile. Poster
+     * art needs to lift off the background to read as a physical card, and a shadow is the
+     * only depth cue that survives against arbitrary artwork. Stronger on dark, where the
+     * plate and the ground are close in value, softer on light.
+     */
+    val elevationShadow: Color,
+    /** The resting colour of a loading skeleton. */
+    val skeletonBase: Color,
+    /** The travelling highlight of a loading skeleton's shimmer sweep. */
+    val skeletonSheen: Color,
     val isDark: Boolean,
 )
 
@@ -36,6 +47,9 @@ val DarkColours = PlexColours(
     focusRing = Color(0xFFF5A623),
     scrim = Color(0x99000000), // black at 60 percent
     error = Color(0xFFE5534B),
+    elevationShadow = Color(0xCC000000), // black at 80 percent, so tiles lift off the near-black ground
+    skeletonBase = Color(0xFF1E2126),
+    skeletonSheen = Color(0xFF2A2E35),
     isDark = true,
 )
 
@@ -50,6 +64,9 @@ val LightColours = PlexColours(
     focusRing = Color(0xFFC97C05),
     scrim = Color(0x73000000), // black at 45 percent
     error = Color(0xFFC0392B),
+    elevationShadow = Color(0x33000000), // black at 20 percent, a soft grounding shadow on white
+    skeletonBase = Color(0xFFE8EAED),
+    skeletonSheen = Color(0xFFF4F5F7),
     isDark = false,
 )
 

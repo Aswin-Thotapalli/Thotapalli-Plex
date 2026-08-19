@@ -26,6 +26,16 @@ kotlin {
             implementation(libs.compose.material3)
             implementation(libs.compose.ui)
             implementation(libs.compose.ui.tooling.preview)
+            // Bundled fonts (Inter, Sora) served through the generated Res class. See Fonts.kt.
+            implementation(libs.compose.components.resources)
         }
     }
+}
+
+// The bundled typefaces live in src/commonMain/composeResources/font and are reached through a
+// generated Res class. Pin its package so Fonts.kt can import it deterministically.
+compose.resources {
+    publicResClass = false
+    packageOfResClass = "com.thotapalli.plex.ui.design.resources"
+    generateResClass = always
 }

@@ -11,8 +11,10 @@ import com.thotapalli.plex.core.model.Library
 import com.thotapalli.plex.core.model.MediaCollection
 import com.thotapalli.plex.core.model.MediaDetail
 import com.thotapalli.plex.core.model.MediaItem
+import com.thotapalli.plex.core.model.Movie
 import com.thotapalli.plex.core.model.Season
 import com.thotapalli.plex.core.model.Show
+import com.thotapalli.plex.core.model.watched
 import com.thotapalli.plex.core.download.DownloadQueue
 import com.thotapalli.plex.core.download.OfflineResolver
 import com.thotapalli.plex.ui.shared.screens.DownloadEntry
@@ -247,6 +249,84 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         _state.update { it.copy(detail = null) }
     }
 
+    fun closeLibrary() {
+        _state.update { it.copy(library = null) }
+    }
+
+    /**
+     * One place that answers a back gesture, so hardware Back, the on-screen arrow and the
+     * desktop Escape key all pop the same stack in the same order. Returns false only at a
+     * top-level destination, which is the platform's cue to let Back do its default thing
+     * (leave the app on the home screen, nothing below it). See CLAUDE.md section 13.
+     */
+    fun back(): Boolean {
+        val s = _state.value
+        return when {
+            s.playback != null -> { closePlayer(); true }
+            s.detail != null -> { closeDetail(); true }
+            s.library?.openCollection != null -> { closeCollection(); true }
+            s.library != null -> { closeLibrary(); true }
+            else -> false
+        }
+    }
+
+    /** True when there is somewhere to go back to, so the interface can show the arrow. */
+    val canGoBack: Boolean
+        get() = _state.value.let {
+            it.playback != null || it.detail != null ||
+                it.library?.openCollection != null || it.library != null
+        }
+
+    // --- watched state ---------------------------------------------------------------------
+
+    /**
+     * Mark as watched or unwatched, driven straight off the server so the change shows on
+     * every device. The interface updates optimistically and reconciles from Home; a failed
+     * call simply leaves the server as it was. See CLAUDE.md section 5.
+     */
+    fun toggleWatched(item: MediaItem) {
+        val server = _state.value.server ?: return
+        val nowWatched = !item.watched
+
+        _state.update { st ->
+            val d = st.detail
+            if (d != null && d.item.ratingKey == item.ratingKey) {
+                st.copy(detail = d.copy(item = d.item.markedWatched(nowWatched)))
+            } else {
+                st
+            }
+        }
+
+        viewModelScope.launch {
+            runCatching {
+                if (nowWatched) container.serverApi.scrobble(server.scope, item.ratingKey)
+                else container.serverApi.unscrobble(server.scope, item.ratingKey)
+            }
+            refreshHome(server)
+        }
+    }
+
+    // --- player ----------------------------------------------------------------------------
+
+    /**
+     * Launch playback of [item] from [startAtMs]. Zero starts from the beginning, which is
+     * what the detail screen's "Play from start" uses; a resume position resumes with no
+     * prompt. See CLAUDE.md section 2.
+     */
+    fun play(item: MediaItem, startAtMs: Long) {
+        val server = _state.value.server ?: return
+        _state.update {
+            it.copy(playback = PlaybackRequest(item, server.scope, server.urls, startAtMs))
+        }
+    }
+
+    /** Leave the player and reconcile Home, so a resume position set while watching shows. */
+    fun closePlayer() {
+        val wasPlaying = _state.value.playback != null
+        _state.update { it.copy(playback = null) }
+        if (wasPlaying) _state.value.server?.let { refreshHome(it) }
+    }
+
     // --- search ----------------------------------------------------------------------------
 
     /**
@@ -418,6 +498,19 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     private fun requireServer(): ActiveServer =
         checkNotNull(_state.value.server) { "no active server" }
 
+    /** Returns a copy of the item with its watched state flipped, for the optimistic update. */
+    private fun MediaItem.markedWatched(watched: Boolean): MediaItem {
+        val count = if (watched) maxOf(viewCount, 1) else 0
+        val offset = if (watched) 0L else viewOffsetMs
+        return when (this) {
+            is Movie -> copy(viewCount = count, viewOffsetMs = offset)
+            is Show -> copy(viewCount = count)
+            is Season -> copy(viewCount = count)
+            is Episode -> copy(viewCount = count, viewOffsetMs = offset)
+            is MediaCollection -> copy(viewCount = count)
+        }
+    }
+
     override fun onCleared() {
         container.close()
     }
@@ -440,6 +533,8 @@ data class AppState(
     val continueWatching: List<MediaItem> = emptyList(),
     val library: LibraryState? = null,
     val detail: DetailState? = null,
+    /** Non-null while the full-screen player is up. See [AppViewModel.play]. */
+    val playback: PlaybackRequest? = null,
     val search: SearchState = SearchState(),
     val downloads: List<DownloadEntry> = emptyList(),
     val downloadBytesOnDisk: Long = 0,
@@ -478,4 +573,12 @@ data class SearchState(
     val query: String = "",
     val results: SearchResults? = null,
     val searching: Boolean = false,
+)
+
+/** A request to play one item from a position, carrying the server it belongs to. */
+data class PlaybackRequest(
+    val item: MediaItem,
+    val serverScope: ServerScope,
+    val urls: PlexUrls,
+    val startAtMs: Long,
 )

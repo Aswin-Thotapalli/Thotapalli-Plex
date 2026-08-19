@@ -60,6 +60,9 @@ fun TokenGallery(modifier: Modifier = Modifier) {
                 Swatch("focusRing", colours.focusRing, colours)
                 Swatch("scrim", colours.scrim, colours)
                 Swatch("error", colours.error, colours)
+                Swatch("elevationShadow", colours.elevationShadow, colours)
+                Swatch("skeletonBase", colours.skeletonBase, colours)
+                Swatch("skeletonSheen", colours.skeletonSheen, colours)
             }
         }
 

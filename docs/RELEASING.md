@@ -271,3 +271,29 @@ from the Actions tab (it has a `workflow_dispatch` trigger).
 3. **`versionCode` is shared by all three targets.** `gradle.properties` holds one value, so a
    release publishes the same code everywhere. The manifest still carries it per target, which
    leaves room for a target to lag a release without a schema change.
+
+---
+
+## 7. Google Play (Android App Bundles)
+
+The workflow above ships installable `.apk` files for the self-hosted sideload channel. The
+**Google Play Console needs an `.aab`**, not an `.apk`, and burns a versionCode permanently on
+every upload — so Play publishing has its own workflow and its own versioning rule.
+
+`.github/workflows/build-android-aab.yml` builds signed App Bundles for phone
+(`:app:mobile:bundleRelease`) and television (`:app:tv:bundleRelease`), signed with the same
+`THOTAPALLI_*` upload key and the same four secrets as this workflow. Trigger it from the Actions
+tab (`workflow_dispatch`) or by pushing a `v*` tag; it uploads `thotapalli-plex-mobile.aab` and
+`thotapalli-plex-tv.aab` as workflow artefacts for the owner to upload to the Play Console.
+
+**Epoch-timestamp versionCode.** Google permanently burns a versionCode the instant a bundle is
+uploaded to any track, even one later discarded, so a retried release that reuses a sequential
+code collides and is rejected. The AAB workflow computes `EPOCH=$(date +%s)` once per run and
+passes `-Pthotapalli.versionCode=$EPOCH`: epoch seconds never collide, always increase, and are
+never the shadow-prone code 1. `gradle.properties` keeps `versionCode=1` untouched — that stays
+the source of truth for the sideload channel; the `-P` flag overrides it for Play bundles only,
+which works because `app/mobile` and `app/tv` read the code via `providers.gradleProperty(...)`.
+
+See **`docs/PLAY_STORE_CHECKLIST.md`** for the full pre-launch checklist (Play App Signing,
+tester setup, the privacy-policy URL requirement, and the harmless minification warnings) and
+**`docs/privacy-policy.md`** for the policy Play requires you to host at a public URL.

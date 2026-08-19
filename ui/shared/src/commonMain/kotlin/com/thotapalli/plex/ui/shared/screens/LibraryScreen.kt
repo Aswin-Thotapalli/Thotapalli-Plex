@@ -28,6 +28,8 @@ import com.thotapalli.plex.ui.shared.LibraryState
 import com.thotapalli.plex.ui.shared.PosterGrid
 import com.thotapalli.plex.ui.shared.PosterTile
 import com.thotapalli.plex.ui.shared.SectionHeader
+import com.thotapalli.plex.ui.shared.SkeletonPosterGrid
+import com.thotapalli.plex.ui.shared.motion.staggeredEntrance
 
 /**
  * Library: a poster grid sorted alphabetically. Collections first with a stacked poster
@@ -74,9 +76,7 @@ fun LibraryScreen(
         }
 
         if (state.loading && state.items.isEmpty() && state.collections.isEmpty()) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                PlexText("Loading", colour = PlexTheme.colours.textSecondary)
-            }
+            SkeletonPosterGrid(Modifier.fillMaxSize())
             return@Column
         }
 
@@ -95,6 +95,7 @@ fun LibraryScreen(
                             ArtworkSize.POSTER_HEIGHT,
                         ),
                         onClick = { onCollectionClick(collection) },
+                        modifier = Modifier.staggeredEntrance(index, key = collection.ratingKey),
                     )
                 }
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -112,6 +113,7 @@ fun LibraryScreen(
                         ArtworkSize.POSTER_HEIGHT,
                     ),
                     onClick = { onItemClick(item) },
+                    modifier = Modifier.staggeredEntrance(index, key = item.ratingKey),
                 )
             }
 

@@ -32,6 +32,7 @@ import com.thotapalli.plex.ui.shared.ArtworkSize
 import com.thotapalli.plex.ui.shared.ContentWidthCap
 import com.thotapalli.plex.ui.shared.PosterTile
 import com.thotapalli.plex.ui.shared.SearchState
+import com.thotapalli.plex.ui.shared.LoadingIndicator
 import com.thotapalli.plex.ui.shared.SectionHeader
 
 /**
@@ -84,7 +85,11 @@ fun SearchScreen(
 
             when {
                 state.query.length < 2 -> Hint("Type at least two characters.")
-                state.searching && results == null -> Hint("Searching")
+                state.searching && results == null ->
+                    androidx.compose.foundation.layout.Box(
+                        Modifier.fillMaxWidth().padding(Spacing.xl),
+                        contentAlignment = androidx.compose.ui.Alignment.Center,
+                    ) { LoadingIndicator() }
                 results == null || results.isEmpty -> Hint("No results for \"${state.query}\".")
 
                 else -> LazyColumn(

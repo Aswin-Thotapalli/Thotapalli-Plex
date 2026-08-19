@@ -41,6 +41,20 @@ kotlin {
             implementation(libs.coil.network)
         }
 
+        androidMain.dependencies {
+            // The Media3 engine and its surface. player:exo depends only on core:playback,
+            // never upward, so this stays within the dependency direction in CLAUDE.md
+            // section 3. media3.common carries the UnstableApi opt-in marker referenced when
+            // constructing ExoPlayerEngine.
+            implementation(project(":player:exo"))
+            implementation(libs.media3.common)
+        }
+
+        jvmMain.dependencies {
+            // The libmpv engine for Windows. Also depends only on core:playback.
+            implementation(project(":player:mpv"))
+        }
+
         commonTest.dependencies {
             implementation(kotlin("test"))
             implementation(libs.coroutines.test)

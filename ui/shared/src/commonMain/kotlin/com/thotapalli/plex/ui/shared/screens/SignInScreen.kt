@@ -9,13 +9,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.dp
 import com.thotapalli.plex.core.model.HomeUser
 import com.thotapalli.plex.core.session.SignInState
@@ -23,6 +23,10 @@ import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
+import com.thotapalli.plex.ui.shared.AppLogo
+import com.thotapalli.plex.ui.shared.LoadingIndicator
+import com.thotapalli.plex.ui.shared.PrimaryButton
+import com.thotapalli.plex.ui.shared.SecondaryButton
 import com.thotapalli.plex.ui.shared.plexFocusable
 
 /**
@@ -44,12 +48,23 @@ fun SignInScreen(
         modifier = modifier.fillMaxSize().background(colours.background),
         contentAlignment = Alignment.Center,
     ) {
+        // A quiet vertical wash so the mark sits in an atmosphere rather than on a flat plane.
+        Box(
+            Modifier.fillMaxSize().background(
+                Brush.verticalGradient(
+                    0f to colours.surfaceElevated.copy(alpha = 0.5f),
+                    0.5f to colours.background,
+                    1f to colours.background,
+                ),
+            ),
+        )
+
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
             modifier = Modifier.widthIn(max = 420.dp).padding(Spacing.lg),
         ) {
-            AppMark()
+            AppLogo(size = 112.dp)
 
             PlexText("Thotapalli Plex", style = PlexTheme.type.display)
 
@@ -76,12 +91,12 @@ fun SignInScreen(
                     }
 
                     Spacer(Modifier.height(Spacing.xs))
-                    ActionButton("Sign in with Plex", onSignIn)
+                    PrimaryButton(label = "Sign in with Plex", onClick = onSignIn)
                 }
 
                 SignInState.Starting -> {
-                    PlexText("Requesting a code", colour = colours.textSecondary)
-                    ActionButton("Cancel", onCancel, primary = false)
+                    LoadingIndicator(label = "Requesting a code")
+                    SecondaryButton(label = "Cancel", onClick = onCancel)
                 }
 
                 is SignInState.AwaitingApproval -> {
@@ -94,11 +109,14 @@ fun SignInScreen(
                     ) {
                         PlexText(state.code, style = PlexTheme.type.title)
                     }
-                    ActionButton("Open the browser again", { onOpenUrl(state.authUrl) }, primary = false)
-                    ActionButton("Cancel", onCancel, primary = false)
+                    SecondaryButton(
+                        label = "Open the browser again",
+                        onClick = { onOpenUrl(state.authUrl) },
+                    )
+                    SecondaryButton(label = "Cancel", onClick = onCancel)
                 }
 
-                is SignInState.SignedIn -> PlexText("Signed in as ${state.account.title}")
+                is SignInState.SignedIn -> LoadingIndicator(label = "Signed in as ${state.account.title}")
             }
         }
     }
@@ -123,7 +141,7 @@ fun HomeUserPicker(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
-            modifier = Modifier.widthIn(max = 420.dp).padding(Spacing.lg),
+            modifier = Modifier.widthIn(max = 460.dp).padding(Spacing.lg),
         ) {
             PlexText("Who is watching?", style = PlexTheme.type.display)
 
@@ -134,53 +152,12 @@ fun HomeUserPicker(
                             .plexFocusable(shape = Radius.card, onClick = { onSelect(user) })
                             .background(colours.surface, Radius.card)
                             .border(1.dp, colours.border, Radius.card)
-                            .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+                            .padding(horizontal = Spacing.lg, vertical = Spacing.md),
                     ) {
                         PlexText(user.title, style = PlexTheme.type.title)
                     }
                 }
             }
         }
-    }
-}
-
-/**
- * The mark from CLAUDE.md section 15: a rounded plate carrying a horizontal bar above a
- * play triangle, which read together as the letter T and as a play control.
- */
-@Composable
-private fun AppMark() {
-    val colours = PlexTheme.colours
-    Box(
-        modifier = Modifier.size(96.dp).background(colours.surfaceElevated, Radius.sheet),
-        contentAlignment = Alignment.Center,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(Modifier.size(48.dp, 8.dp).background(colours.accent, Radius.pill))
-            Spacer(Modifier.height(Spacing.xs))
-            Box(Modifier.size(28.dp, 30.dp).background(colours.accent, Radius.poster))
-        }
-    }
-}
-
-@Composable
-private fun ActionButton(label: String, onClick: () -> Unit, primary: Boolean = true) {
-    val colours = PlexTheme.colours
-    Box(
-        modifier = Modifier
-            .plexFocusable(shape = Radius.pill, onClick = onClick, scaleOnFocus = false)
-            .background(if (primary) colours.accent else colours.surface, Radius.pill)
-            .border(1.dp, if (primary) colours.accent else colours.border, Radius.pill)
-            .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
-    ) {
-        PlexText(
-            text = label,
-            style = PlexTheme.type.label,
-            colour = when {
-                primary && colours.isDark -> colours.background
-                primary -> colours.surface
-                else -> colours.textSecondary
-            },
-        )
     }
 }

@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.addCallback
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.net.toUri
@@ -32,14 +33,23 @@ class MainActivity : ComponentActivity() {
             viewModelFactory { initializer { AppViewModel(container) } },
         )[AppViewModel::class.java]
 
+        // Hardware and gesture Back pop the in-app stack (player, detail, collection,
+        // library) and only leave the app once there is nowhere left to go. See CLAUDE.md
+        // section 13: Back never exits from below the home screen.
+        onBackPressedDispatcher.addCallback(this) {
+            if (!viewModel.back()) {
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
+                isEnabled = true
+            }
+        }
+
         setContent {
             PlexApp(
                 container = container,
                 viewModel = viewModel,
                 onOpenUrl = ::openUrl,
-                onPlay = { _, _ ->
-                    // The player arrives in phase 5.
-                },
+                onPlay = viewModel::play,
             )
         }
     }

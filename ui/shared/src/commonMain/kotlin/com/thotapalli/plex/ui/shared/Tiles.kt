@@ -14,11 +14,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
@@ -57,6 +59,14 @@ fun PosterTile(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(Layout.POSTER_ASPECT_RATIO)
+                // A soft drop shadow lifts the poster off the near-black ground so the wall
+                // of tiles reads as physical cards rather than a flat collage.
+                .shadow(
+                    elevation = 10.dp,
+                    shape = Radius.poster,
+                    ambientColor = colours.elevationShadow,
+                    spotColor = colours.elevationShadow,
+                )
                 .clip(Radius.poster),
         ) {
             Artwork(
@@ -66,6 +76,10 @@ fun PosterTile(
                 modifier = Modifier.fillMaxSize(),
             )
 
+            // A quiet bottom gradient so a badge or a progress bar keeps contrast over a
+            // bright poster without dimming the art itself.
+            PosterFooterScrim(Modifier.align(Alignment.BottomCenter).fillMaxWidth())
+
             if (item.watched) {
                 WatchedBadge(Modifier.align(Alignment.TopEnd).padding(Spacing.xs))
             }
@@ -73,7 +87,7 @@ fun PosterTile(
             if (item.progress > 0f && !item.watched) {
                 ProgressBar(
                     progress = item.progress,
-                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(Spacing.xs),
                 )
             }
         }
@@ -175,6 +189,12 @@ fun WideProgressTile(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(Layout.WIDE_ASPECT_RATIO)
+                .shadow(
+                    elevation = 12.dp,
+                    shape = Radius.card,
+                    ambientColor = colours.elevationShadow,
+                    spotColor = colours.elevationShadow,
+                )
                 .clip(Radius.card),
         ) {
             Artwork(
@@ -184,14 +204,17 @@ fun WideProgressTile(
                 modifier = Modifier.fillMaxSize(),
             )
 
-            // A bottom scrim so white title text stays legible over bright artwork.
+            // A stronger, multi-stop bottom scrim so the title and its metadata sit on a
+            // legible bed of shadow over any artwork, the way a streaming rail treats its
+            // featured tiles. Always dark tones here, since the text over it is always light.
             Box(
                 Modifier
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
-                            0.55f to Color.Transparent,
-                            1f to colours.scrim,
+                            0.35f to Color.Transparent,
+                            0.72f to Color(0x99000000),
+                            1f to Color(0xE6000000),
                         ),
                     ),
             )
@@ -199,8 +222,9 @@ fun WideProgressTile(
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(Spacing.sm)
+                    .padding(start = Spacing.sm, end = Spacing.sm, bottom = Spacing.sm, top = Spacing.sm)
                     .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
                 PlexText(
                     text = primaryLine(item),
@@ -212,16 +236,16 @@ fun WideProgressTile(
                     PlexText(
                         text = it,
                         style = PlexTheme.type.caption,
-                        colour = Color(0xFFA8AEB8),
+                        colour = Color(0xFFC8CDD6),
                         maxLines = 1,
                     )
                 }
+                Spacer(Modifier.height(Spacing.xxs))
+                ProgressBar(
+                    progress = item.progress,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
-
-            ProgressBar(
-                progress = item.progress,
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-            )
         }
 
         Spacer(Modifier.height(Spacing.xs))
@@ -306,6 +330,12 @@ fun EpisodeRow(
             Modifier
                 .width(142.dp)
                 .aspectRatio(Layout.WIDE_ASPECT_RATIO)
+                .shadow(
+                    elevation = 6.dp,
+                    shape = Radius.poster,
+                    ambientColor = colours.elevationShadow,
+                    spotColor = colours.elevationShadow,
+                )
                 .clip(Radius.poster),
         ) {
             Artwork(
@@ -314,10 +344,24 @@ fun EpisodeRow(
                 fallbackTitle = episode.title,
                 modifier = Modifier.fillMaxSize(),
             )
+
+            PosterFooterScrim(Modifier.align(Alignment.BottomCenter).fillMaxWidth())
+
+            // A quiet play token, so a thumbnail reads as a launch point rather than a still.
+            Box(
+                Modifier
+                    .align(Alignment.Center)
+                    .size(34.dp)
+                    .background(Color(0x66000000), Radius.pill),
+                contentAlignment = Alignment.Center,
+            ) {
+                PlexIcon(PlexIconKind.PLAY, size = 18.dp, tint = Color.White)
+            }
+
             if (episode.progress > 0f && !episode.watched) {
                 ProgressBar(
                     progress = episode.progress,
-                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(Spacing.xxs),
                 )
             }
         }
@@ -390,14 +434,40 @@ fun SectionHeader(
 @Composable
 internal fun ProgressBar(progress: Float, modifier: Modifier = Modifier) {
     val colours = PlexTheme.colours
-    Box(modifier = modifier.height(3.dp).background(colours.border)) {
+    // A rounded track with a rounded accent fill. Slightly taller than a hairline so it
+    // registers as a deliberate element, clipped to a pill so the ends read as caps.
+    Box(
+        modifier = modifier
+            .height(4.dp)
+            .clip(Radius.pill)
+            .background(Color(0x59FFFFFF)),
+    ) {
         Box(
             Modifier
                 .fillMaxHeight()
                 .fillMaxWidth(progress.coerceIn(0f, 1f))
+                .clip(Radius.pill)
                 .background(colours.accent),
         )
     }
+}
+
+/**
+ * The faint dark wash along the bottom of a piece of artwork. Just enough to hold a badge,
+ * a progress bar, or a number against a bright still without touching the art above it.
+ */
+@Composable
+internal fun PosterFooterScrim(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxHeight(0.4f)
+            .background(
+                Brush.verticalGradient(
+                    0f to Color.Transparent,
+                    1f to Color(0x99000000),
+                ),
+            ),
+    )
 }
 
 @Composable
