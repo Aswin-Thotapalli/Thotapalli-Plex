@@ -17,6 +17,7 @@ import com.sun.jna.Native
 import com.thotapalli.plex.core.playback.PlaybackSource
 import com.thotapalli.plex.core.playback.PlaybackState
 import com.thotapalli.plex.core.playback.PlayerEngine
+import com.thotapalli.plex.core.playback.PlayerTracks
 import com.thotapalli.plex.player.mpv.MpvPlayerEngine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -89,6 +90,9 @@ private class UnavailablePlayerEngine : PlayerEngine {
 
     private val _positionMs = MutableStateFlow(0L)
     override val positionMs: StateFlow<Long> = _positionMs.asStateFlow()
+
+    private val _tracks = MutableStateFlow(PlayerTracks())
+    override val tracks: StateFlow<PlayerTracks> = _tracks.asStateFlow()
 
     override fun load(source: PlaybackSource, startAtMs: Long) {}
     override fun play() {}

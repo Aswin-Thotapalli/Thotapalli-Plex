@@ -173,6 +173,12 @@ class PlaybackController(
                 _state.update { it.copy(positionMs = position) }
             }
         }
+
+        scope.launch {
+            engine.tracks.collect { tracks ->
+                _state.update { it.copy(audioTracks = tracks.audio, subtitleTracks = tracks.subtitle) }
+            }
+        }
     }
 
     /**

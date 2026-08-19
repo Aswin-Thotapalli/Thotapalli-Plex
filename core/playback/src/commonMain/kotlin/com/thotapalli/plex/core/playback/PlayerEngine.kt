@@ -13,6 +13,9 @@ interface PlayerEngine {
     val state: StateFlow<PlaybackState>
     val positionMs: StateFlow<Long>
 
+    /** The audio and subtitle tracks the engine is currently offering, for the overlay picker. */
+    val tracks: StateFlow<PlayerTracks>
+
     fun load(source: PlaybackSource, startAtMs: Long)
     fun play()
     fun pause()

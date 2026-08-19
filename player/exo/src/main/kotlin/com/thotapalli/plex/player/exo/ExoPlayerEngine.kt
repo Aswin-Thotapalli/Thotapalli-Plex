@@ -52,7 +52,7 @@ class ExoPlayerEngine(
     override val positionMs: StateFlow<Long> = _positionMs.asStateFlow()
 
     private val _tracks = MutableStateFlow(PlayerTracks())
-    val tracks: StateFlow<PlayerTracks> = _tracks.asStateFlow()
+    override val tracks: StateFlow<PlayerTracks> = _tracks.asStateFlow()
 
     private val _renderedFirstFrame = MutableStateFlow(false)
     val renderedFirstFrame: StateFlow<Boolean> = _renderedFirstFrame.asStateFlow()

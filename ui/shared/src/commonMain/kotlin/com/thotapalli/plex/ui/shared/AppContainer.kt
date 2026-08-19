@@ -103,6 +103,12 @@ class AppContainer(
 
     val settings = SettingsStore(keyValueStore, isTelevision)
 
+    /**
+     * Shares the player's state with the desktop's floating overlay window, which lives in a
+     * different composition from the video. Unused on Android. See [PlayerBridge].
+     */
+    val playerBridge = com.thotapalli.plex.ui.shared.player.PlayerBridge()
+
     val downloadStore: DownloadStore? =
         if (downloadFileSystem != null) SqlDownloadStore(database) else null
 

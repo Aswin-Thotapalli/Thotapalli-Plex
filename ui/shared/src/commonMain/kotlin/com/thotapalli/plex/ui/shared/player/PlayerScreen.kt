@@ -136,34 +136,23 @@ fun PlayerScreen(
     // light ones. See CLAUDE.md section 12.
     ThotapalliTheme(forceDark = true) {
         if (container.isDesktop) {
-            // The desktop video is a heavyweight native window the Compose overlay cannot
-            // paint over, so the control bar sits beneath the picture and auto-hides while
-            // playing, returning the moment the pointer moves. See section 12.
-            var controlsVisible by remember { mutableStateOf(true) }
-            var activityTick by remember { mutableStateOf(0) }
-            LaunchedEffect(activityTick, screenState.isPlaying) {
-                if (screenState.isPlaying) {
-                    delay(3_000)
-                    controlsVisible = false
+            // The desktop video is a heavyweight native window Compose cannot paint over, so
+            // the controls are drawn by a separate transparent window that floats above it
+            // (see the desktop app's Main). This composition owns the picture and publishes
+            // its state and actions to that window through the bridge.
+            LaunchedEffect(controller, actions) {
+                controller?.let { c ->
+                    container.playerBridge.publish(c.state, actions, onActivity = { c.noteInput() })
                 }
             }
+            DisposableEffect(Unit) { onDispose { container.playerBridge.clear() } }
 
-            Column(modifier.fillMaxSize().background(Color.Black)) {
-                Box(Modifier.weight(1f).fillMaxWidth()) {
-                    VideoSurface(
-                        bind = { engine = it },
-                        onPointerActivity = { controlsVisible = true; activityTick++ },
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-                AnimatedVisibility(visible = controlsVisible) {
-                    DesktopControlBar(
-                        state = screenState,
-                        actions = actions,
-                        onToggleFullScreen = onToggleFullScreen,
-                        isFullScreen = isFullScreen,
-                    )
-                }
+            Box(modifier.fillMaxSize().background(Color.Black)) {
+                VideoSurface(
+                    bind = { engine = it },
+                    onPointerActivity = { controller?.noteInput() },
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
         } else {
             Box(
