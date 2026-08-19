@@ -104,9 +104,11 @@ val MPV_OPTIONS: List<Pair<String, String>> = listOf(
     "demuxer-max-bytes" to "256MiB",
     "demuxer-readahead-secs" to "20",
 
-    // Bitstream passthrough reaches the receiver untouched.
-    "audio-exclusive" to "yes",
-    "audio-spdif" to "ac3,eac3,dts-hd,truehd",
+    // Section 8 asks for exclusive audio so bitstream passthrough reaches a receiver
+    // untouched. In practice WASAPI exclusive mode fails or stalls on an ordinary desktop
+    // whose output device is shared, which reads as "buffering forever". Shared mode is
+    // used for reliable playback; passthrough for a receiver is a follow-up.
+    "audio-exclusive" to "no",
 
     "sub-auto" to "no",
     "sub-ass-override" to "no",

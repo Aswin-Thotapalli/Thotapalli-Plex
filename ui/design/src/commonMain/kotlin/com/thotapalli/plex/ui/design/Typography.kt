@@ -33,20 +33,25 @@ data class PlexTypography(
  * of characters. Body and below keep their reading weight untouched.
  */
 val CompactTypography = PlexTypography(
-    display = TextStyle(fontSize = 28.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.01).em),
-    title = TextStyle(fontSize = 20.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.01).em),
-    body = TextStyle(fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.Normal),
-    label = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.005.em),
-    caption = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Normal),
+    // Display carries the heaviest weight and the tightest tracking. A page title is a mark on
+    // the screen, not a sentence; drawing the letters together at -2 percent makes it read as
+    // one confident form the way a streaming app sets its section headers.
+    display = TextStyle(fontSize = 28.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.02).em),
+    title = TextStyle(fontSize = 20.sp, lineHeight = 26.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.015).em),
+    body = TextStyle(fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.Normal, letterSpacing = (-0.002).em),
+    // Labels sit on buttons and tiles. SemiBold gives them presence without shouting, and a hair
+    // of positive tracking keeps a short all-caps-adjacent label from feeling cramped.
+    label = TextStyle(fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.005.em),
+    caption = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Normal, letterSpacing = 0.002.em),
 )
 
 /** Television. */
 val TelevisionTypography = PlexTypography(
-    display = TextStyle(fontSize = 40.sp, lineHeight = 46.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.01).em),
-    title = TextStyle(fontSize = 28.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.01).em),
-    body = TextStyle(fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.Normal),
-    label = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.005.em),
-    caption = TextStyle(fontSize = 16.sp, fontWeight = FontWeight.Normal),
+    display = TextStyle(fontSize = 40.sp, lineHeight = 48.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.02).em),
+    title = TextStyle(fontSize = 28.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.015).em),
+    body = TextStyle(fontSize = 22.sp, lineHeight = 32.sp, fontWeight = FontWeight.Normal, letterSpacing = (-0.002).em),
+    label = TextStyle(fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.005.em),
+    caption = TextStyle(fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.Normal, letterSpacing = 0.002.em),
 )
 
 /**

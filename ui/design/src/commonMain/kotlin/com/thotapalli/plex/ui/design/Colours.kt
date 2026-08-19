@@ -23,6 +23,28 @@ data class PlexColours(
     val scrim: Color,
     val error: Color,
     /**
+     * A lighter shade of [accent], used as the top stop of a filled control's gradient so a
+     * primary button reads as a lit convex surface rather than a flat fill. Derived from the
+     * branding mark's upper highlight (section 15), never a Material tint.
+     */
+    val accentBright: Color,
+    /**
+     * A deeper shade of [accent], the lower stop of that same gradient and the ground of a
+     * library card's colour wash. From the branding mark's lower stop.
+     */
+    val accentDeep: Color,
+    /**
+     * The dense dark disc behind a floating control (the back button over a bright backdrop).
+     * Strong enough that a bright still cannot swallow the glyph, regardless of theme.
+     */
+    val scrimHeavy: Color,
+    /**
+     * A faint light hairline traced around a raised card's edge. Poster art meets the near-black
+     * ground with no natural boundary; a one-pixel inner highlight gives the card a crisp lip and
+     * is the second half of the depth cue the drop shadow begins.
+     */
+    val edgeHighlight: Color,
+    /**
      * The colour cast into a [androidx.compose.ui.draw.shadow] under a raised tile. Poster
      * art needs to lift off the background to read as a physical card, and a shadow is the
      * only depth cue that survives against arbitrary artwork. Stronger on dark, where the
@@ -47,6 +69,10 @@ val DarkColours = PlexColours(
     focusRing = Color(0xFFF5A623),
     scrim = Color(0x99000000), // black at 60 percent
     error = Color(0xFFE5534B),
+    accentBright = Color(0xFFFFC24D), // the mark's upper highlight
+    accentDeep = Color(0xFFD4820C), // the mark's lower stop
+    scrimHeavy = Color(0xB3000000), // black at 70 percent, the disc behind a floating control
+    edgeHighlight = Color(0x1AFFFFFF), // white at ~10 percent, a card's lit lip
     elevationShadow = Color(0xCC000000), // black at 80 percent, so tiles lift off the near-black ground
     skeletonBase = Color(0xFF1E2126),
     skeletonSheen = Color(0xFF2A2E35),
@@ -64,6 +90,11 @@ val LightColours = PlexColours(
     focusRing = Color(0xFFC97C05),
     scrim = Color(0x73000000), // black at 45 percent
     error = Color(0xFFC0392B),
+    accentBright = Color(0xFFE0982E), // a warmer, lighter amber for the button highlight
+    accentDeep = Color(0xFFA5650A), // the deep ground of a card wash
+    // A floating control always sits over artwork, so its disc stays dark on the light theme too.
+    scrimHeavy = Color(0xB3000000),
+    edgeHighlight = Color(0x14FFFFFF),
     elevationShadow = Color(0x33000000), // black at 20 percent, a soft grounding shadow on white
     skeletonBase = Color(0xFFE8EAED),
     skeletonSheen = Color(0xFFF4F5F7),

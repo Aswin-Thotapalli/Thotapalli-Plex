@@ -21,10 +21,29 @@ import com.thotapalli.plex.core.api.ServerScope
 import com.thotapalli.plex.core.model.Episode
 import com.thotapalli.plex.core.model.MediaItem
 import com.thotapalli.plex.core.playback.PlayerEngine
+import com.thotapalli.plex.ui.design.ThotapalliTheme
 import com.thotapalli.plex.ui.shared.AppContainer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlin.time.TimeSource
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
+import com.thotapalli.plex.ui.design.PlayerColours
+import com.thotapalli.plex.ui.design.PlexText
+import com.thotapalli.plex.ui.design.PlexTheme
+import com.thotapalli.plex.ui.design.Radius
+import com.thotapalli.plex.ui.design.Spacing
+import com.thotapalli.plex.ui.shared.PlexIcon
+import com.thotapalli.plex.ui.shared.PlexIconKind
+import com.thotapalli.plex.ui.shared.formatPosition
+import com.thotapalli.plex.ui.shared.plexFocusable
 
 /**
  * The player screen from CLAUDE.md section 14 item 7.
@@ -45,6 +64,8 @@ fun PlayerScreen(
     urls: PlexUrls,
     startAtMs: Long,
     onExit: () -> Unit,
+    onToggleFullScreen: () -> Unit = {},
+    isFullScreen: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     // The engine is created on the platform side and handed back through VideoSurface.
@@ -106,39 +127,186 @@ fun PlayerScreen(
         (controller?.actions() ?: PlayerActions()).copy(onBack = onExit)
     }
 
-    Box(
-        modifier
-            .fillMaxSize()
-            .background(Color.Black)
-            // Any touch reveals the controls. Buttons in the overlay consume their own taps,
-            // so this only fires for the picture itself. See CLAUDE.md section 12.
-            .pointerInput(controller) {
-                detectTapGestures(onPress = { controller?.noteInput() })
-            },
-    ) {
-        VideoSurface(bind = { engine = it }, modifier = Modifier.fillMaxSize())
+    // The player screen ignores the light theme and always renders on the dark tokens, so the
+    // whole surface — the letterbox around the video, the loading state and every control — is
+    // forced dark regardless of the system setting. This is also what stops a white flash before
+    // the first frame: the ambient background and content colours are the dark tokens, never the
+    // light ones. See CLAUDE.md section 12.
+    ThotapalliTheme(forceDark = true) {
+        if (container.isDesktop) {
+            // The desktop video is a heavyweight native window the Compose overlay cannot
+            // paint over, so controls sit in a persistent bar beneath the picture.
+            Column(modifier.fillMaxSize().background(Color.Black)) {
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    VideoSurface(bind = { engine = it }, modifier = Modifier.fillMaxSize())
+                }
+                DesktopControlBar(state = screenState, actions = actions, onToggleFullScreen = onToggleFullScreen, isFullScreen = isFullScreen)
+            }
+        } else {
+            Box(
+                modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
+                    // Any touch reveals the controls. Buttons in the overlay consume their
+                    // own taps, so this only fires for the picture itself. See section 12.
+                    .pointerInput(controller) {
+                        detectTapGestures(onPress = { controller?.noteInput() })
+                    },
+            ) {
+                VideoSurface(bind = { engine = it }, modifier = Modifier.fillMaxSize())
 
-        PlayerOverlay(state = screenState, actions = actions, modifier = Modifier.fillMaxSize())
+                PlayerOverlay(state = screenState, actions = actions, modifier = Modifier.fillMaxSize())
 
-        when (screenState.openSheet) {
-            TrackSheetKind.AUDIO -> TrackSheet(
-                title = "Audio",
-                tracks = screenState.audioTracks,
-                allowNone = false,
-                onSelect = actions.onSelectAudioTrack,
-                onDismiss = actions.onDismissSheet,
-                modifier = Modifier.fillMaxSize(),
-            )
-            TrackSheetKind.SUBTITLE -> TrackSheet(
-                title = "Subtitles",
-                tracks = screenState.subtitleTracks,
-                allowNone = true,
-                onSelect = actions.onSelectSubtitleTrack,
-                onDismiss = actions.onDismissSheet,
-                modifier = Modifier.fillMaxSize(),
-            )
-            null -> Unit
+                when (screenState.openSheet) {
+                    TrackSheetKind.AUDIO -> TrackSheet(
+                        title = "Audio",
+                        tracks = screenState.audioTracks,
+                        allowNone = false,
+                        onSelect = actions.onSelectAudioTrack,
+                        onDismiss = actions.onDismissSheet,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    TrackSheetKind.SUBTITLE -> TrackSheet(
+                        title = "Subtitles",
+                        tracks = screenState.subtitleTracks,
+                        allowNone = true,
+                        onSelect = actions.onSelectSubtitleTrack,
+                        onDismiss = actions.onDismissSheet,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    null -> Unit
+                }
+            }
         }
+    }
+}
+
+/**
+ * The desktop player's controls, in a persistent bar beneath the video — the picture is a
+ * heavyweight native window the Compose overlay cannot draw over. Scrubber and times on top,
+ * transport and title below. Always on the dark player tokens.
+ */
+@Composable
+private fun DesktopControlBar(
+    state: PlayerScreenState,
+    actions: PlayerActions,
+    onToggleFullScreen: () -> Unit,
+    isFullScreen: Boolean,
+) {
+    // Subtitles start on when the file carries them; the toggle flips mpv's sid.
+    var subtitlesOn by remember { mutableStateOf(true) }
+    val colours = PlayerColours
+    val duration = state.durationMs.coerceAtLeast(1L)
+    var dragMs by remember { mutableStateOf<Long?>(null) }
+    val shownMs = (dragMs ?: state.displayPositionMs).coerceIn(0L, duration)
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .background(colours.surface)
+            .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            PlexText(formatPosition(shownMs), style = PlexTheme.type.caption, colour = colours.textSecondary)
+            Slider(
+                value = shownMs.toFloat() / duration.toFloat(),
+                onValueChange = { fraction ->
+                    if (dragMs == null) actions.onScrubStart()
+                    val ms = (fraction * duration).toLong()
+                    dragMs = ms
+                    actions.onScrub(ms)
+                },
+                onValueChangeFinished = {
+                    dragMs?.let { actions.onScrubEnd(it) }
+                    dragMs = null
+                },
+                colors = SliderDefaults.colors(
+                    thumbColor = colours.accent,
+                    activeTrackColor = colours.accent,
+                    inactiveTrackColor = colours.border,
+                ),
+                modifier = Modifier.weight(1f).padding(horizontal = Spacing.sm),
+            )
+            PlexText(formatPosition(duration), style = PlexTheme.type.caption, colour = colours.textSecondary)
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+        ) {
+            BarIcon(PlexIconKind.BACK, actions.onBack)
+            Column(Modifier.weight(1f)) {
+                if (state.title.isNotBlank()) {
+                    PlexText(state.title, style = PlexTheme.type.label, colour = colours.textPrimary, maxLines = 1)
+                }
+                state.subtitle?.takeIf { it.isNotBlank() }?.let {
+                    PlexText(it, style = PlexTheme.type.caption, colour = colours.textSecondary, maxLines = 1)
+                }
+            }
+            SubtitleToggle(on = subtitlesOn) {
+                subtitlesOn = !subtitlesOn
+                actions.onSelectSubtitleTrack(if (subtitlesOn) "1" else null)
+            }
+            BarText("−10s", actions.onSeekBack)
+            BarIcon(
+                kind = if (state.isPlaying) PlexIconKind.PAUSE else PlexIconKind.PLAY,
+                onClick = actions.onPlayPause,
+                big = true,
+            )
+            BarText("+30s", actions.onSeekForward)
+            BarIcon(
+                kind = if (isFullScreen) PlexIconKind.FULLSCREEN_EXIT else PlexIconKind.FULLSCREEN,
+                onClick = onToggleFullScreen,
+            )
+        }
+    }
+}
+
+@Composable
+private fun BarIcon(kind: PlexIconKind, onClick: () -> Unit, big: Boolean = false) {
+    val colours = PlayerColours
+    Box(
+        Modifier
+            .plexFocusable(shape = Radius.pill, onClick = onClick, scaleOnFocus = false)
+            .background(if (big) colours.accent else colours.surfaceElevated, Radius.pill)
+            .padding(if (big) Spacing.sm else Spacing.xs),
+    ) {
+        PlexIcon(
+            kind = kind,
+            tint = if (big) colours.background else colours.textPrimary,
+            size = if (big) 28.dp else 22.dp,
+        )
+    }
+}
+
+@Composable
+private fun SubtitleToggle(on: Boolean, onClick: () -> Unit) {
+    val colours = PlayerColours
+    Box(
+        Modifier
+            .plexFocusable(shape = Radius.pill, onClick = onClick, scaleOnFocus = false)
+            .background(if (on) colours.accent else colours.surfaceElevated, Radius.pill)
+            .padding(horizontal = Spacing.sm, vertical = Spacing.xs),
+    ) {
+        PlexText(
+            "CC",
+            style = PlexTheme.type.label,
+            colour = if (on) colours.background else colours.textPrimary,
+        )
+    }
+}
+
+@Composable
+private fun BarText(label: String, onClick: () -> Unit) {
+    val colours = PlayerColours
+    Box(
+        Modifier
+            .plexFocusable(shape = Radius.pill, onClick = onClick, scaleOnFocus = false)
+            .background(colours.surfaceElevated, Radius.pill)
+            .padding(horizontal = Spacing.sm, vertical = Spacing.xs),
+    ) {
+        PlexText(label, style = PlexTheme.type.label, colour = colours.textPrimary)
     }
 }
 

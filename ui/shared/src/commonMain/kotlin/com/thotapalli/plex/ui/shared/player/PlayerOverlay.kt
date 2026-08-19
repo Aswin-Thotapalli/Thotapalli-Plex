@@ -42,6 +42,7 @@ import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
+import com.thotapalli.plex.ui.shared.LoadingIndicator
 import com.thotapalli.plex.ui.shared.formatPosition
 import com.thotapalli.plex.ui.shared.plexFocusable
 
@@ -64,9 +65,67 @@ fun PlayerOverlay(
     // The player screen ignores the light theme and always renders on the dark tokens.
     val colours = PlayerColours
 
+    // The controls fade after three seconds of no input, but only once the picture is actually
+    // playing. While the player is buffering, paused, or has not yet reached the first frame
+    // there is nothing to watch, so the controls stay put rather than leaving the user staring
+    // at a bare surface. The controller drives the fade timer; this widens it so a non-playing
+    // state always shows the controls. See CLAUDE.md section 8 and section 12.
+    val controlsShown = state.controlsVisible || state.playbackState !is PlaybackState.Playing
+
+    // Before the first frame — idle, buffering or readied but not started — cover the surface
+    // with the dark ground and a centred loading treatment. This is what the user sees instead
+    // of a grey word on a white panel, and it guarantees no white flash while the decoder spins
+    // up. Once playback begins the cover is gone and the picture shows through. See CLAUDE.md
+    // section 10 and section 12.
+    val loading = when (state.playbackState) {
+        is PlaybackState.Idle, is PlaybackState.Buffering, is PlaybackState.Ready -> true
+        else -> false
+    }
+
     Box(modifier.fillMaxSize()) {
         AnimatedVisibility(
-            visible = state.controlsVisible,
+            visible = loading,
+            enter = fadeIn(Motion.playerFade()),
+            exit = fadeOut(Motion.playerFade()),
+        ) {
+            Box(
+                Modifier.fillMaxSize().background(colours.background),
+                contentAlignment = Alignment.Center,
+            ) {
+                LoadingIndicator(
+                    label = if (state.playbackState is PlaybackState.Buffering) "Buffering" else "Loading",
+                )
+            }
+        }
+
+        // Top scrim and the back control, top left. A clearly visible way out of the player.
+        AnimatedVisibility(
+            visible = controlsShown,
+            enter = fadeIn(Motion.playerFade()),
+            exit = fadeOut(Motion.playerFade()),
+        ) {
+            Box(Modifier.fillMaxSize()) {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.TopCenter)
+                        .height(120.dp)
+                        .background(
+                            Brush.verticalGradient(0f to colours.scrim, 1f to Color.Transparent),
+                        ),
+                )
+                Box(
+                    Modifier
+                        .align(Alignment.TopStart)
+                        .padding(Spacing.lg),
+                ) {
+                    OverlayButton("← Back", onClick = actions.onBack)
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = controlsShown,
             enter = fadeIn(Motion.playerFade()),
             exit = fadeOut(Motion.playerFade()),
         ) {
@@ -90,14 +149,14 @@ fun PlayerOverlay(
                 ) {
                     PlexText(
                         text = state.title,
-                        style = PlexTheme.type.title,
+                        style = PlexTheme.type.display,
                         colour = colours.textPrimary,
                         maxLines = 1,
                     )
                     state.subtitle?.let {
                         PlexText(
                             text = it,
-                            style = PlexTheme.type.caption,
+                            style = PlexTheme.type.body,
                             colour = colours.textSecondary,
                             maxLines = 1,
                         )
@@ -158,12 +217,6 @@ fun PlayerOverlay(
                     .padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
             ) {
                 PlexText("Transcoding", style = PlexTheme.type.caption, colour = colours.textSecondary)
-            }
-        }
-
-        if (state.playbackState is PlaybackState.Buffering) {
-            Box(Modifier.align(Alignment.Center)) {
-                PlexText("Buffering", colour = colours.textSecondary)
             }
         }
     }

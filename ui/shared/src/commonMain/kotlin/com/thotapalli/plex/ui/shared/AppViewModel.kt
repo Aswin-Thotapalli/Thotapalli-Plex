@@ -20,6 +20,9 @@ import com.thotapalli.plex.core.download.OfflineResolver
 import com.thotapalli.plex.ui.shared.screens.DownloadEntry
 import com.thotapalli.plex.ui.shared.screens.SettingsScreenState
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -149,6 +152,22 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             _state.update {
                 it.copy(libraries = libraries, continueWatching = continueWatching)
             }
+
+            // A preview rail of each library's titles, so Home browses like a shelf of
+            // content rather than a list of folders. Loaded in parallel so the rails fill
+            // together rather than one after another.
+            val previews = coroutineScope {
+                libraries.map { library ->
+                    async {
+                        library.key to runCatching {
+                            container.repository.libraryContents(server.scope, library, false)
+                                .filter { it !is MediaCollection }
+                                .take(HOME_RAIL_LIMIT)
+                        }.getOrDefault(emptyList())
+                    }
+                }.awaitAll().toMap()
+            }
+            _state.update { it.copy(libraryPreviews = previews) }
         }
     }
 
@@ -242,7 +261,12 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     fun selectSeason(season: Season) {
-        _state.update { it.copy(detail = it.detail?.copy(selectedSeason = season)) }
+        _state.update { it.copy(detail = it.detail?.copy(selectedSeason = season, selectedEpisode = null)) }
+    }
+
+    /** Tapping an episode row inspects it (shows its summary) without playing. */
+    fun selectEpisode(episode: Episode) {
+        _state.update { it.copy(detail = it.detail?.copy(selectedEpisode = episode)) }
     }
 
     fun closeDetail() {
@@ -323,8 +347,13 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     /** Leave the player and reconcile Home, so a resume position set while watching shows. */
     fun closePlayer() {
         val wasPlaying = _state.value.playback != null
-        _state.update { it.copy(playback = null) }
+        _state.update { it.copy(playback = null, isFullScreen = false) }
         if (wasPlaying) _state.value.server?.let { refreshHome(it) }
+    }
+
+    /** Windows only: the player's full-screen toggle. The desktop window reads this. */
+    fun toggleFullScreen() {
+        _state.update { it.copy(isFullScreen = !it.isFullScreen) }
     }
 
     // --- search ----------------------------------------------------------------------------
@@ -518,6 +547,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     private companion object {
         const val SEARCH_DEBOUNCE_MS = 300L
         const val MIN_QUERY_LENGTH = 2
+        const val HOME_RAIL_LIMIT = 20
     }
 }
 
@@ -531,10 +561,14 @@ data class AppState(
     val server: ActiveServer? = null,
     val libraries: List<Library> = emptyList(),
     val continueWatching: List<MediaItem> = emptyList(),
+    /** libraryKey -> a short preview of that library's titles, for the Home rails. */
+    val libraryPreviews: Map<String, List<MediaItem>> = emptyMap(),
     val library: LibraryState? = null,
     val detail: DetailState? = null,
     /** Non-null while the full-screen player is up. See [AppViewModel.play]. */
     val playback: PlaybackRequest? = null,
+    /** Windows only: whether the player is filling the screen. */
+    val isFullScreen: Boolean = false,
     val search: SearchState = SearchState(),
     val downloads: List<DownloadEntry> = emptyList(),
     val downloadBytesOnDisk: Long = 0,
@@ -561,6 +595,8 @@ data class DetailState(
     val episodes: List<Episode> = emptyList(),
     val selectedSeason: Season? = null,
     val nextUnwatched: Episode? = null,
+    /** The episode the viewer tapped to inspect; its summary is shown, and Play plays it. */
+    val selectedEpisode: Episode? = null,
     val loading: Boolean = false,
 ) {
     val episodesInSelectedSeason: List<Episode>

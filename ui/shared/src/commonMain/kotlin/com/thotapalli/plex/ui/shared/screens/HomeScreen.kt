@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -15,49 +14,53 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.thotapalli.plex.core.model.Library
-import com.thotapalli.plex.core.model.LibraryKind
 import com.thotapalli.plex.core.model.MediaItem
 import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
+import com.thotapalli.plex.ui.design.SizeClass
 import com.thotapalli.plex.ui.design.Spacing
 import com.thotapalli.plex.ui.shared.ActiveServer
 import com.thotapalli.plex.ui.shared.ArtworkSize
 import com.thotapalli.plex.ui.shared.HomeHero
-import com.thotapalli.plex.ui.shared.LibraryCard
+import com.thotapalli.plex.ui.shared.PosterTile
 import com.thotapalli.plex.ui.shared.SectionHeader
 import com.thotapalli.plex.ui.shared.WideProgressTile
+import com.thotapalli.plex.ui.shared.plexFocusable
+import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.shared.motion.staggeredEntrance
 
 /**
- * Home: a featured hero for the top Continue Watching title, the rest of that row, then one
- * card per library. Nothing else. An empty Continue Watching row is hidden and the library
- * cards move up. See CLAUDE.md section 14.
+ * Home: a spotlight hero for the single title most worth resuming, a Continue Watching rail
+ * that holds the rest, and a poster rail for each library — so Home browses like a shelf of
+ * content, not a list of folders. See CLAUDE.md section 14.
  */
 @Composable
 fun HomeScreen(
     server: ActiveServer,
     continueWatching: List<MediaItem>,
     libraries: List<Library>,
+    libraryPreviews: Map<String, List<MediaItem>>,
     onItemClick: (MediaItem) -> Unit,
     onLibraryClick: (Library) -> Unit,
     onPlay: (MediaItem, Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val sizeClass = PlexTheme.sizeClass
-    val tileWidth = if (sizeClass.isTelevision) 320.dp else 260.dp
     val pad = sizeClass.screenPadding
+    val posterWidth = posterRailWidth(sizeClass)
+    val wideWidth = if (sizeClass.isTelevision) 340.dp else 280.dp
 
     val featured = continueWatching.firstOrNull()
-    val rest = continueWatching.drop(1)
+    // The featured title is the hero; the rail holds the others, so nothing is shown twice.
+    val continueRail = continueWatching.drop(1)
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = Spacing.xl),
-        verticalArrangement = Arrangement.spacedBy(Spacing.lg),
+        modifier = modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = Spacing.xxl),
+        verticalArrangement = Arrangement.spacedBy(Spacing.xl),
     ) {
-        // The hero is full-bleed; everything below it is inset to the screen padding.
         if (featured != null) {
-            item {
+            item(key = "hero") {
                 HomeHero(
                     item = featured,
                     artworkUrl = server.urls.artwork(
@@ -71,15 +74,16 @@ fun HomeScreen(
             }
         }
 
-        if (rest.isNotEmpty()) {
-            item {
-                Column(Modifier.padding(horizontal = pad)) {
-                    SectionHeader("Continue Watching")
+        // Continue Watching — the in-progress titles beyond the featured one, so any number
+        // of resumes has a home and nothing is duplicated with the hero.
+        if (continueRail.isNotEmpty()) {
+            item(key = "cw") {
+                Rail(title = "Continue Watching", pad = pad) {
                     LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-                        contentPadding = PaddingValues(vertical = Spacing.xs),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+                        contentPadding = PaddingValues(horizontal = pad),
                     ) {
-                        itemsIndexed(rest, key = { _, it -> it.ratingKey }) { index, item ->
+                        itemsIndexed(continueRail, key = { _, it -> "cw-" + it.ratingKey }) { i, item ->
                             WideProgressTile(
                                 item = item,
                                 artworkUrl = server.urls.artwork(
@@ -88,9 +92,7 @@ fun HomeScreen(
                                     ArtworkSize.WIDE_HEIGHT,
                                 ),
                                 onClick = { onItemClick(item) },
-                                modifier = Modifier
-                                    .width(tileWidth)
-                                    .staggeredEntrance(index, key = item.ratingKey),
+                                modifier = Modifier.width(wideWidth).staggeredEntrance(i, key = item.ratingKey),
                             )
                         }
                     }
@@ -98,25 +100,32 @@ fun HomeScreen(
             }
         }
 
-        item {
-            SectionHeader("Your Libraries", Modifier.padding(horizontal = pad))
-        }
-
-        itemsIndexed(libraries, key = { _, it -> it.key }) { index, library ->
-            LibraryCard(
+        // One poster rail per library.
+        items(libraries, key = { "lib-" + it.key }) { library ->
+            val preview = libraryPreviews[library.key].orEmpty()
+            Rail(
                 title = library.title,
-                subtitle = when (library.kind) {
-                    LibraryKind.MOVIE -> "Films"
-                    LibraryKind.SHOW -> "Series"
-                    LibraryKind.UNSUPPORTED -> ""
-                },
-                artworkUrl = null,
-                onClick = { onLibraryClick(library) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = pad)
-                    .staggeredEntrance(index, key = library.key),
-            )
+                pad = pad,
+                onSeeAll = { onLibraryClick(library) },
+            ) {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+                    contentPadding = PaddingValues(horizontal = pad),
+                ) {
+                    itemsIndexed(preview, key = { _, it -> library.key + "-" + it.ratingKey }) { i, item ->
+                        PosterTile(
+                            item = item,
+                            artworkUrl = server.urls.artwork(
+                                item.thumbPath,
+                                ArtworkSize.POSTER_WIDTH,
+                                ArtworkSize.POSTER_HEIGHT,
+                            ),
+                            onClick = { onItemClick(item) },
+                            modifier = Modifier.width(posterWidth).staggeredEntrance(i, key = item.ratingKey),
+                        )
+                    }
+                }
+            }
         }
 
         if (libraries.isEmpty()) {
@@ -129,4 +138,40 @@ fun HomeScreen(
             }
         }
     }
+}
+
+/** A titled horizontal shelf, with an optional "See all" that opens the full library. */
+@Composable
+private fun Rail(
+    title: String,
+    pad: androidx.compose.ui.unit.Dp,
+    onSeeAll: (() -> Unit)? = null,
+    content: @Composable () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+        SectionHeader(
+            title = title,
+            modifier = Modifier.padding(horizontal = pad),
+            trailing = onSeeAll?.let {
+                {
+                    PlexText(
+                        text = "See all",
+                        style = PlexTheme.type.label,
+                        colour = PlexTheme.colours.accent,
+                        modifier = Modifier
+                            .plexFocusable(shape = Radius.pill, onClick = it, scaleOnFocus = false)
+                            .padding(horizontal = Spacing.xs, vertical = Spacing.xxs),
+                    )
+                }
+            },
+        )
+        content()
+    }
+}
+
+private fun posterRailWidth(sizeClass: SizeClass) = when (sizeClass) {
+    SizeClass.COMPACT -> 124.dp
+    SizeClass.MEDIUM -> 140.dp
+    SizeClass.EXPANDED -> 152.dp
+    SizeClass.TELEVISION -> 184.dp
 }

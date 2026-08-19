@@ -41,6 +41,29 @@ object Radius {
 }
 
 /**
+ * The elevation scale. A shadow is the only depth cue that survives against arbitrary poster
+ * artwork, so raised elements read as physical cards by how far they lift off the ground rather
+ * than by a change of colour. One named step per role keeps the wall coherent: every poster
+ * lifts by the same amount, every card by the same, and nothing picks a number of its own.
+ */
+object Elevation {
+    /** A poster tile in the grid. */
+    val tile: Dp = 10.dp
+
+    /** A wide 16:9 continue-watching tile, lifted a touch more than a poster. */
+    val wide: Dp = 14.dp
+
+    /** An episode thumbnail or a library card. */
+    val card: Dp = 6.dp
+
+    /** A filled primary button, so the one action on a screen sits proud of the surface. */
+    val button: Dp = 8.dp
+
+    /** A control floating over a backdrop, and the raised state of a selected row. */
+    val floating: Dp = 12.dp
+}
+
+/**
  * Layout sizes that follow from section 13.
  */
 @Immutable
@@ -70,4 +93,14 @@ object Layout {
     const val TELEVISION_FOCUS_SCALE = 1.08f
 
     val focusRingWidth: Dp = 3.dp
+
+    /** A floating icon control (the back button). Large enough to be an obvious target. */
+    val iconButton: Dp = 44.dp
+    val iconButtonTelevision: Dp = 52.dp
+
+    /** The circular play control laid over an episode thumbnail. */
+    val playToken: Dp = 44.dp
+
+    /** A library card on the Home screen. Taller than a list row, so it reads as a place. */
+    val libraryCardHeight: Dp = 108.dp
 }

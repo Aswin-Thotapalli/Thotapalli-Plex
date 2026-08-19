@@ -45,6 +45,21 @@ object Motion {
     val accelerate: Easing = CubicBezierEasing(0.3f, 0f, 1f, 1f)
     val decelerate: Easing = CubicBezierEasing(0f, 0f, 0f, 1f)
 
+    /**
+     * A firmer curve that overshoots its ease-out, so a tile lifting under focus or a button
+     * settling under a press arrives with a small, expensive-feeling weight rather than a flat
+     * glide. Reserved for the raise cues; navigation and fades keep [standard].
+     */
+    val emphasized: Easing = CubicBezierEasing(0.16f, 1f, 0.3f, 1f)
+
+    /** A press dip, and its release. Short, so a control feels responsive under the finger. */
+    const val PRESS_MS = 90
+
+    fun <T> emphasized(durationMs: Int = FOCUS_MS): FiniteAnimationSpec<T> =
+        tween(durationMs, easing = emphasized)
+
+    fun <T> press(): FiniteAnimationSpec<T> = tween(PRESS_MS, easing = standard)
+
     fun <T> enter(): FiniteAnimationSpec<T> = tween(ENTER_MS, easing = standard)
 
     fun <T> exit(): FiniteAnimationSpec<T> = tween(EXIT_MS, easing = accelerate)

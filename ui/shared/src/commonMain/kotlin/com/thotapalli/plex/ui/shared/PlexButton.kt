@@ -12,8 +12,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.thotapalli.plex.ui.design.Elevation
 import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
@@ -45,8 +48,25 @@ fun PrimaryButton(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier
+            // The one primary action on a screen sits proud of the surface with a soft shadow,
+            // and a top-to-bottom accent gradient reads as a lit, convex pill rather than a flat
+            // fill. A hairline lip finishes the edge.
+            .shadow(
+                elevation = if (enabled) Elevation.button else 0.dp,
+                shape = Radius.pill,
+                ambientColor = colours.elevationShadow,
+                spotColor = colours.elevationShadow,
+            )
             .clip(Radius.pill)
-            .background(colours.accent, Radius.pill),
+            .background(
+                Brush.verticalGradient(
+                    0f to colours.accentBright,
+                    0.5f to colours.accent,
+                    1f to colours.accentDeep,
+                ),
+                Radius.pill,
+            )
+            .border(1.dp, colours.edgeHighlight, Radius.pill),
     )
 }
 
@@ -67,11 +87,12 @@ fun SecondaryButton(
         enabled = enabled,
         modifier = modifier
             .clip(Radius.pill)
-            // A quiet translucent fill plus a hairline border reads as a control against
-            // either a solid surface or a cinematic backdrop, without competing with the
-            // filled primary beside it.
-            .background(Color(0x1FFFFFFF), Radius.pill)
-            .border(1.dp, colours.border, Radius.pill),
+            // A quiet translucent fill plus a clean hairline reads as a control against either a
+            // solid surface or a cinematic backdrop, without competing with the filled primary
+            // beside it. The two-layer border — a soft light lip over the token line — keeps the
+            // edge crisp over bright artwork where a single hairline would wash out.
+            .background(Color(0x24FFFFFF), Radius.pill)
+            .border(1.dp, Color(0x33FFFFFF), Radius.pill),
     )
 }
 

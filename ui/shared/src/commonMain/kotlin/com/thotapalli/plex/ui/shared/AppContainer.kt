@@ -47,6 +47,12 @@ class AppContainer(
     device: DeviceInfo,
     driverFactory: DatabaseDriverFactory,
     val isTelevision: Boolean = false,
+    /**
+     * True on Windows. The desktop video surface is a heavyweight window the Compose overlay
+     * cannot draw over, so the player shows its controls in a bar beside the video rather
+     * than floating on top of it.
+     */
+    val isDesktop: Boolean = false,
     private val nowMs: () -> Long,
     val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     /**

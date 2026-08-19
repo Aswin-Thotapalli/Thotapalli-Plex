@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -21,7 +22,7 @@ import com.thotapalli.plex.ui.design.PlexTheme
  * add a dependency for the sake of a back arrow. These are drawn with a stroke on a Canvas
  * instead, so they scale cleanly and take the accent colour on focus like everything else.
  */
-enum class PlexIconKind { BACK, HOME, SEARCH, DOWNLOADS, SETTINGS, PLAY, CLOSE, INFO, CHECK }
+enum class PlexIconKind { BACK, HOME, SEARCH, DOWNLOADS, SETTINGS, PLAY, PAUSE, CLOSE, INFO, CHECK, FULLSCREEN, FULLSCREEN_EXIT }
 
 @Composable
 fun PlexIcon(
@@ -39,6 +40,9 @@ fun PlexIcon(
             PlexIconKind.DOWNLOADS -> drawDownloads(tint, stroke)
             PlexIconKind.SETTINGS -> drawSettings(tint, stroke)
             PlexIconKind.PLAY -> drawPlay(tint)
+            PlexIconKind.PAUSE -> drawPause(tint)
+            PlexIconKind.FULLSCREEN -> drawFullscreen(tint, stroke, false)
+            PlexIconKind.FULLSCREEN_EXIT -> drawFullscreen(tint, stroke, true)
             PlexIconKind.CLOSE -> drawClose(tint, stroke)
             PlexIconKind.INFO -> drawInfo(tint, stroke)
             PlexIconKind.CHECK -> drawCheck(tint, stroke)
@@ -138,6 +142,33 @@ private fun DrawScope.drawCheck(tint: Color, stroke: Stroke) {
         lineTo(w * 0.76f, h * 0.32f)
     }
     drawPath(path, tint, style = stroke)
+}
+
+private fun DrawScope.drawFullscreen(tint: Color, stroke: Stroke, exit: Boolean) {
+    val w = size.width; val h = size.height
+    val sw = stroke.width; val cap = stroke.cap
+    // Four corner brackets; pointing inward for exit, outward for enter.
+    val a = if (exit) 0.42f else 0.28f   // outer corner
+    val b = if (exit) 0.28f else 0.42f   // arm end
+    // top-left
+    drawLine(tint, Offset(w*a, h*a), Offset(w*a, h*b), sw, cap)
+    drawLine(tint, Offset(w*a, h*a), Offset(w*b, h*a), sw, cap)
+    // top-right
+    drawLine(tint, Offset(w*(1-a), h*a), Offset(w*(1-a), h*b), sw, cap)
+    drawLine(tint, Offset(w*(1-a), h*a), Offset(w*(1-b), h*a), sw, cap)
+    // bottom-left
+    drawLine(tint, Offset(w*a, h*(1-a)), Offset(w*a, h*(1-b)), sw, cap)
+    drawLine(tint, Offset(w*a, h*(1-a)), Offset(w*b, h*(1-a)), sw, cap)
+    // bottom-right
+    drawLine(tint, Offset(w*(1-a), h*(1-a)), Offset(w*(1-a), h*(1-b)), sw, cap)
+    drawLine(tint, Offset(w*(1-a), h*(1-a)), Offset(w*(1-b), h*(1-a)), sw, cap)
+}
+
+private fun DrawScope.drawPause(tint: Color) {
+    val w = size.width
+    val h = size.height
+    drawRect(tint, Offset(w * 0.36f, h * 0.28f), Size(w * 0.10f, h * 0.44f))
+    drawRect(tint, Offset(w * 0.54f, h * 0.28f), Size(w * 0.10f, h * 0.44f))
 }
 
 private fun DrawScope.drawPlay(tint: Color) {

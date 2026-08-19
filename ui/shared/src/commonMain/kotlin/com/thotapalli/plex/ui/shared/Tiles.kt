@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -31,6 +32,7 @@ import com.thotapalli.plex.core.model.Movie
 import com.thotapalli.plex.core.model.Show
 import com.thotapalli.plex.core.model.progress
 import com.thotapalli.plex.core.model.watched
+import com.thotapalli.plex.ui.design.Elevation
 import com.thotapalli.plex.ui.design.Layout
 import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
@@ -62,7 +64,7 @@ fun PosterTile(
                 // A soft drop shadow lifts the poster off the near-black ground so the wall
                 // of tiles reads as physical cards rather than a flat collage.
                 .shadow(
-                    elevation = 10.dp,
+                    elevation = Elevation.tile,
                     shape = Radius.poster,
                     ambientColor = colours.elevationShadow,
                     spotColor = colours.elevationShadow,
@@ -90,15 +92,25 @@ fun PosterTile(
                     modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(Spacing.xs),
                 )
             }
+
+            // A hairline lit lip around the card, drawn last so it sits above the artwork and
+            // gives the poster a crisp edge against the near-black ground.
+            Box(Modifier.fillMaxSize().border(1.dp, colours.edgeHighlight, Radius.poster))
         }
 
         Spacer(Modifier.height(Spacing.xs))
 
-        PlexText(text = item.title, style = PlexTheme.type.label, maxLines = 2)
-
-        secondaryLine(item)?.let {
-            PlexText(text = it, style = PlexTheme.type.caption, colour = colours.textSecondary, maxLines = 1)
-        }
+        // The title always occupies two lines and the subtitle always one, whether or not the
+        // text fills them. Every tile's caption block is therefore the same height, so a wrapped
+        // two-line title can never shove the row beneath it out of alignment.
+        PlexText(text = item.title, style = PlexTheme.type.label, minLines = 2, maxLines = 2)
+        PlexText(
+            text = secondaryLine(item) ?: " ",
+            style = PlexTheme.type.caption,
+            colour = colours.textSecondary,
+            minLines = 1,
+            maxLines = 1,
+        )
     }
 }
 
@@ -154,15 +166,20 @@ fun CollectionTile(
                     fallbackTitle = collection.title,
                     modifier = Modifier.fillMaxSize(),
                 )
+                Box(Modifier.fillMaxSize().border(1.dp, colours.edgeHighlight, Radius.poster))
             }
         }
 
         Spacer(Modifier.height(Spacing.xs))
-        PlexText(text = collection.title, style = PlexTheme.type.label, maxLines = 2)
+        // Same fixed two-line title, one-line subtitle as a poster tile, so a collection sitting
+        // in the same grid lines its caption block up with the titles around it.
+        PlexText(text = collection.title, style = PlexTheme.type.label, minLines = 2, maxLines = 2)
         PlexText(
             text = "${collection.childCount} titles",
             style = PlexTheme.type.caption,
             colour = colours.textSecondary,
+            minLines = 1,
+            maxLines = 1,
         )
     }
 }
@@ -190,7 +207,7 @@ fun WideProgressTile(
                 .fillMaxWidth()
                 .aspectRatio(Layout.WIDE_ASPECT_RATIO)
                 .shadow(
-                    elevation = 12.dp,
+                    elevation = Elevation.wide,
                     shape = Radius.card,
                     ambientColor = colours.elevationShadow,
                     spotColor = colours.elevationShadow,
@@ -212,9 +229,9 @@ fun WideProgressTile(
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
-                            0.35f to Color.Transparent,
-                            0.72f to Color(0x99000000),
-                            1f to Color(0xE6000000),
+                            0.30f to Color.Transparent,
+                            0.68f to Color(0x99000000),
+                            1f to Color(0xF2000000),
                         ),
                     ),
             )
@@ -246,6 +263,8 @@ fun WideProgressTile(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
+
+            Box(Modifier.fillMaxSize().border(1.dp, colours.edgeHighlight, Radius.card))
         }
 
         Spacer(Modifier.height(Spacing.xs))
@@ -253,11 +272,17 @@ fun WideProgressTile(
             text = remainingLabel(item),
             style = PlexTheme.type.caption,
             colour = colours.textSecondary,
+            maxLines = 1,
         )
     }
 }
 
-/** A library card on the Home screen. */
+/**
+ * A library card on the Home screen: one per library, tall enough to read as a place you enter
+ * rather than a line in a list. A colour wash derived from the accent runs across a quiet
+ * surface, a bold mark sits at the left, the title carries title weight, and a chevron on the
+ * right names the card as a way in. Focus and hover raise the accent ring like everything else.
+ */
 @Composable
 fun LibraryCard(
     title: String,
@@ -271,19 +296,38 @@ fun LibraryCard(
     Box(
         modifier = modifier
             .plexFocusable(shape = Radius.card, onClick = onClick, scaleOnFocus = false)
+            .height(Layout.libraryCardHeight)
+            .shadow(
+                elevation = Elevation.card,
+                shape = Radius.card,
+                ambientColor = colours.elevationShadow,
+                spotColor = colours.elevationShadow,
+            )
             .clip(Radius.card)
-            .background(colours.surface)
-            .border(1.dp, colours.border, Radius.card),
+            // A wash that carries the accent across the card without ever reaching a solid fill,
+            // so the interface stays quiet the way section 12 asks while the card still feels warm
+            // and deliberate rather than empty.
+            .background(
+                Brush.linearGradient(
+                    0f to colours.surfaceElevated,
+                    0.55f to colours.surface,
+                    1f to colours.accentDeep.copy(alpha = if (colours.isDark) 0.28f else 0.16f),
+                ),
+            )
+            .border(1.dp, colours.edgeHighlight, Radius.card),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(Spacing.md),
+            modifier = Modifier.fillMaxSize().padding(horizontal = Spacing.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             LibraryCardMark(title = title, artworkUrl = artworkUrl)
 
             Spacer(Modifier.width(Spacing.md))
 
-            Column {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
+            ) {
                 PlexText(text = title, style = PlexTheme.type.title, maxLines = 1)
                 PlexText(
                     text = subtitle,
@@ -292,15 +336,25 @@ fun LibraryCard(
                     maxLines = 1,
                 )
             }
+
+            Spacer(Modifier.width(Spacing.sm))
+
+            // The back chevron mirrored to point inward, so the card reads as an entrance.
+            PlexIcon(
+                kind = PlexIconKind.BACK,
+                size = 22.dp,
+                tint = colours.textSecondary,
+                modifier = Modifier.rotate(180f),
+            )
         }
     }
 }
 
 /**
- * The little poster slot on a library card. Library cards carry no poster of their own, so a
- * plain fallback would wrap and clip the title inside a 2:3 box. Instead this shows a quiet
- * branded plate — a soft vertical gradient with the library's first initial centred — and only
- * falls through to real artwork on the rare card that is handed one.
+ * The bold mark on a library card. Libraries carry no poster of their own, so the common case is
+ * a rounded plate washed with the accent gradient and stamped with the library's initial — an
+ * app-icon-like token rather than an empty poster slot. Real artwork, on the rare card handed
+ * some, fills the same rounded square.
  */
 @Composable
 private fun LibraryCardMark(
@@ -309,11 +363,17 @@ private fun LibraryCardMark(
     modifier: Modifier = Modifier,
 ) {
     val colours = PlexTheme.colours
+    val onAccent = if (colours.isDark) colours.background else Color.White
     Box(
         modifier = modifier
-            .width(64.dp)
-            .height(96.dp)
-            .clip(Radius.poster),
+            .size(72.dp)
+            .shadow(
+                elevation = Elevation.card,
+                shape = Radius.card,
+                ambientColor = colours.elevationShadow,
+                spotColor = colours.elevationShadow,
+            )
+            .clip(Radius.card),
     ) {
         if (!artworkUrl.isNullOrBlank()) {
             Artwork(
@@ -327,9 +387,9 @@ private fun LibraryCardMark(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        Brush.verticalGradient(
-                            0f to colours.surfaceElevated,
-                            1f to colours.accent.copy(alpha = 0.16f),
+                        Brush.linearGradient(
+                            0f to colours.accentBright,
+                            1f to colours.accentDeep,
                         ),
                     ),
                 contentAlignment = Alignment.Center,
@@ -337,38 +397,71 @@ private fun LibraryCardMark(
                 PlexText(
                     text = title.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?",
                     style = PlexTheme.type.display,
-                    colour = colours.accent,
+                    colour = onAccent,
                     maxLines = 1,
                 )
             }
         }
+        Box(Modifier.fillMaxSize().border(1.dp, colours.edgeHighlight, Radius.card))
     }
 }
 
-/** An episode row: thumbnail, number, title, duration, and progress when part watched. */
+/**
+ * An episode row: thumbnail, number, title, duration and a summary, with progress shown when the
+ * episode is part watched.
+ *
+ * The row has two distinct targets. A circular play control laid over the thumbnail calls
+ * [onPlay] and starts the episode; tapping anywhere else on the row calls [onSelect], which the
+ * show detail screen uses to reveal the episode without committing to playback. When [selected]
+ * is true the row raises onto an elevated surface and grows a left accent bar, so the chosen
+ * episode is unmistakable in a long list.
+ *
+ * The older single-tap contract is preserved for callers that have not moved across: passing
+ * [onClick] routes both play and select to it, reproducing the previous "tap anywhere plays"
+ * behaviour, while new callers use [onPlay] and [onSelect] and leave [onClick] null.
+ */
 @Composable
 fun EpisodeRow(
     episode: Episode,
     thumbnailUrl: String?,
-    onClick: () -> Unit,
+    onPlay: () -> Unit = {},
+    onSelect: () -> Unit = {},
+    selected: Boolean = false,
     modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
 ) {
     val colours = PlexTheme.colours
+    val play = onClick ?: onPlay
+    val select = onClick ?: onSelect
 
     Row(
         modifier = modifier
-            .plexFocusable(shape = Radius.card, onClick = onClick, scaleOnFocus = false)
             .fillMaxWidth()
+            .plexFocusable(shape = Radius.card, onClick = select, scaleOnFocus = false)
             .clip(Radius.card)
+            .background(if (selected) colours.surfaceElevated else Color.Transparent)
             .padding(Spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // A left accent bar names the selected row. It always occupies its width so the thumbnail
+        // and text keep the same position whether or not the row is selected.
+        Box(
+            Modifier
+                .width(3.dp)
+                .height(48.dp)
+                .background(
+                    if (selected) colours.accent else Color.Transparent,
+                    Radius.pill,
+                ),
+        )
+        Spacer(Modifier.width(Spacing.xs))
+
         Box(
             Modifier
                 .width(142.dp)
                 .aspectRatio(Layout.WIDE_ASPECT_RATIO)
                 .shadow(
-                    elevation = 6.dp,
+                    elevation = Elevation.card,
                     shape = Radius.poster,
                     ambientColor = colours.elevationShadow,
                     spotColor = colours.elevationShadow,
@@ -384,15 +477,24 @@ fun EpisodeRow(
 
             PosterFooterScrim(Modifier.align(Alignment.BottomCenter).fillMaxWidth())
 
-            // A quiet play token, so a thumbnail reads as a launch point rather than a still.
+            // A real, separately focusable play control. Its own click consumes the tap, so
+            // pressing it plays the episode while a tap anywhere else on the row selects it.
             Box(
                 Modifier
                     .align(Alignment.Center)
-                    .size(34.dp)
-                    .background(Color(0x66000000), Radius.pill),
+                    .plexFocusable(shape = Radius.pill, onClick = play)
+                    .size(Layout.playToken * 0.82f)
+                    .background(colours.scrimHeavy, Radius.pill)
+                    .border(1.dp, colours.edgeHighlight, Radius.pill),
                 contentAlignment = Alignment.Center,
             ) {
-                PlexIcon(PlexIconKind.PLAY, size = 18.dp, tint = Color.White)
+                // The triangle sits a hair right of centre so it reads as balanced in the disc.
+                PlexIcon(
+                    PlexIconKind.PLAY,
+                    size = 18.dp,
+                    tint = Color.White,
+                    modifier = Modifier.offset(x = 1.dp),
+                )
             }
 
             if (episode.progress > 0f && !episode.watched) {
@@ -401,6 +503,8 @@ fun EpisodeRow(
                     modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(Spacing.xxs),
                 )
             }
+
+            Box(Modifier.fillMaxSize().border(1.dp, colours.edgeHighlight, Radius.poster))
         }
 
         Spacer(Modifier.width(Spacing.sm))
@@ -411,18 +515,25 @@ fun EpisodeRow(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 PlexText(
-                    text = "${episode.episodeIndex}.",
+                    text = pad(episode.episodeIndex),
                     style = PlexTheme.type.label,
-                    colour = colours.textSecondary,
+                    colour = colours.accent,
                 )
-                Spacer(Modifier.width(Spacing.xs))
-                PlexText(text = episode.title, style = PlexTheme.type.label, maxLines = 1)
+                Spacer(Modifier.width(Spacing.sm))
+                PlexText(
+                    text = episode.title,
+                    style = PlexTheme.type.label,
+                    colour = colours.textPrimary,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
             }
 
             PlexText(
                 text = formatDuration(episode.durationMs),
                 style = PlexTheme.type.caption,
                 colour = colours.textSecondary,
+                maxLines = 1,
             )
 
             if (episode.summary.isNotBlank()) {

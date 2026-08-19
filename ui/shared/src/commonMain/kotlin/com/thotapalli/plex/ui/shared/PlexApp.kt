@@ -117,6 +117,8 @@ fun PlexApp(
                         urls = playback.urls,
                         startAtMs = playback.startAtMs,
                         onExit = viewModel::closePlayer,
+                        onToggleFullScreen = viewModel::toggleFullScreen,
+                        isFullScreen = state.isFullScreen,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -150,6 +152,7 @@ private fun ReadyContent(
                 onDownload = viewModel::download,
                 onToggleWatched = viewModel::toggleWatched,
                 onSeasonSelected = viewModel::selectSeason,
+                onSelectEpisode = viewModel::selectEpisode,
                 modifier = bodyModifier,
             )
 
@@ -196,6 +199,7 @@ private fun ReadyContent(
                 server = server,
                 continueWatching = state.continueWatching,
                 libraries = state.libraries,
+                libraryPreviews = state.libraryPreviews,
                 onItemClick = viewModel::openDetail,
                 onLibraryClick = { library: Library -> viewModel.openLibrary(library) },
                 onPlay = onPlay,

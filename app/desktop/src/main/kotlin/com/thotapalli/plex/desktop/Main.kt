@@ -1,5 +1,7 @@
 package com.thotapalli.plex.desktop
 
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
@@ -7,8 +9,10 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import androidx.compose.runtime.collectAsState
 import com.thotapalli.plex.core.data.DatabaseDriverFactory
 import com.thotapalli.plex.core.download.WindowsDownloadFileSystem
 import com.thotapalli.plex.core.download.WindowsNetworkConditions
@@ -40,20 +44,25 @@ private const val UPDATE_MANIFEST_URL =
  * See CLAUDE.md section 13.
  */
 fun main() {
-    // Lets Compose content (the player overlay) composite over the embedded heavyweight mpv
-    // video canvas instead of being hidden behind it.
-    System.setProperty("compose.interop.blending", "true")
     ui()
 }
 
 private fun ui() = application {
     val container = remember { buildContainer() }
     val viewModel = remember { AppViewModel(container) }
+    val appState by viewModel.state.collectAsState()
+
+    val windowState = rememberWindowState(width = 1280.dp, height = 800.dp)
+    // The player's full-screen toggle drives the real window placement.
+    LaunchedEffect(appState.isFullScreen) {
+        windowState.placement =
+            if (appState.isFullScreen) WindowPlacement.Fullscreen else WindowPlacement.Floating
+    }
 
     Window(
         onCloseRequest = ::exitApplication,
         title = "Thotapalli Plex",
-        state = rememberWindowState(width = 1280.dp, height = 800.dp),
+        state = windowState,
         // Escape pops the in-app stack (player, detail, library) the same way Back does on
         // Android, so the whole application is operable from the keyboard alone.
         onKeyEvent = { event ->
@@ -85,6 +94,7 @@ private fun buildContainer(): AppContainer {
         device = currentDeviceInfo(appVersion = APP_VERSION),
         driverFactory = DatabaseDriverFactory(),
         isTelevision = false,
+        isDesktop = true,
         nowMs = System::currentTimeMillis,
         downloadFileSystem = WindowsDownloadFileSystem(),
         networkConditions = WindowsNetworkConditions { container.settings.unmeteredDownloadsOnly },

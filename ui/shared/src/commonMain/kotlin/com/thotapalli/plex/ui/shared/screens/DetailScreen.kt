@@ -57,6 +57,7 @@ fun DetailScreen(
     onDownload: (MediaItem) -> Unit,
     onToggleWatched: (MediaItem) -> Unit,
     onSeasonSelected: (Season) -> Unit,
+    onSelectEpisode: (Episode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val sizeClass = PlexTheme.sizeClass
@@ -152,7 +153,9 @@ fun DetailScreen(
                                             ArtworkSize.THUMB_WIDTH,
                                             ArtworkSize.THUMB_HEIGHT,
                                         ),
-                                        onClick = { onPlay(episode, episode.viewOffsetMs) },
+                                        onPlay = { onPlay(episode, episode.viewOffsetMs) },
+                                        onSelect = { onSelectEpisode(episode) },
+                                        selected = episode.ratingKey == state.selectedEpisode?.ratingKey,
                                     )
                                 }
                                 item { Spacer(Modifier.height(Spacing.xxl)) }
@@ -286,7 +289,9 @@ fun DetailScreen(
                         ArtworkSize.THUMB_WIDTH,
                         ArtworkSize.THUMB_HEIGHT,
                     ),
-                    onClick = { onPlay(episode, episode.viewOffsetMs) },
+                    onPlay = { onPlay(episode, episode.viewOffsetMs) },
+                    onSelect = { onSelectEpisode(episode) },
+                    selected = episode.ratingKey == state.selectedEpisode?.ratingKey,
                     modifier = Modifier.padding(horizontal = contentPadding),
                 )
             }

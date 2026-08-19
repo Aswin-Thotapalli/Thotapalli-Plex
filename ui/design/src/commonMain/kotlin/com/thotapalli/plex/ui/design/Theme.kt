@@ -95,6 +95,13 @@ fun PlexText(
     style: TextStyle = PlexTheme.type.body,
     colour: androidx.compose.ui.graphics.Color = PlexTheme.colours.textPrimary,
     maxLines: Int = Int.MAX_VALUE,
+    /**
+     * Reserve at least this many lines of height, even when the text is shorter. A poster wall
+     * only stays aligned if every title block is the same height; setting [minLines] to 2 on a
+     * title makes a one-line title hold the same two lines a wrapped title takes, so the row
+     * beneath never shifts. Defaults to 1, which is the ordinary single-line case.
+     */
+    minLines: Int = 1,
     overflow: androidx.compose.ui.text.style.TextOverflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
     modifier: androidx.compose.ui.Modifier = androidx.compose.ui.Modifier,
 ) {
@@ -103,6 +110,7 @@ fun PlexText(
         style = style,
         color = colour,
         maxLines = maxLines,
+        minLines = minLines,
         overflow = overflow,
         modifier = modifier,
     )

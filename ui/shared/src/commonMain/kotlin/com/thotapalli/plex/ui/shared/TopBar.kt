@@ -1,6 +1,7 @@
 package com.thotapalli.plex.ui.shared
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -13,8 +14,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.thotapalli.plex.ui.design.Elevation
+import com.thotapalli.plex.ui.design.Layout
 import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
@@ -75,8 +81,13 @@ fun TopBar(
 }
 
 /**
- * A round, focusable icon button sized for the bar. Exposed so trailing [TopBar] actions can
- * be built from the same token as the back button.
+ * A round, focusable icon button sized for the bar, and the floating back control.
+ *
+ * The back control has to survive being dropped onto the brightest still in a library, so it is
+ * never a bare glyph. In [scrim] mode it is a dense dark disc lifted off the backdrop by a soft
+ * shadow, ringed with a hairline, carrying a bright white icon — an obvious, tappable control at
+ * any brightness. In opaque mode (a trailing action on a painted bar) it still gets a quiet
+ * elevated-surface disc and a hairline so it never disappears into the bar behind it.
  */
 @Composable
 fun TopBarIconButton(
@@ -88,22 +99,37 @@ fun TopBarIconButton(
 ) {
     val colours = PlexTheme.colours
     val isTelevision = PlexTheme.sizeClass.isTelevision
-    val touch = if (isTelevision) 48.dp else 40.dp
+    val touch = if (isTelevision) Layout.iconButtonTelevision else Layout.iconButton
+
+    // A dark disc over artwork, or a quiet elevated disc on a painted bar. Either way it is a
+    // filled, ringed control rather than a naked icon.
+    val discBrush = if (scrim) {
+        Brush.verticalGradient(0f to Color(0xC2000000), 1f to colours.scrimHeavy)
+    } else {
+        Brush.verticalGradient(0f to colours.surfaceElevated, 1f to colours.surface)
+    }
+    val ring = if (scrim) Color(0x40FFFFFF) else colours.border
+    val icon = tint ?: if (scrim) Color.White else colours.textPrimary
 
     Box(
         modifier = modifier
             .plexFocusable(shape = Radius.pill, onClick = onClick)
             .size(touch)
-            .background(
-                if (scrim) Color(0x66000000) else Color.Transparent,
-                Radius.pill,
-            ),
+            .shadow(
+                elevation = Elevation.floating,
+                shape = Radius.pill,
+                ambientColor = colours.elevationShadow,
+                spotColor = colours.elevationShadow,
+            )
+            .clip(Radius.pill)
+            .background(discBrush, Radius.pill)
+            .border(1.dp, ring, Radius.pill),
         contentAlignment = Alignment.Center,
     ) {
         PlexIcon(
             kind = kind,
             size = if (isTelevision) 28.dp else 24.dp,
-            tint = tint ?: if (scrim) Color.White else colours.textPrimary,
+            tint = icon,
         )
     }
 }
