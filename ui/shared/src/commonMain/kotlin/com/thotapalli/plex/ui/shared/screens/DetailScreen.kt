@@ -311,8 +311,14 @@ private fun DetailActions(
     onToggleWatched: (MediaItem) -> Unit,
 ) {
     val item = state.item
-    // A show plays its next unwatched episode. See CLAUDE.md section 14 item 5.
-    val playTarget: MediaItem = state.nextUnwatched ?: item
+    // A show plays its next unwatched episode; if every episode is watched it plays the
+    // first of the shown season rather than the show itself, which has no file to play and
+    // would otherwise stall at 0:00. A movie has no episodes, so it stays the item.
+    // See CLAUDE.md section 14 item 5.
+    val playTarget: MediaItem = state.nextUnwatched
+        ?: state.episodesInSelectedSeason.firstOrNull()
+        ?: state.episodes.firstOrNull()
+        ?: item
     val resumeFrom = playTarget.viewOffsetMs
     val resumable = playTarget.partiallyWatched
 
