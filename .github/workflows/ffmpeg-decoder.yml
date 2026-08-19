@@ -135,12 +135,9 @@ jobs:
             echo "The AAR is unchanged; nothing to commit."
           else
             media3="${{ steps.guard.outputs.media3 }}"
-            git commit -m "Build the Media3 ${media3} FFmpeg audio decoder
-
-Compiled from the androidx/media source at ${media3} against FFmpeg ${FFMPEG_BRANCH},
-with the audio codecs in player/exo/ffmpeg-codecs.txt. Committed by the FFmpeg decoder
-workflow so no NDK is needed to build the app.
-
-Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+            git commit \
+              -m "Build the Media3 ${media3} FFmpeg audio decoder" \
+              -m "Compiled from the androidx/media source at ${media3} against FFmpeg ${FFMPEG_BRANCH}, with the audio codecs in player/exo/ffmpeg-codecs.txt. Committed by the FFmpeg decoder workflow so no NDK is needed to build the app." \
+              -m "Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
             git push origin HEAD:main
           fi
