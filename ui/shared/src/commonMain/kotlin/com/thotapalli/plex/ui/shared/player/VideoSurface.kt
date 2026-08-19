@@ -18,5 +18,6 @@ import com.thotapalli.plex.core.playback.PlayerEngine
 @Composable
 expect fun VideoSurface(
     bind: (PlayerEngine) -> Unit,
+    onPointerActivity: () -> Unit,
     modifier: Modifier,
 )

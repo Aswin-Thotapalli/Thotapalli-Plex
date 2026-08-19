@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.SwingPanel
@@ -35,10 +36,13 @@ import java.awt.Canvas as AwtCanvas
 @Composable
 actual fun VideoSurface(
     bind: (PlayerEngine) -> Unit,
+    onPointerActivity: () -> Unit,
     modifier: Modifier,
 ) {
     val scope = rememberCoroutineScope()
     var engine by remember { mutableStateOf<PlayerEngine?>(null) }
+    // Kept fresh so the mouse listener, added once, always calls the latest callback.
+    val latestActivity = rememberUpdatedState(onPointerActivity)
 
     val canvas = remember {
         object : AwtCanvas() {
@@ -55,6 +59,12 @@ actual fun VideoSurface(
             // Non-focusable so key events (Escape to leave) reach the Compose window rather
             // than being swallowed by this heavyweight component.
             isFocusable = false
+            // The heavyweight canvas eats mouse events, so it reports movement itself to
+            // reveal the auto-hiding controls.
+            addMouseMotionListener(object : java.awt.event.MouseMotionAdapter() {
+                override fun mouseMoved(e: java.awt.event.MouseEvent?) { latestActivity.value() }
+                override fun mouseDragged(e: java.awt.event.MouseEvent?) { latestActivity.value() }
+            })
         }
     }
 

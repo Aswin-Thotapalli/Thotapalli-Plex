@@ -25,6 +25,8 @@ import com.thotapalli.plex.player.exo.ExoPlayerEngine
 @Composable
 actual fun VideoSurface(
     bind: (PlayerEngine) -> Unit,
+    // Android reveals the controls from the Compose overlay's own taps, so this is unused.
+    onPointerActivity: () -> Unit,
     modifier: Modifier,
 ) {
     val context = LocalContext.current

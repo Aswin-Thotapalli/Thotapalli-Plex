@@ -1,5 +1,6 @@
 package com.thotapalli.plex.ui.shared.player
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -24,6 +25,7 @@ import com.thotapalli.plex.core.playback.PlayerEngine
 import com.thotapalli.plex.ui.design.ThotapalliTheme
 import com.thotapalli.plex.ui.shared.AppContainer
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.time.TimeSource
 import androidx.compose.foundation.layout.Arrangement
@@ -135,12 +137,33 @@ fun PlayerScreen(
     ThotapalliTheme(forceDark = true) {
         if (container.isDesktop) {
             // The desktop video is a heavyweight native window the Compose overlay cannot
-            // paint over, so controls sit in a persistent bar beneath the picture.
+            // paint over, so the control bar sits beneath the picture and auto-hides while
+            // playing, returning the moment the pointer moves. See section 12.
+            var controlsVisible by remember { mutableStateOf(true) }
+            var activityTick by remember { mutableStateOf(0) }
+            LaunchedEffect(activityTick, screenState.isPlaying) {
+                if (screenState.isPlaying) {
+                    delay(3_000)
+                    controlsVisible = false
+                }
+            }
+
             Column(modifier.fillMaxSize().background(Color.Black)) {
                 Box(Modifier.weight(1f).fillMaxWidth()) {
-                    VideoSurface(bind = { engine = it }, modifier = Modifier.fillMaxSize())
+                    VideoSurface(
+                        bind = { engine = it },
+                        onPointerActivity = { controlsVisible = true; activityTick++ },
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
-                DesktopControlBar(state = screenState, actions = actions, onToggleFullScreen = onToggleFullScreen, isFullScreen = isFullScreen)
+                AnimatedVisibility(visible = controlsVisible) {
+                    DesktopControlBar(
+                        state = screenState,
+                        actions = actions,
+                        onToggleFullScreen = onToggleFullScreen,
+                        isFullScreen = isFullScreen,
+                    )
+                }
             }
         } else {
             Box(
@@ -153,7 +176,7 @@ fun PlayerScreen(
                         detectTapGestures(onPress = { controller?.noteInput() })
                     },
             ) {
-                VideoSurface(bind = { engine = it }, modifier = Modifier.fillMaxSize())
+                VideoSurface(bind = { engine = it }, onPointerActivity = {}, modifier = Modifier.fillMaxSize())
 
                 PlayerOverlay(state = screenState, actions = actions, modifier = Modifier.fillMaxSize())
 
