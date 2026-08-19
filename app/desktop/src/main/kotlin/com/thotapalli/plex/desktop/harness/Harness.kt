@@ -2,7 +2,11 @@ package com.thotapalli.plex.desktop.harness
 
 import com.thotapalli.plex.core.api.ConnectionSelector
 import com.thotapalli.plex.core.api.PlexTvApi
+import com.thotapalli.plex.core.api.LibraryContentType
 import com.thotapalli.plex.core.api.PlexHttp
+import com.thotapalli.plex.core.api.PlexServerApi
+import com.thotapalli.plex.core.api.ServerScope
+import com.thotapalli.plex.core.model.LibraryKind
 import com.thotapalli.plex.core.session.DpapiSecureStore
 import com.thotapalli.plex.core.session.FileKeyValueStore
 import com.thotapalli.plex.core.session.IdentityHeaderProvider
@@ -17,6 +21,8 @@ import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.runBlocking
 import java.awt.Desktop
 import java.net.URI
+import java.nio.file.Files
+import java.nio.file.Path
 
 /**
  * The command line harness for CLAUDE.md section 16 phase 2.
@@ -51,6 +57,7 @@ fun main(argv: Array<String>) {
             "signin" -> runBlocking { signIn(api, tokens) }
             "servers" -> runBlocking { servers(api, identity, tokens, plain) }
             "token" -> readBackToken(tokens, identity)
+            "record" -> runBlocking { record(identity, tokens, plain) }
             "libraries", "continue", "search" -> runBlocking {
                 LibraryHarness(identity, tokens, plain).run(command, argv.drop(1).joinToString(" ").ifBlank { null })
             }
@@ -75,6 +82,7 @@ private fun printHelp() {
           signin     run the PIN sign in flow and store the account token
           servers    list servers and the connection chosen for each
           token      read the stored token back, proving it survived a restart
+          record     record real JSON fixtures from the server into core/api test resources
           signout    clear the token, keeping the client identifier
           libraries  list every library and a sample of its contents
           continue   print Continue Watching with resume positions
@@ -222,6 +230,157 @@ private fun readBackToken(tokens: TokenStore, identity: IdentityHeaderProvider) 
     println("  decrypted with DPAPI CryptUnprotectData, scoped to the current user")
     println()
     println("Read back successfully. Storage key: ${StorageKeys.ACCOUNT_TOKEN}")
+}
+
+/**
+ * Records real Plex responses over the authored fixtures in
+ * `core/api/src/commonTest/resources/`.
+ *
+ * CLAUDE.md working rule 5: a Plex response shape that is unclear gets a real fixture
+ * recorded from the server and the mapper written against it. The fixtures that shipped
+ * with phase 3 were authored from the documented shapes, because no account had been
+ * signed in when the mappers were written. This replaces them.
+ *
+ * The mapper tests should pass unchanged afterwards. If one fails, the mapper was wrong
+ * and the recording is the authority, which is the whole reason for recording.
+ */
+private suspend fun record(
+    identity: IdentityHeaderProvider,
+    tokens: TokenStore,
+    plain: FileKeyValueStore,
+) {
+    val token = tokens.accountToken()
+    if (token.isNullOrBlank()) {
+        println("Not signed in. Run the signin command first.")
+        return
+    }
+
+    val outputDir = Path.of("core", "api", "src", "commonTest", "resources")
+    if (!Files.isDirectory(outputDir)) {
+        println("Run this from the repository root. Expected this directory to exist:")
+        println("  " + outputDir.toAbsolutePath())
+        return
+    }
+
+    val http = PlexHttp.create()
+    try {
+        val api = PlexTvApi(http, identity)
+        val selector = ConnectionSelector(
+            http = http,
+            identityHeaders = identity,
+            nowMs = System::currentTimeMillis,
+            elapsedMs = { System.nanoTime() / 1_000_000 },
+        )
+        val directory = ServerDirectory(api, selector, plain, System::currentTimeMillis)
+        val session = PlexSession(api, tokens, directory, identity)
+
+        val target = session.activeTarget()
+        if (target == null) {
+            println("No reachable server. Run the servers command to see why.")
+            return
+        }
+        println("Recording from " + target.server.name + " at " + target.baseUri)
+        println()
+
+        val server = PlexServerApi(http, identity)
+        val scope = ServerScope(target.baseUri, target.accessToken)
+        var written = 0
+
+        suspend fun capture(file: String, path: String, query: Map<String, String> = emptyMap()) {
+            runCatching { server.rawJson(scope, path, query) }
+                .onSuccess { body ->
+                    Files.writeString(outputDir.resolve(file), body)
+                    written++
+                    println("  wrote " + file + " (" + body.length + " characters) from " + path)
+                }
+                .onFailure { println("  skipped " + file + ": " + it.message) }
+        }
+
+        capture("library_sections.json", "/library/sections")
+
+        // Everything below depends on what this particular server holds, so each key is
+        // discovered rather than assumed.
+        val libraries = runCatching { server.libraries(scope) }.getOrDefault(emptyList())
+        val movieLibrary = libraries.firstOrNull { it.kind == LibraryKind.MOVIE }
+        val showLibrary = libraries.firstOrNull { it.kind == LibraryKind.SHOW }
+
+        if (movieLibrary == null) {
+            println("  skipped the movie fixtures: no movie library on this server")
+        } else {
+            capture(
+                "library_movies.json",
+                "/library/sections/" + movieLibrary.key + "/all",
+                mapOf("type" to "1", "sort" to "titleSort:asc"),
+            )
+            capture("collections.json", "/library/sections/" + movieLibrary.key + "/collections")
+
+            val firstMovie = runCatching {
+                server.libraryContents(scope, movieLibrary.key, LibraryContentType.MOVIE).firstOrNull()
+            }.getOrNull()
+
+            if (firstMovie == null) {
+                println("  skipped movie_metadata.json: the movie library is empty")
+            } else {
+                capture(
+                    "movie_metadata.json",
+                    "/library/metadata/" + firstMovie.ratingKey,
+                    mapOf("includeMarkers" to "1", "includeChapters" to "1"),
+                )
+            }
+        }
+
+        if (showLibrary == null) {
+            println("  skipped the show fixtures: no show library on this server")
+        } else {
+            capture(
+                "library_shows.json",
+                "/library/sections/" + showLibrary.key + "/all",
+                mapOf("type" to "2", "sort" to "titleSort:asc"),
+            )
+
+            val firstShow = runCatching {
+                server.libraryContents(scope, showLibrary.key, LibraryContentType.SHOW).firstOrNull()
+            }.getOrNull()
+
+            if (firstShow != null) {
+                capture("show_children.json", "/library/metadata/" + firstShow.ratingKey + "/children")
+
+                // An episode that actually carries markers is the one worth recording,
+                // since markers are what the intro skip and the credit skip are built on.
+                val episodes = runCatching { server.allEpisodes(scope, firstShow.ratingKey) }
+                    .getOrDefault(emptyList())
+                val chosen = episodes.firstOrNull { episode ->
+                    runCatching {
+                        server.metadata(scope, episode.ratingKey)?.markers?.isNotEmpty() == true
+                    }.getOrDefault(false)
+                } ?: episodes.firstOrNull()
+
+                if (chosen == null) {
+                    println("  skipped episode_metadata.json: no episodes found")
+                } else {
+                    capture(
+                        "episode_metadata.json",
+                        "/library/metadata/" + chosen.ratingKey,
+                        mapOf("includeMarkers" to "1", "includeChapters" to "1"),
+                    )
+                }
+            }
+        }
+
+        capture("continue_watching.json", "/hubs/continueWatching/items")
+        capture("search.json", "/hubs/search", mapOf("query" to "the", "limit" to "50"))
+
+        println()
+        println("Recorded " + written + " fixtures into " + outputDir.toAbsolutePath())
+        println()
+        println("These carry your server name, media file paths and rating keys, but no")
+        println("token: the token travels as a header and is in no response body. Read them")
+        println("before committing, then run:")
+        println("  gradlew :core:api:jvmTest")
+        println("A failure now means the mapper was wrong. The recording is the authority.")
+    } finally {
+        http.close()
+    }
 }
 
 private fun openBrowser(url: String) {

@@ -21,6 +21,7 @@ import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
 import io.ktor.client.request.headers
 import io.ktor.client.request.parameter
+import io.ktor.client.statement.bodyAsText
 
 /**
  * Every server endpoint this client uses, from CLAUDE.md section 5.
@@ -206,6 +207,26 @@ class PlexServerApi(
             scope.apply(this)
         }
         response.requireSuccess("unscrobble $ratingKey")
+    }
+
+    /**
+     * The raw JSON body of a server endpoint, exactly as it came off the wire.
+     *
+     * Exists only to record fixtures. CLAUDE.md working rule 5 asks for real recordings
+     * rather than authored ones, and a mapper is only worth as much as the response it was
+     * written against. Nothing in the application calls this.
+     */
+    suspend fun rawJson(
+        scope: ServerScope,
+        path: String,
+        query: Map<String, String> = emptyMap(),
+    ): String {
+        val response = client.get("${'$'}{scope.baseUri}${'$'}path") {
+            query.forEach { (name, value) -> parameter(name, value) }
+            scope.apply(this)
+        }
+        response.requireSuccess("raw ${'$'}path")
+        return response.bodyAsText()
     }
 
     private suspend fun ServerScope.apply(builder: HttpRequestBuilder) {
