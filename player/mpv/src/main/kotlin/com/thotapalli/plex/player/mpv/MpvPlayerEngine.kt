@@ -46,6 +46,12 @@ class MpvPlayerEngine(
     private var scrubbing = false
 
     /**
+     * Whether refresh-rate matching has been attempted for the current file. Reset on every
+     * [load] so auto-play-next, which reuses this engine, re-evaluates for the next episode.
+     */
+    private var rateMatchAttempted = false
+
+    /**
      * Creates the mpv instance and applies the section 8 options.
      *
      * @param windowHandle the HWND mpv renders into. mpv owns that surface entirely and
@@ -91,6 +97,7 @@ class MpvPlayerEngine(
         }
 
         _state.value = PlaybackState.Buffering
+        rateMatchAttempted = false
 
         // Plex needs the token and the identity headers on the stream request too, since
         // mpv fetches it itself rather than through this client's HTTP stack.
@@ -147,6 +154,23 @@ class MpvPlayerEngine(
         handle?.let { lib.mpv_terminate_destroy(it) }
         handle = null
         _state.value = PlaybackState.Idle
+
+        // Put any refresh-rate change from this session back before the player leaves. Guarded
+        // inside the matcher, so a failure here never obstructs teardown. See CLAUDE.md section 9.
+        runCatching { DisplayRateMatcher.restore() }
+    }
+
+    /**
+     * The content frame rate mpv measured, or null before the first frame.
+     *
+     * `estimated-vf-fps` is mpv's measured rate after the video filter chain, which is what the
+     * display should be matched against; `container-fps` is the muxer's declared rate, used as a
+     * fallback when the estimate is not yet available. See CLAUDE.md section 9.
+     */
+    fun contentFrameRate(): Double? {
+        val h = handle ?: return null
+        property(h, "estimated-vf-fps")?.toDoubleOrNull()?.takeIf { it > 0.0 }?.let { return it }
+        return property(h, "container-fps")?.toDoubleOrNull()?.takeIf { it > 0.0 }
     }
 
     // --- internals --------------------------------------------------------------------
@@ -210,6 +234,23 @@ class MpvPlayerEngine(
             paused -> PlaybackState.Paused
             idle -> PlaybackState.Buffering
             else -> PlaybackState.Playing
+        }
+
+        maybeMatchDisplayRate(h)
+    }
+
+    /**
+     * Once the first frame has been decoded and a frame rate is known, match the display rate to
+     * it, once per file. The switch itself blanks the screen for a moment and can block, so it
+     * runs off the event thread on the engine scope, and the matcher swallows every failure so
+     * playback is never affected. See CLAUDE.md section 9.
+     */
+    private fun maybeMatchDisplayRate(h: Pointer) {
+        if (rateMatchAttempted) return
+        val fps = contentFrameRate() ?: return
+        rateMatchAttempted = true
+        scope.launch(Dispatchers.IO) {
+            runCatching { DisplayRateMatcher.matchForContentRate(fps) }
         }
     }
 

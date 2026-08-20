@@ -21,6 +21,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import com.thotapalli.plex.core.model.Episode
 import com.thotapalli.plex.core.model.MediaItem
@@ -44,6 +46,7 @@ import com.thotapalli.plex.ui.shared.PrimaryButton
 import com.thotapalli.plex.ui.shared.SecondaryButton
 import com.thotapalli.plex.ui.shared.SectionHeader
 import com.thotapalli.plex.ui.shared.formatDuration
+import com.thotapalli.plex.ui.shared.input.rememberFirstFocus
 
 /**
  * Movie detail and show detail, which share a cinematic header and differ only below it.
@@ -62,6 +65,9 @@ fun DetailScreen(
 ) {
     val sizeClass = PlexTheme.sizeClass
     val item = state.item
+    // On a television the primary Play/Resume action takes first focus on entry, so the
+    // remote lands on the one action that matters. See CLAUDE.md section 13.
+    val firstFocus = rememberFirstFocus(enabled = sizeClass.isTelevision)
     val heroHeight = if (sizeClass.twoPaneDetail) 460.dp else 320.dp
     // Content sits in a readable measure and never stretches to a television's full width.
     val contentPadding = sizeClass.screenPadding
@@ -122,6 +128,7 @@ fun DetailScreen(
                             onPlay = onPlay,
                             onDownload = onDownload,
                             onToggleWatched = onToggleWatched,
+                            firstFocus = firstFocus,
                         )
 
                         // A show keeps its summary on the left; a movie hands it to the right
@@ -223,6 +230,7 @@ fun DetailScreen(
                     onPlay = onPlay,
                     onDownload = onDownload,
                     onToggleWatched = onToggleWatched,
+                    firstFocus = firstFocus,
                 )
 
                 if (item.summary.isNotBlank()) {
@@ -309,6 +317,7 @@ private fun DetailActions(
     onPlay: (MediaItem, Long) -> Unit,
     onDownload: (MediaItem) -> Unit,
     onToggleWatched: (MediaItem) -> Unit,
+    firstFocus: FocusRequester? = null,
 ) {
     val item = state.item
     // A show plays its next unwatched episode; if every episode is watched it plays the
@@ -336,6 +345,7 @@ private fun DetailActions(
             },
             onClick = { onPlay(playTarget, resumeFrom) },
             leadingIcon = PlexIconKind.PLAY,
+            modifier = if (firstFocus != null) Modifier.focusRequester(firstFocus) else Modifier,
         )
         // Resume leaves a way back to the beginning, which resume-immediately otherwise hides.
         if (resumable) {

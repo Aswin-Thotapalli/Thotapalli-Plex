@@ -33,11 +33,14 @@ import com.thotapalli.plex.core.session.DpapiSecureStore
 import com.thotapalli.plex.core.session.FileKeyValueStore
 import com.thotapalli.plex.core.session.UpdateTarget
 import com.thotapalli.plex.core.session.currentDeviceInfo
+import com.thotapalli.plex.player.mpv.DisplayRateMatcher
 import com.thotapalli.plex.ui.design.ThotapalliTheme
 import com.thotapalli.plex.ui.shared.AppContainer
 import com.thotapalli.plex.ui.shared.AppState
 import com.thotapalli.plex.ui.shared.AppViewModel
 import com.thotapalli.plex.ui.shared.PlexApp
+import com.thotapalli.plex.ui.shared.input.PlayerKeyAction
+import com.thotapalli.plex.ui.shared.input.keyToPlayerAction
 import com.thotapalli.plex.ui.shared.player.PlayerOverlay
 import com.thotapalli.plex.ui.shared.player.TrackSheet
 import com.thotapalli.plex.ui.shared.player.TrackSheetKind
@@ -65,6 +68,10 @@ fun main() {
     // In case the process dies while full screen, put the window frame styles back is moot, but
     // any taskbar we hid as a fallback must be shown again.
     Runtime.getRuntime().addShutdownHook(Thread { BorderlessFullscreen.showTaskbar() })
+    // And if the process dies mid-playback with a refresh rate applied, put the display back to
+    // its saved settings. Mirrors the taskbar hook above; a no-op when nothing was changed.
+    // See CLAUDE.md section 9.
+    Runtime.getRuntime().addShutdownHook(Thread { DisplayRateMatcher.restore() })
     ui()
 }
 
@@ -255,12 +262,21 @@ private fun ApplicationScope.PlayerOverlayWindow(
         resizable = false,
         focusable = true,
         title = "",
+        // The desktop keyboard shortcuts, mapped through the shared [keyToPlayerAction] so phone,
+        // television and Windows agree on what each key means. The overlay window is only ever
+        // shown while a video is active, so every action has a live player to drive. Back maps to
+        // Escape here — the single Back path, replacing the earlier Escape-only handler.
+        // See CLAUDE.md section 16 phase 7 step 2.
         onKeyEvent = { event ->
-            if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
-                viewModel.closePlayer()
-                true
-            } else {
-                false
+            when (keyToPlayerAction(event)) {
+                PlayerKeyAction.PLAY_PAUSE -> { container.playerBridge.actions.onPlayPause(); true }
+                PlayerKeyAction.SEEK_BACK -> { container.playerBridge.actions.onSeekBack(); true }
+                PlayerKeyAction.SEEK_FORWARD -> { container.playerBridge.actions.onSeekForward(); true }
+                PlayerKeyAction.TOGGLE_FULL_SCREEN -> { viewModel.toggleFullScreen(); true }
+                PlayerKeyAction.BACK -> { viewModel.closePlayer(); true }
+                PlayerKeyAction.CYCLE_SUBTITLES -> { container.playerBridge.actions.onOpenSubtitleTracks(); true }
+                PlayerKeyAction.CYCLE_AUDIO -> { container.playerBridge.actions.onOpenAudioTracks(); true }
+                null -> false
             }
         },
     ) {
@@ -350,6 +366,11 @@ private fun buildContainer(): AppContainer {
     // "Download on unmetered networks only" defaults off for Windows, since the desktop has
     // no reliable metered signal to act on. See CLAUDE.md section 11 rule 6.
     container.settings.defaultUnmetered = false
+
+    // The mpv engine matches the display refresh rate to the content only when this setting is
+    // on (off by default on Windows). Late-bound so toggling it takes effect on the next file.
+    // See CLAUDE.md section 9.
+    DisplayRateMatcher.enabled = { container.settings.matchDisplayRate }
 
     return container
 }

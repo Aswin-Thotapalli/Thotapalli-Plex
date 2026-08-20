@@ -49,6 +49,11 @@ data class PlayerActions(
     val onSeekForward: () -> Unit = {},
     /** Double-tap the right of the picture: jump forward ten seconds. */
     val onSeekForward10: () -> Unit = {},
+    /**
+     * Seek by a relative delta in milliseconds, clamped to the item's bounds. Drives the
+     * television held-D-pad scrub of thirty seconds per 400 ms. See CLAUDE.md section 13.5.
+     */
+    val onSeekRelative: (Long) -> Unit = {},
     val onScrubStart: () -> Unit = {},
     val onScrub: (Long) -> Unit = {},
     val onScrubEnd: (Long) -> Unit = {},

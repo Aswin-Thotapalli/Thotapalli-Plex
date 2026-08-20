@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import com.thotapalli.plex.core.model.MediaCollection
 import com.thotapalli.plex.core.model.MediaItem
@@ -29,6 +30,7 @@ import com.thotapalli.plex.ui.shared.PosterGrid
 import com.thotapalli.plex.ui.shared.PosterTile
 import com.thotapalli.plex.ui.shared.SectionHeader
 import com.thotapalli.plex.ui.shared.SkeletonPosterGrid
+import com.thotapalli.plex.ui.shared.input.rememberFirstFocus
 import com.thotapalli.plex.ui.shared.motion.staggeredEntrance
 
 /**
@@ -47,6 +49,11 @@ fun LibraryScreen(
     modifier: Modifier = Modifier,
 ) {
     val insideCollection = state.openCollection != null
+    // On a television the first tile in the grid takes focus on entry, so the remote lands
+    // somewhere. Collections are emitted first, so the index-0 collection is the true first
+    // tile; where no collections show, the index-0 poster is. See CLAUDE.md section 13.
+    val firstFocus = rememberFirstFocus(enabled = PlexTheme.sizeClass.isTelevision)
+    val collectionsShown = !insideCollection && state.collections.isNotEmpty()
 
     Column(modifier = modifier.fillMaxSize()) {
         Row(
@@ -95,7 +102,9 @@ fun LibraryScreen(
                             ArtworkSize.POSTER_HEIGHT,
                         ),
                         onClick = { onCollectionClick(collection) },
-                        modifier = Modifier.staggeredEntrance(index, key = collection.ratingKey),
+                        modifier = Modifier
+                            .staggeredEntrance(index, key = collection.ratingKey)
+                            .then(if (index == 0) Modifier.focusRequester(firstFocus) else Modifier),
                     )
                 }
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -113,7 +122,15 @@ fun LibraryScreen(
                         ArtworkSize.POSTER_HEIGHT,
                     ),
                     onClick = { onItemClick(item) },
-                    modifier = Modifier.staggeredEntrance(index, key = item.ratingKey),
+                    modifier = Modifier
+                        .staggeredEntrance(index, key = item.ratingKey)
+                        .then(
+                            if (!collectionsShown && index == 0) {
+                                Modifier.focusRequester(firstFocus)
+                            } else {
+                                Modifier
+                            },
+                        ),
                 )
             }
 

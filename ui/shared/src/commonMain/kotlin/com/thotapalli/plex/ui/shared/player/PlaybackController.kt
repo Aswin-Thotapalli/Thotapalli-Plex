@@ -306,6 +306,9 @@ class PlaybackController(
         // The double-tap gestures seek a fixed ten seconds each way, independent of the
         // transport buttons' -10s / +30s. See CLAUDE.md section 14 item 7.
         onSeekForward10 = { noteInput(); seekBy(SEEK_TAP_FORWARD_MS) },
+        // The television held-D-pad scrub steps by ±30_000 ms each 400 ms; each step is an
+        // ordinary relative seek. See CLAUDE.md section 13.5.
+        onSeekRelative = { delta -> noteInput(); seekBy(delta) },
         onScrubStart = {
             noteInput()
             engine.setScrubbing(true)

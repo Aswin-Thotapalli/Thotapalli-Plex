@@ -46,6 +46,7 @@ fun HomeHero(
     onPlay: () -> Unit,
     onDetails: () -> Unit,
     modifier: Modifier = Modifier,
+    viewportHeight: Dp? = null,
 ) {
     val colours = PlexTheme.colours
     val resuming = item.viewOffsetMs > 0L
@@ -53,7 +54,7 @@ fun HomeHero(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(heroHeight(PlexTheme.sizeClass))
+            .height(heroHeight(PlexTheme.sizeClass, viewportHeight))
             .shadow(
                 elevation = 16.dp,
                 shape = Radius.card,
@@ -145,12 +146,28 @@ private fun heroMetadata(item: MediaItem): String? {
     return parts.takeIf { it.isNotEmpty() }?.joinToString("  •  ")
 }
 
-private fun heroHeight(sizeClass: SizeClass): Dp = when (sizeClass) {
-    SizeClass.COMPACT -> 380.dp
-    SizeClass.MEDIUM -> 420.dp
-    SizeClass.EXPANDED -> 460.dp
-    SizeClass.TELEVISION -> 560.dp
+/**
+ * The hero's designed height per size class, capped so it never eats the whole viewport.
+ *
+ * On a short window — a normal-height desktop window is only a few hundred dp tall — the fixed
+ * designed height can exceed the visible area and push the action buttons off the bottom edge,
+ * where the taskbar occludes them. When the viewport height is known, the hero is held to a
+ * fraction of it so the buttons always sit clear of the bottom and the rails below the hero peek
+ * into view without scrolling. On tall windows the cap never bites and the designed height stands.
+ */
+private fun heroHeight(sizeClass: SizeClass, viewportHeight: Dp?): Dp {
+    val designed = when (sizeClass) {
+        SizeClass.COMPACT -> 380.dp
+        SizeClass.MEDIUM -> 420.dp
+        SizeClass.EXPANDED -> 460.dp
+        SizeClass.TELEVISION -> 560.dp
+    }
+    if (viewportHeight == null || viewportHeight <= 0.dp) return designed
+    return minOf(designed, viewportHeight * HERO_MAX_VIEWPORT_FRACTION)
 }
+
+/** The hero may occupy at most this share of the viewport, leaving the rails below it in view. */
+private const val HERO_MAX_VIEWPORT_FRACTION = 0.6f
 
 /** On wide screens the resume bar need not run the whole width to read. */
 private fun heroProgressWidthFraction(sizeClass: SizeClass): Float =

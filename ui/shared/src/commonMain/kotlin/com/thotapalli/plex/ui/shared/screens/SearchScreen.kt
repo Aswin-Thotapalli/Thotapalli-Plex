@@ -34,6 +34,7 @@ import com.thotapalli.plex.ui.shared.PosterTile
 import com.thotapalli.plex.ui.shared.SearchState
 import com.thotapalli.plex.ui.shared.LoadingIndicator
 import com.thotapalli.plex.ui.shared.SectionHeader
+import com.thotapalli.plex.ui.shared.input.rememberFirstFocus
 
 /**
  * Search: one field, results grouped under Movies, Shows and Episodes.
@@ -53,6 +54,9 @@ fun SearchScreen(
 ) {
     val colours = PlexTheme.colours
     val sizeClass = PlexTheme.sizeClass
+    // On a television the search field takes first focus, so the remote has somewhere to
+    // start typing. See CLAUDE.md section 13.
+    val firstFocus = rememberFirstFocus(enabled = sizeClass.isTelevision)
 
     ContentWidthCap(modifier) {
         Column(Modifier.fillMaxSize().padding(sizeClass.screenPadding)) {
@@ -77,7 +81,10 @@ fun SearchScreen(
                     textStyle = LocalTextStyle.current.merge(PlexTheme.type.body)
                         .copy(color = colours.textPrimary),
                     cursorBrush = SolidColor(colours.accent),
-                    modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester)
+                        .focusRequester(firstFocus),
                 )
             }
 

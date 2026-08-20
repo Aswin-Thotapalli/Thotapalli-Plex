@@ -2,6 +2,7 @@ package com.thotapalli.plex.ui.shared.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import com.thotapalli.plex.core.download.DownloadRow
 import com.thotapalli.plex.core.download.DownloadState
@@ -26,6 +28,7 @@ import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
 import com.thotapalli.plex.ui.shared.ContentWidthCap
 import com.thotapalli.plex.ui.shared.SectionHeader
+import com.thotapalli.plex.ui.shared.input.rememberFirstFocus
 
 /**
  * Downloads: downloaded and queued items with title, size and state. Active rows show
@@ -42,6 +45,11 @@ fun DownloadsScreen(
     modifier: Modifier = Modifier,
 ) {
     val colours = PlexTheme.colours
+    // On a television the header takes first focus on entry. The rows are not focusable as a
+    // whole (only their action chips are) and the list can be empty, so the always-present
+    // header is the stable landing spot that keeps focus from landing nowhere.
+    // See CLAUDE.md section 13.
+    val firstFocus = rememberFirstFocus(enabled = PlexTheme.sizeClass.isTelevision)
 
     ContentWidthCap(modifier) {
         LazyColumn(
@@ -52,7 +60,11 @@ fun DownloadsScreen(
             verticalArrangement = Arrangement.spacedBy(Spacing.xs),
         ) {
             item {
-                Column {
+                Column(
+                    Modifier
+                        .focusRequester(firstFocus)
+                        .focusable(),
+                ) {
                     SectionHeader("Downloads")
                     PlexText(
                         text = "${formatBytes(totalBytesOnDisk)} used",

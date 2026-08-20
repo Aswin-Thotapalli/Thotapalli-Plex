@@ -1,6 +1,7 @@
 package com.thotapalli.plex.ui.shared.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -54,11 +55,17 @@ fun HomeScreen(
     // The featured title is the hero; the rail holds the others, so nothing is shown twice.
     val continueRail = continueWatching.drop(1)
 
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = Spacing.xxl),
-        verticalArrangement = Arrangement.spacedBy(Spacing.xl),
-    ) {
+    // The viewport height bounds the hero: on a short window the hero is capped to a fraction of
+    // it so its action buttons stay clear of the bottom edge and the rails below remain in view.
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val viewportHeight = maxHeight
+        println("HOMEDEBUG maxHeight=" + maxHeight + " maxWidth=" + maxWidth + " sizeClass=" + sizeClass)
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = Spacing.xxl),
+            verticalArrangement = Arrangement.spacedBy(Spacing.xl),
+        ) {
         if (featured != null) {
             item(key = "hero") {
                 HomeHero(
@@ -70,6 +77,7 @@ fun HomeScreen(
                     ),
                     onPlay = { onPlay(featured, featured.viewOffsetMs) },
                     onDetails = { onItemClick(featured) },
+                    viewportHeight = viewportHeight,
                 )
             }
         }
@@ -136,6 +144,7 @@ fun HomeScreen(
                     modifier = Modifier.padding(pad),
                 )
             }
+        }
         }
     }
 }

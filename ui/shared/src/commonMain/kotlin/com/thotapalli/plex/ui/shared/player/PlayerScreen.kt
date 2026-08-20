@@ -30,6 +30,7 @@ import com.thotapalli.plex.core.model.MediaItem
 import com.thotapalli.plex.core.playback.PlayerEngine
 import com.thotapalli.plex.ui.design.ThotapalliTheme
 import com.thotapalli.plex.ui.shared.AppContainer
+import com.thotapalli.plex.ui.shared.input.HeldSeek
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -170,23 +171,81 @@ fun PlayerScreen(
             LaunchedEffect(controller) {
                 if (container.isTelevision) runCatching { playerFocus.requestFocus() }
             }
+
+            // Holding left or right on the D-pad scrubs at thirty seconds per 400 ms. HeldSeek
+            // turns the elapsed hold time into steps; a short press instead does a single quick
+            // seek. A monotonic clock keeps the cadence identical on every remote, independent of
+            // its key-repeat rate. See CLAUDE.md section 13.5.
+            val heldSeekOrigin = remember { TimeSource.Monotonic.markNow() }
+            val heldSeek = remember { HeldSeek(nowMs = { heldSeekOrigin.elapsedNow().inWholeMilliseconds }) }
+            // Whether the current hold has already produced at least one step. When it has, the
+            // key-up is the end of a scrub and must not also fire the short-press seek.
+            var steppedThisPress by remember { mutableStateOf(false) }
+
+            // Poll while a direction key is held, applying each thirty-second step as a relative
+            // seek. Stepping only begins once the key has been held past the long-press threshold,
+            // so a tap produces no step and falls through to the short-press seek on key-up.
+            if (container.isTelevision) {
+                LaunchedEffect(actions) {
+                    while (true) {
+                        if (heldSeek.isHeld) {
+                            val step = heldSeek.stepMs()
+                            if (step != 0L) {
+                                steppedThisPress = true
+                                actions.onSeekRelative(step)
+                            }
+                        }
+                        delay(HELD_SEEK_POLL_MS)
+                    }
+                }
+            }
+
             val remoteControl = if (container.isTelevision) {
                 Modifier
                     .focusRequester(playerFocus)
                     .focusable()
                     .onPreviewKeyEvent { event ->
-                        val c = controller
-                        if (c == null || event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                        val wasVisible = screenState.controlsVisible
-                        c.noteInput()
-                        when (event.key) {
-                            Key.DirectionCenter, Key.Enter, Key.Spacebar, Key.MediaPlayPause -> {
-                                actions.onPlayPause(); true
+                        val c = controller ?: return@onPreviewKeyEvent false
+                        val isDirectionSeek = event.key == Key.DirectionLeft || event.key == Key.DirectionRight
+                        when (event.type) {
+                            KeyEventType.KeyDown -> {
+                                val wasVisible = screenState.controlsVisible
+                                c.noteInput()
+                                when (event.key) {
+                                    Key.DirectionCenter, Key.Enter, Key.Spacebar, Key.MediaPlayPause -> {
+                                        actions.onPlayPause(); true
+                                    }
+                                    Key.MediaFastForward -> { actions.onSeekForward10(); true }
+                                    Key.MediaRewind -> { actions.onSeekBack(); true }
+                                    // Begin a held seek. The key repeats while held; only the first
+                                    // press (when nothing is held yet) resets the stepped flag, so a
+                                    // repeat cannot clear a hold that has already stepped.
+                                    Key.DirectionRight -> {
+                                        if (!heldSeek.isHeld) steppedThisPress = false
+                                        heldSeek.onKeyDown(forward = true); true
+                                    }
+                                    Key.DirectionLeft -> {
+                                        if (!heldSeek.isHeld) steppedThisPress = false
+                                        heldSeek.onKeyDown(forward = false); true
+                                    }
+                                    // A first press on a resting screen only wakes the controls.
+                                    else -> !wasVisible
+                                }
                             }
-                            Key.MediaFastForward, Key.DirectionRight -> { actions.onSeekForward10(); true }
-                            Key.MediaRewind, Key.DirectionLeft -> { actions.onSeekBack(); true }
-                            // A first press on a resting screen only wakes the controls.
-                            else -> !wasVisible
+                            KeyEventType.KeyUp -> {
+                                if (isDirectionSeek) {
+                                    // A short press produced no step: do a single quick seek.
+                                    if (!steppedThisPress) {
+                                        if (event.key == Key.DirectionRight) actions.onSeekForward10()
+                                        else actions.onSeekBack()
+                                    }
+                                    heldSeek.onKeyUp()
+                                    true
+                                } else {
+                                    false
+                                }
+                            }
+                            else -> false
                         }
                     }
             } else {
@@ -355,6 +414,9 @@ private fun BarText(label: String, onClick: () -> Unit) {
         PlexText(label, style = PlexTheme.type.label, colour = colours.textPrimary)
     }
 }
+
+/** How often the television held-D-pad scrub polls HeldSeek for its next step. */
+private const val HELD_SEEK_POLL_MS = 100L
 
 private data class PlayTarget(val item: MediaItem, val startAtMs: Long)
 
