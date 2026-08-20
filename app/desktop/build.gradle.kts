@@ -65,6 +65,11 @@ compose.desktop {
 
         nativeDistributions {
             targetFormats(TargetFormat.Msi)
+            // Bundle every JDK module in the runtime. The default jlink image is minimal and
+            // left out modules the dependencies need at runtime — java.net.http for Ktor's Java
+            // engine, java.sql for the SQLite driver — which crashed the app on launch with a
+            // NoClassDefFoundError the packaged launcher reports as "Failed to launch JVM".
+            includeAllModules = true
             packageName = "Thotapalli Plex"
             packageVersion = providers.gradleProperty("thotapalli.versionName").get()
             vendor = "Thotapalli"
