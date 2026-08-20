@@ -32,6 +32,13 @@ private const val ENTRANCE_START_SCALE = 0.96f
 private const val ENTRANCE_DURATION_MS = Motion.ENTER_MS + 130
 
 /**
+ * The most an item ever waits before its entrance begins. The cascade reads on the first rows;
+ * beyond it every later item starts together, so scrolling fast to the bottom of a long library
+ * shows a quick fade instead of a second of blank while a per-index delay counts up.
+ */
+private const val MAX_STAGGER_MS = 220L
+
+/**
  * Fades a tile in while it rises a few dp and settles from a barely-there [ENTRANCE_START_SCALE],
  * staggered by [index] so a grid or a row cascades in rather than snapping as a block.
  *
@@ -59,7 +66,11 @@ fun Modifier.staggeredEntrance(
     LaunchedEffect(key, visible) {
         if (visible) {
             appeared = false
-            val stagger = (index.toLong() * baseDelayMs).coerceAtLeast(0L)
+            // The delay cascades with position but is capped, so an item scrolled far down the
+            // grid (index 300 -> 12s at the raw rate) never waits behind a blank screen: past the
+            // cap every item begins together, a quick fade rather than a long hold. See the
+            // library fast-scroll case in CLAUDE.md section 12.
+            val stagger = (index.toLong() * baseDelayMs).coerceIn(0L, MAX_STAGGER_MS)
             if (stagger > 0L) delay(stagger)
             appeared = true
         } else {

@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -193,6 +195,13 @@ private fun ReadyContent(
         state.library?.openCollection != null ||
         (state.library != null && destination == Destination.HOME)
 
+    // The chrome screens (search, downloads, settings, a library grid) open with a title at the
+    // very top, so they must clear the status bar and any camera cutout. Home and detail bleed a
+    // cinematic backdrop to the top edge instead, so they are left without it. See CLAUDE.md §13.
+    val topSafe = Modifier.windowInsetsPadding(
+        WindowInsets.safeDrawing.only(WindowInsetsSides.Top),
+    )
+
     val body: @Composable (Modifier) -> Unit = { bodyModifier ->
         when {
             state.detail != null -> DetailScreen(
@@ -216,7 +225,7 @@ private fun ReadyContent(
                 onCloseCollection = viewModel::closeCollection,
                 onScanLibrary = viewModel::scanLibrary,
                 itemActions = itemActions,
-                modifier = bodyModifier,
+                modifier = bodyModifier.then(topSafe),
             )
 
             destination == Destination.SEARCH -> SearchScreen(
@@ -224,7 +233,7 @@ private fun ReadyContent(
                 state = state.search,
                 onQueryChange = viewModel::onSearchQueryChanged,
                 onItemClick = viewModel::openDetail,
-                modifier = bodyModifier,
+                modifier = bodyModifier.then(topSafe),
             )
 
             destination == Destination.DOWNLOADS -> DownloadsScreen(
@@ -233,7 +242,7 @@ private fun ReadyContent(
                 onPause = viewModel::pauseDownload,
                 onResume = viewModel::resumeDownload,
                 onDelete = viewModel::deleteDownload,
-                modifier = bodyModifier,
+                modifier = bodyModifier.then(topSafe),
             )
 
             destination == Destination.SETTINGS -> SettingsScreen(
@@ -245,7 +254,7 @@ private fun ReadyContent(
                 onSubtitlesOnChange = viewModel::setSubtitlesOn,
                 onSelectServer = viewModel::selectServer,
                 onSignOut = viewModel::signOut,
-                modifier = bodyModifier,
+                modifier = bodyModifier.then(topSafe),
             )
 
             else -> HomeScreen(

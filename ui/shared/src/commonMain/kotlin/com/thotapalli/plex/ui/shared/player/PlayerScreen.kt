@@ -77,6 +77,10 @@ fun PlayerScreen(
     isFullScreen: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
+    // The player owns the screen in landscape; leaving it hands orientation back to the system.
+    // No-op on the desktop. See CLAUDE.md section 14 and the mobile orientation requirement.
+    LandscapeWhilePlaying()
+
     // The engine is created on the platform side and handed back through VideoSurface.
     var engine by remember { mutableStateOf<PlayerEngine?>(null) }
     var controller by remember { mutableStateOf<PlaybackController?>(null) }
