@@ -49,6 +49,7 @@ kotlin {
             // constructing ExoPlayerEngine.
             implementation(project(":player:exo"))
             implementation(libs.media3.common)
+            implementation(libs.kyant.backdrop)
         }
 
         jvmMain.dependencies {
