@@ -300,8 +300,12 @@ class PlaybackController(
                 }
             }
         },
-        onSeekBack = { noteInput(); seekBy(-SEEK_BACK_MS) },
+        onUserInput = { noteInput() },
+        onSeekBack = { noteInput(); seekBy(SEEK_BACK_MS) },
         onSeekForward = { noteInput(); seekBy(SEEK_FORWARD_MS) },
+        // The double-tap gestures seek a fixed ten seconds each way, independent of the
+        // transport buttons' -10s / +30s. See CLAUDE.md section 14 item 7.
+        onSeekForward10 = { noteInput(); seekBy(SEEK_TAP_FORWARD_MS) },
         onScrubStart = {
             noteInput()
             engine.setScrubbing(true)
@@ -450,5 +454,6 @@ class PlaybackController(
         const val TRANSCODE_CHIP_MS = 4_000L
         const val SEEK_BACK_MS = -10_000L
         const val SEEK_FORWARD_MS = 30_000L
+        const val SEEK_TAP_FORWARD_MS = 10_000L
     }
 }

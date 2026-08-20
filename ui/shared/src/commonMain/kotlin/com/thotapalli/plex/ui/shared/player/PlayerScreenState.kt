@@ -43,8 +43,12 @@ enum class TrackSheetKind { AUDIO, SUBTITLE }
 /** What the overlay can ask for. */
 data class PlayerActions(
     val onPlayPause: () -> Unit = {},
+    /** Any tap or press on the picture — reveals the controls without changing playback. */
+    val onUserInput: () -> Unit = {},
     val onSeekBack: () -> Unit = {},
     val onSeekForward: () -> Unit = {},
+    /** Double-tap the right of the picture: jump forward ten seconds. */
+    val onSeekForward10: () -> Unit = {},
     val onScrubStart: () -> Unit = {},
     val onScrub: (Long) -> Unit = {},
     val onScrubEnd: (Long) -> Unit = {},

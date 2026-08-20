@@ -6,6 +6,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -21,11 +22,14 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -82,7 +86,40 @@ fun PlayerOverlay(
         else -> false
     }
 
+    // A brief "10s" nudge shown after a double-tap seek: -1 on the left, +1 on the right, 0 none.
+    var seekHint by remember { mutableIntStateOf(0) }
+    LaunchedEffect(seekHint) {
+        if (seekHint != 0) {
+            delay(650)
+            seekHint = 0
+        }
+    }
+
     Box(modifier.fillMaxSize()) {
+        // The gesture bed, beneath every control. A single tap plays or pauses; a double-tap on
+        // the left or right half jumps ten seconds back or forward. The buttons, seek bar and
+        // sheets sit above this and consume their own taps, so it only ever fires on the picture.
+        // See CLAUDE.md section 14 item 7.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onPress = { actions.onUserInput() },
+                        onTap = { actions.onPlayPause() },
+                        onDoubleTap = { offset ->
+                            if (offset.x < size.width / 2f) {
+                                actions.onSeekBack()
+                                seekHint = -1
+                            } else {
+                                actions.onSeekForward10()
+                                seekHint = 1
+                            }
+                        },
+                    )
+                },
+        )
+
         AnimatedVisibility(
             visible = loading,
             enter = fadeIn(Motion.playerFade()),
@@ -218,6 +255,29 @@ fun PlayerOverlay(
             ) {
                 PlexText("Transcoding", style = PlexTheme.type.caption, colour = colours.textSecondary)
             }
+        }
+
+        // The double-tap seek nudge, on the side that was tapped.
+        SeekHint(visible = seekHint < 0, label = "« 10", modifier = Modifier.align(Alignment.CenterStart))
+        SeekHint(visible = seekHint > 0, label = "10 »", modifier = Modifier.align(Alignment.CenterEnd))
+    }
+}
+
+@Composable
+private fun SeekHint(visible: Boolean, label: String, modifier: Modifier = Modifier) {
+    val colours = PlayerColours
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(Motion.enter()),
+        exit = fadeOut(Motion.exit()),
+        modifier = modifier.padding(horizontal = Spacing.xxl),
+    ) {
+        Box(
+            Modifier
+                .background(colours.scrim, Radius.pill)
+                .padding(horizontal = Spacing.md, vertical = Spacing.sm),
+        ) {
+            PlexText(label, style = PlexTheme.type.title, colour = colours.textPrimary)
         }
     }
 }

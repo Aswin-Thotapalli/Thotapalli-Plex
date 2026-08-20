@@ -2,7 +2,7 @@ package com.thotapalli.plex.ui.shared.player
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -14,8 +14,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import com.thotapalli.plex.core.api.PlexServerSource
 import com.thotapalli.plex.core.api.PlexUrls
 import com.thotapalli.plex.core.api.ServerScope
@@ -155,15 +161,43 @@ fun PlayerScreen(
                 )
             }
         } else {
+            // Television has no pointer, so the remote drives the player through key events:
+            // any key wakes the overlay, the centre button plays or pauses, and left/right jump
+            // ten seconds. The player box takes first focus so those keys reach it. On phone and
+            // tablet this modifier is absent and touch gestures in the overlay do the same work.
+            // See CLAUDE.md section 12 (overlay trigger) and section 13 (television input).
+            val playerFocus = remember { FocusRequester() }
+            LaunchedEffect(controller) {
+                if (container.isTelevision) runCatching { playerFocus.requestFocus() }
+            }
+            val remoteControl = if (container.isTelevision) {
+                Modifier
+                    .focusRequester(playerFocus)
+                    .focusable()
+                    .onPreviewKeyEvent { event ->
+                        val c = controller
+                        if (c == null || event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        val wasVisible = screenState.controlsVisible
+                        c.noteInput()
+                        when (event.key) {
+                            Key.DirectionCenter, Key.Enter, Key.Spacebar, Key.MediaPlayPause -> {
+                                actions.onPlayPause(); true
+                            }
+                            Key.MediaFastForward, Key.DirectionRight -> { actions.onSeekForward10(); true }
+                            Key.MediaRewind, Key.DirectionLeft -> { actions.onSeekBack(); true }
+                            // A first press on a resting screen only wakes the controls.
+                            else -> !wasVisible
+                        }
+                    }
+            } else {
+                Modifier
+            }
+
             Box(
                 modifier
                     .fillMaxSize()
                     .background(Color.Black)
-                    // Any touch reveals the controls. Buttons in the overlay consume their
-                    // own taps, so this only fires for the picture itself. See section 12.
-                    .pointerInput(controller) {
-                        detectTapGestures(onPress = { controller?.noteInput() })
-                    },
+                    .then(remoteControl),
             ) {
                 VideoSurface(bind = { engine = it }, onPointerActivity = {}, modifier = Modifier.fillMaxSize())
 
