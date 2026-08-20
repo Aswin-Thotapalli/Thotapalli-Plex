@@ -23,15 +23,23 @@ import com.thotapalli.plex.ui.design.SizeClass
 import com.thotapalli.plex.ui.design.Spacing
 
 /**
- * The detail-screen hero: a full-bleed backdrop under a strong vertical gradient that fades
- * into the screen background, with a lighter top scrim so a floating back button stays
- * legible. Anything the caller passes as [content] is overlaid along the bottom, sitting on
- * the darkest part of the fade.
+ * The detail-screen hero: a full-bleed backdrop that bleeds to every edge and dissolves into the
+ * deep-indigo ground beneath the page. The art is the ground for a detail screen, so nothing is
+ * inset above it — the shell floats a glass back button over the top-left — and everything the
+ * caller passes as [content] (the title and its key facts) rides the darkest foot of the fade.
  *
- * The fade ends on the theme background rather than on black, so the image dissolves into the
- * page beneath it on both dark and light — the seamless "poster bleeding into the page" look
- * a streaming detail screen has. Height is either a fixed [height] or, inside a bounded
- * parent, a [heightFraction] of it.
+ * The image sits under a stack of thin, deliberate washes rather than one flat scrim:
+ *
+ * 1. a slow ken-burns pan and gyro parallax, so a still backdrop breathes like a title sequence;
+ * 2. a faint film grain and vignette, so it reads as cinema rather than a photograph;
+ * 3. a **cinematic vertical fade** — clear across the top, then a firm multi-stop ramp onto the
+ *    theme background token, so the picture and the page become one continuous surface on both
+ *    dark and light;
+ * 4. **side and corner vignettes** that draw the eye inward and seat the title against the frame;
+ * 5. a short **top scrim**, always dark, so the floating back button stays legible over a bright
+ *    still regardless of theme.
+ *
+ * Height is either a fixed [height] or, inside a bounded parent, a [heightFraction] of it.
  */
 @Composable
 fun CinematicBackdrop(
@@ -51,7 +59,7 @@ fun CinematicBackdrop(
     }
 
     Box(sized) {
-        // A slow, endless pan and zoom, so a still backdrop breathes like a title sequence.
+        // 1. The artwork, panning and zooming so a static still never feels static.
         Artwork(
             url = url,
             contentDescription = title,
@@ -59,34 +67,50 @@ fun CinematicBackdrop(
             modifier = Modifier.fillMaxSize().kenBurns().gyroParallax(),
         )
 
-        // A faint film grain and vignette, so the image reads as cinema rather than a photo.
+        // 2. Grain and vignette, for the cinema texture.
         Box(Modifier.fillMaxSize().cinematicTexture())
 
-        // Bottom fade into the page. Transparent across the top half, then a firm ramp onto
-        // the background token so the image and the screen become one surface.
+        // 3. The vertical fade into the page. Clear across the top so the art reads at full
+        // strength, then a firm ramp onto the background token so the image melts into the screen.
         Box(
             Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        0.0f to Color.Transparent,
-                        0.45f to colours.background.copy(alpha = 0.0f),
-                        0.72f to colours.background.copy(alpha = 0.65f),
-                        0.90f to colours.background.copy(alpha = 0.94f),
-                        1.0f to colours.background,
+                        0.00f to Color.Transparent,
+                        0.42f to colours.background.copy(alpha = 0.0f),
+                        0.66f to colours.background.copy(alpha = 0.45f),
+                        0.82f to colours.background.copy(alpha = 0.80f),
+                        0.94f to colours.background.copy(alpha = 0.97f),
+                        1.00f to colours.background,
                     ),
                 ),
         )
 
-        // A short top scrim, always dark, so a back button reads over a bright backdrop
+        // 4. A soft horizontal vignette, darkest at the two edges, that frames the picture and
+        // keeps the title from floating loose against a bright corner of the still.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.horizontalGradient(
+                        0.00f to colours.background.copy(alpha = 0.34f),
+                        0.24f to Color.Transparent,
+                        0.76f to Color.Transparent,
+                        1.00f to colours.background.copy(alpha = 0.34f),
+                    ),
+                ),
+        )
+
+        // 5. A short top scrim, always dark, so a back button reads over a bright backdrop
         // regardless of theme.
         Box(
             Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.28f)
+                .fillMaxHeight(0.30f)
                 .background(
                     Brush.verticalGradient(
-                        0f to Color(0x73000000),
+                        0f to Color(0x80000000),
                         1f to Color.Transparent,
                     ),
                 ),

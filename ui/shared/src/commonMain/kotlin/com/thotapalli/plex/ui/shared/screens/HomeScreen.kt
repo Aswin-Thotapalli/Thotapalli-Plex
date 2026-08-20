@@ -1,10 +1,19 @@
 package com.thotapalli.plex.ui.shared.screens
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,29 +21,43 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.thotapalli.plex.core.model.Library
+import com.thotapalli.plex.core.model.LibraryKind
 import com.thotapalli.plex.core.model.MediaItem
+import com.thotapalli.plex.ui.design.Elevation
+import com.thotapalli.plex.ui.design.Layout
 import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
+import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.SizeClass
 import com.thotapalli.plex.ui.design.Spacing
+import com.thotapalli.plex.ui.design.backgroundBrush
+import com.thotapalli.plex.ui.design.glassSource
+import com.thotapalli.plex.ui.design.liquidGlass
 import com.thotapalli.plex.ui.shared.ActiveServer
+import com.thotapalli.plex.ui.shared.Artwork
 import com.thotapalli.plex.ui.shared.ArtworkSize
-import com.thotapalli.plex.ui.shared.HomeHero
 import com.thotapalli.plex.ui.shared.ItemActions
-import com.thotapalli.plex.ui.shared.PosterTile
+import com.thotapalli.plex.ui.shared.HomeHero
+import com.thotapalli.plex.ui.shared.PlexIcon
+import com.thotapalli.plex.ui.shared.PlexIconKind
 import com.thotapalli.plex.ui.shared.SectionHeader
 import com.thotapalli.plex.ui.shared.WideProgressTile
 import com.thotapalli.plex.ui.shared.plexFocusable
-import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.shared.motion.staggeredEntrance
 
 /**
- * Home: a spotlight hero for the single title most worth resuming, a Continue Watching rail
- * that holds the rest, and a poster rail for each library — so Home browses like a shelf of
- * content, not a list of folders. See CLAUDE.md section 14.
+ * Home: a spotlight hero for the single title most worth resuming, a Continue Watching rail that
+ * holds the rest, and one glass card per library — a peek of its posters behind the title — so Home
+ * reads as a lit shelf you step into rather than a list of folders. See CLAUDE.md section 14.
  */
 @Composable
 fun HomeScreen(
@@ -50,142 +73,224 @@ fun HomeScreen(
 ) {
     val sizeClass = PlexTheme.sizeClass
     val pad = sizeClass.screenPadding
-    val posterWidth = posterRailWidth(sizeClass)
     val wideWidth = if (sizeClass.isTelevision) 340.dp else 280.dp
 
     val featured = continueWatching.firstOrNull()
     // The featured title is the hero; the rail holds the others, so nothing is shown twice.
     val continueRail = continueWatching.drop(1)
 
+    // Wider windows lay the library cards two across; narrower ones stack them full width.
+    val cardsPerRow = if (sizeClass == SizeClass.EXPANDED || sizeClass.isTelevision) 2 else 1
+    val peekHeight = libraryPeekHeight(sizeClass)
+
     // The viewport height bounds the hero: on a short window the hero is capped to a fraction of
     // it so its action buttons stay clear of the bottom edge and the rails below remain in view.
-    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxSize()
+            .background(PlexTheme.colours.backgroundBrush()),
+    ) {
         val viewportHeight = maxHeight
-        println("HOMEDEBUG maxHeight=" + maxHeight + " maxWidth=" + maxWidth + " sizeClass=" + sizeClass)
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            // The scrolling content is the Haze source the frosted navigation samples and blurs.
+            modifier = Modifier.fillMaxSize().glassSource(),
             contentPadding = PaddingValues(bottom = Spacing.xxl),
             verticalArrangement = Arrangement.spacedBy(Spacing.xl),
         ) {
-        if (featured != null) {
-            item(key = "hero") {
-                HomeHero(
-                    item = featured,
-                    artworkUrl = server.urls.artwork(
-                        featured.artPath ?: featured.thumbPath,
-                        ArtworkSize.BACKDROP_WIDTH,
-                        ArtworkSize.BACKDROP_HEIGHT,
-                    ),
-                    onPlay = { onPlay(featured, featured.viewOffsetMs) },
-                    onDetails = { onItemClick(featured) },
-                    viewportHeight = viewportHeight,
-                )
+            if (featured != null) {
+                item(key = "hero") {
+                    HomeHero(
+                        item = featured,
+                        artworkUrl = server.urls.artwork(
+                            featured.artPath ?: featured.thumbPath,
+                            ArtworkSize.BACKDROP_WIDTH,
+                            ArtworkSize.BACKDROP_HEIGHT,
+                        ),
+                        onPlay = { onPlay(featured, featured.viewOffsetMs) },
+                        onDetails = { onItemClick(featured) },
+                        viewportHeight = viewportHeight,
+                    )
+                }
             }
-        }
 
-        // Continue Watching — the in-progress titles beyond the featured one, so any number
-        // of resumes has a home and nothing is duplicated with the hero.
-        if (continueRail.isNotEmpty()) {
-            item(key = "cw") {
-                Rail(title = "Continue Watching", pad = pad) {
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(Spacing.md),
-                        contentPadding = PaddingValues(horizontal = pad),
-                    ) {
-                        itemsIndexed(continueRail, key = { _, it -> "cw-" + it.ratingKey }) { i, item ->
-                            WideProgressTile(
-                                item = item,
-                                artworkUrl = server.urls.artwork(
-                                    item.artPath ?: item.thumbPath,
-                                    ArtworkSize.WIDE_WIDTH,
-                                    ArtworkSize.WIDE_HEIGHT,
-                                ),
-                                onClick = { onItemClick(item) },
-                                actions = itemActions(item),
-                                isContinueWatching = true,
-                                modifier = Modifier.width(wideWidth).staggeredEntrance(i, key = item.ratingKey),
-                            )
+            // Continue Watching — the in-progress titles beyond the featured one, so any number
+            // of resumes has a home and nothing is duplicated with the hero.
+            if (continueRail.isNotEmpty()) {
+                item(key = "cw") {
+                    Rail(title = "Continue Watching", pad = pad) {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+                            contentPadding = PaddingValues(horizontal = pad),
+                        ) {
+                            itemsIndexed(continueRail, key = { _, it -> "cw-" + it.ratingKey }) { i, item ->
+                                WideProgressTile(
+                                    item = item,
+                                    artworkUrl = server.urls.artwork(
+                                        item.artPath ?: item.thumbPath,
+                                        ArtworkSize.WIDE_WIDTH,
+                                        ArtworkSize.WIDE_HEIGHT,
+                                    ),
+                                    onClick = { onItemClick(item) },
+                                    actions = itemActions(item),
+                                    isContinueWatching = true,
+                                    modifier = Modifier.width(wideWidth).staggeredEntrance(i, key = item.ratingKey),
+                                )
+                            }
                         }
                     }
                 }
             }
+
+            // One glass card per library, laid out one or two across for the window.
+            if (libraries.isNotEmpty()) {
+                item(key = "lib-header") {
+                    SectionHeader(title = "Libraries", modifier = Modifier.padding(horizontal = pad))
+                }
+                items(libraries.chunked(cardsPerRow), key = { "librow-" + it.first().key }) { rowLibraries ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = pad),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+                    ) {
+                        rowLibraries.forEachIndexed { i, library ->
+                            LibraryPeekCard(
+                                server = server,
+                                library = library,
+                                previews = libraryPreviews[library.key].orEmpty(),
+                                peekHeight = peekHeight,
+                                onClick = { onLibraryClick(library) },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .staggeredEntrance(i, key = library.key),
+                            )
+                        }
+                        // Keep a lone card in a two-across row at column width rather than stretched.
+                        repeat(cardsPerRow - rowLibraries.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            } else {
+                item {
+                    PlexText(
+                        text = "This server has no film or series libraries.",
+                        colour = PlexTheme.colours.textSecondary,
+                        modifier = Modifier.padding(pad),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * A library card on Home: a sheet of liquid glass carrying the library title, its kind, an inward
+ * chevron naming it as a way in, and a peek of the library's posters clipped along the bottom so a
+ * few titles show and the rest run off the edge — the card is the whole tap target, opening the
+ * library. Focus and press answer with the app's accent ring and springy bubble. See CLAUDE.md
+ * section 14.
+ */
+@Composable
+private fun LibraryPeekCard(
+    server: ActiveServer,
+    library: Library,
+    previews: List<MediaItem>,
+    peekHeight: Dp,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colours = PlexTheme.colours
+
+    Column(
+        modifier = modifier
+            .plexFocusable(shape = Radius.card, onClick = onClick, scaleOnFocus = false)
+            .liquidGlass(shape = Radius.card)
+            .padding(Spacing.md),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                PlexText(text = library.title, style = PlexTheme.type.title, maxLines = 1)
+                PlexText(
+                    text = libraryKindLabel(library.kind),
+                    style = PlexTheme.type.caption,
+                    colour = colours.textSecondary,
+                    maxLines = 1,
+                )
+            }
+            // The back chevron mirrored to point inward, so the card reads as an entrance.
+            PlexIcon(
+                kind = PlexIconKind.BACK,
+                size = 20.dp,
+                tint = colours.accent,
+                modifier = Modifier.rotate(180f),
+            )
         }
 
-        // One poster rail per library.
-        items(libraries, key = { "lib-" + it.key }) { library ->
-            val preview = libraryPreviews[library.key].orEmpty()
-            Rail(
-                title = library.title,
-                pad = pad,
-                onSeeAll = { onLibraryClick(library) },
+        if (previews.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(peekHeight)
+                    // Extra posters run off the right edge, a "there is more inside" affordance.
+                    .clipToBounds(),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
             ) {
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.md),
-                    contentPadding = PaddingValues(horizontal = pad),
-                ) {
-                    itemsIndexed(preview, key = { _, it -> library.key + "-" + it.ratingKey }) { i, item ->
-                        PosterTile(
-                            item = item,
-                            artworkUrl = server.urls.artwork(
+                previews.take(LIBRARY_PEEK_MAX).forEach { item ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .aspectRatio(Layout.POSTER_ASPECT_RATIO)
+                            .shadow(
+                                elevation = Elevation.tile,
+                                shape = Radius.poster,
+                                ambientColor = colours.elevationShadow,
+                                spotColor = colours.elevationShadow,
+                            )
+                            .clip(Radius.poster),
+                    ) {
+                        Artwork(
+                            url = server.urls.artwork(
                                 item.thumbPath,
                                 ArtworkSize.POSTER_WIDTH,
                                 ArtworkSize.POSTER_HEIGHT,
                             ),
-                            onClick = { onItemClick(item) },
-                            actions = itemActions(item),
-                            modifier = Modifier.width(posterWidth).staggeredEntrance(i, key = item.ratingKey),
+                            contentDescription = null,
+                            fallbackTitle = item.title,
+                            modifier = Modifier.fillMaxSize(),
                         )
+                        Box(Modifier.fillMaxSize().border(1.dp, colours.glassRim, Radius.poster))
                     }
                 }
             }
         }
-
-        if (libraries.isEmpty()) {
-            item {
-                PlexText(
-                    text = "This server has no film or series libraries.",
-                    colour = PlexTheme.colours.textSecondary,
-                    modifier = Modifier.padding(pad),
-                )
-            }
-        }
-        }
     }
 }
 
-/** A titled horizontal shelf, with an optional "See all" that opens the full library. */
+/** A titled horizontal shelf. Used by the Continue Watching row. */
 @Composable
 private fun Rail(
     title: String,
-    pad: androidx.compose.ui.unit.Dp,
-    onSeeAll: (() -> Unit)? = null,
+    pad: Dp,
     content: @Composable () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-        SectionHeader(
-            title = title,
-            modifier = Modifier.padding(horizontal = pad),
-            trailing = onSeeAll?.let {
-                {
-                    PlexText(
-                        text = "See all",
-                        style = PlexTheme.type.label,
-                        colour = PlexTheme.colours.accent,
-                        modifier = Modifier
-                            .plexFocusable(shape = Radius.pill, onClick = it, scaleOnFocus = false)
-                            .padding(horizontal = Spacing.xs, vertical = Spacing.xxs),
-                    )
-                }
-            },
-        )
+        SectionHeader(title = title, modifier = Modifier.padding(horizontal = pad))
         content()
     }
 }
 
-private fun posterRailWidth(sizeClass: SizeClass) = when (sizeClass) {
-    SizeClass.COMPACT -> 124.dp
-    SizeClass.MEDIUM -> 140.dp
-    SizeClass.EXPANDED -> 152.dp
-    SizeClass.TELEVISION -> 184.dp
+private fun libraryKindLabel(kind: LibraryKind): String = when (kind) {
+    LibraryKind.MOVIE -> "Movies"
+    LibraryKind.SHOW -> "Series"
+    LibraryKind.UNSUPPORTED -> "Library"
+}
+
+/** The most posters a library card ever peeks; the rest clip off the edge. */
+private const val LIBRARY_PEEK_MAX = 8
+
+/** The height of a library card's poster peek, taller where the screen has more room. */
+private fun libraryPeekHeight(sizeClass: SizeClass): Dp = when (sizeClass) {
+    SizeClass.COMPACT -> 92.dp
+    SizeClass.MEDIUM -> 104.dp
+    SizeClass.EXPANDED -> 116.dp
+    SizeClass.TELEVISION -> 140.dp
 }

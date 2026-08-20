@@ -27,6 +27,7 @@ import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
+import com.thotapalli.plex.ui.design.liquidGlass
 
 /**
  * The actions a media item's context menu offers. Every one is already implemented on the
@@ -42,7 +43,6 @@ data class ItemActions(
     val onMarkUnwatched: () -> Unit,
     val onDownload: () -> Unit,
     val onRefreshMetadata: () -> Unit,
-    val onAnalyze: () -> Unit,
     val onDelete: () -> Unit,
     val onRemoveFromContinueWatching: (() -> Unit)? = null,
 )
@@ -152,7 +152,7 @@ private fun ItemActionsMenu(
     DropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismiss,
-        modifier = Modifier.background(colours.surfaceElevated),
+        modifier = Modifier.liquidGlass(shape = Radius.glassSmall),
     ) {
         if (item.watched) {
             MenuRow("Mark as Unwatched") { onDismiss(); actions.onMarkUnwatched() }
@@ -167,7 +167,6 @@ private fun ItemActionsMenu(
 
         MenuRow("Download") { onDismiss(); actions.onDownload() }
         MenuRow("Refresh Metadata") { onDismiss(); actions.onRefreshMetadata() }
-        MenuRow("Analyze") { onDismiss(); actions.onAnalyze() }
 
         HorizontalDivider(
             color = colours.border,
@@ -220,7 +219,9 @@ private fun DeleteConfirmDialog(
     val colours = PlexTheme.colours
     AlertDialog(
         onDismissRequest = onCancel,
-        containerColor = colours.surface,
+        modifier = Modifier.liquidGlass(shape = Radius.card),
+        containerColor = Color.Transparent,
+        tonalElevation = 0.dp,
         titleContentColor = colours.textPrimary,
         textContentColor = colours.textSecondary,
         shape = Radius.card,

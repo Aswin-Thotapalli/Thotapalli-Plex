@@ -1,5 +1,6 @@
 package com.thotapalli.plex.ui.shared
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,19 +12,26 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.thotapalli.plex.core.model.MediaItem
 import com.thotapalli.plex.core.model.progress
-import com.thotapalli.plex.ui.shared.motion.gyroParallax
 import com.thotapalli.plex.ui.shared.motion.kenBurns
 import com.thotapalli.plex.ui.shared.material.cinematicTexture
+import com.thotapalli.plex.ui.design.Motion
 import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
@@ -33,11 +41,17 @@ import com.thotapalli.plex.ui.design.Spacing
 /**
  * The featured hero at the top of Home: the single item most worth resuming, shown large.
  *
- * A big backdrop under a firm gradient, the title in display type, a metadata line, the
- * resume progress, and the two actions — a filled Play (or Resume) and an outlined Details.
- * The card itself is not a click target; its two buttons are the focusable elements, which
- * keeps television navigation unambiguous. Nothing here is discovery: it is only ever the
- * top Continue Watching entry the caller hands it. See CLAUDE.md section 14.
+ * A full-bleed backdrop breathing under a slow ken-burns pan and a faint film grain, wrapped in a
+ * firm cinematic scrim so display-size text and two buttons read over any still. The title sits in
+ * display type over a metadata line and the resume bar, and the two actions — a lit amber Play (or
+ * Resume) and a glass Details — carry the app's own button idiom, each answering a press with the
+ * same springy give as every control in the redesign.
+ *
+ * The whole caption block rises in on a snappy spring the first time the hero appears, so Home
+ * arrives as motion rather than a hard cut. The card itself is not a click target; its two buttons
+ * are the focusable elements, which keeps television navigation unambiguous. Nothing here is
+ * discovery: it is only ever the top Continue Watching entry the caller hands it. See CLAUDE.md
+ * section 14.
  */
 @Composable
 fun HomeHero(
@@ -67,14 +81,18 @@ fun HomeHero(
             url = artworkUrl,
             contentDescription = primaryLine(item),
             fallbackTitle = primaryLine(item),
-            modifier = Modifier.fillMaxSize(),
+            // A slow, endless pan and zoom so a still backdrop breathes like a title sequence.
+            modifier = Modifier.fillMaxSize().kenBurns(),
             // Bias the crop toward the top so a wide 16:9 backdrop keeps the subjects' faces
             // in frame rather than cropping their heads off at the top edge.
             alignment = Alignment.TopCenter,
         )
 
-        // A cinematic bed: dark from the left and up from the bottom, so display-size white
-        // text and two buttons sit on a legible ground over any backdrop.
+        // A faint film grain and vignette so the backdrop reads as cinema rather than a photo.
+        Box(Modifier.fillMaxSize().cinematicTexture())
+
+        // A cinematic bed: dark up from the bottom, so display-size white text and two buttons
+        // sit on a legible ground over any backdrop.
         Box(
             Modifier
                 .fillMaxSize()
@@ -87,51 +105,87 @@ fun HomeHero(
                 ),
         )
 
-        Column(
+        HeroCaption(
+            item = item,
+            resuming = resuming,
+            onPlay = onPlay,
+            onDetails = onDetails,
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
                 .padding(Spacing.lg),
-            verticalArrangement = Arrangement.spacedBy(Spacing.xs),
-        ) {
+        )
+    }
+}
+
+/**
+ * The title, metadata, resume bar and the two actions, riding in together on a snappy spring the
+ * first time the hero mounts. Held as its own composable so the entrance drives a single graphics
+ * layer over the whole block rather than animating each line.
+ */
+@Composable
+private fun HeroCaption(
+    item: MediaItem,
+    resuming: Boolean,
+    onPlay: () -> Unit,
+    onDetails: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var appeared by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { appeared = true }
+
+    val progress by animateFloatAsState(
+        targetValue = if (appeared) 1f else 0f,
+        animationSpec = Motion.springBouncy(),
+        label = "hero-entrance",
+    )
+    val rise = with(LocalDensity.current) { 20.dp.toPx() }
+
+    Column(
+        modifier = modifier.graphicsLayer {
+            alpha = progress
+            translationY = (1f - progress) * rise
+        },
+        verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+    ) {
+        PlexText(
+            text = primaryLine(item),
+            style = PlexTheme.type.display,
+            colour = Color(0xFFF6F7F9),
+            maxLines = 2,
+        )
+
+        heroMetadata(item)?.let {
             PlexText(
-                text = primaryLine(item),
-                style = PlexTheme.type.display,
-                colour = Color(0xFFF6F7F9),
-                maxLines = 2,
+                text = it,
+                style = PlexTheme.type.label,
+                colour = Color(0xFFC8CDD6),
+                maxLines = 1,
             )
+        }
 
-            heroMetadata(item)?.let {
-                PlexText(
-                    text = it,
-                    style = PlexTheme.type.label,
-                    colour = Color(0xFFC8CDD6),
-                    maxLines = 1,
-                )
-            }
+        if (item.progress > 0f) {
+            Spacer(Modifier.height(Spacing.xxs))
+            ProgressBar(
+                progress = item.progress,
+                modifier = Modifier.fillMaxWidth(heroProgressWidthFraction(PlexTheme.sizeClass)),
+            )
+        }
 
-            if (item.progress > 0f) {
-                Spacer(Modifier.height(Spacing.xxs))
-                ProgressBar(
-                    progress = item.progress,
-                    modifier = Modifier.fillMaxWidth(heroProgressWidthFraction(PlexTheme.sizeClass)),
-                )
-            }
+        Spacer(Modifier.height(Spacing.sm))
 
-            Spacer(Modifier.height(Spacing.xs))
-
-            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                PrimaryButton(
-                    label = if (resuming) "Resume" else "Play",
-                    leadingIcon = PlexIconKind.PLAY,
-                    onClick = onPlay,
-                )
-                SecondaryButton(
-                    label = "Details",
-                    leadingIcon = PlexIconKind.INFO,
-                    onClick = onDetails,
-                )
-            }
+        // Two essential actions, given room to breathe so neither crowds the other.
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+            PrimaryButton(
+                label = if (resuming) "Resume" else "Play",
+                leadingIcon = PlexIconKind.PLAY,
+                onClick = onPlay,
+            )
+            SecondaryButton(
+                label = "Details",
+                leadingIcon = PlexIconKind.INFO,
+                onClick = onDetails,
+            )
         }
     }
 }

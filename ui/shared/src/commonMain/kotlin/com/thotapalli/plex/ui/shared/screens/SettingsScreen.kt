@@ -14,12 +14,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.thotapalli.plex.core.model.PlexServer
 import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
+import com.thotapalli.plex.ui.design.ThemeMode
+import com.thotapalli.plex.ui.design.liquidGlass
 import com.thotapalli.plex.ui.shared.ContentWidthCap
 import com.thotapalli.plex.ui.shared.SectionHeader
 import com.thotapalli.plex.ui.shared.plexFocusable
@@ -37,6 +41,8 @@ fun SettingsScreen(
     onSubtitlesOnChange: (Boolean) -> Unit,
     onSelectServer: (PlexServer) -> Unit,
     onSignOut: () -> Unit,
+    themeMode: ThemeMode,
+    onThemeModeChange: (ThemeMode) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colours = PlexTheme.colours
@@ -47,6 +53,11 @@ fun SettingsScreen(
             contentPadding = PaddingValues(PlexTheme.sizeClass.screenPadding),
             verticalArrangement = Arrangement.spacedBy(Spacing.xs),
         ) {
+            // Appearance sits at the very top: the theme is the setting a viewer reaches for first.
+            item { SectionHeader("Appearance") }
+
+            item { ThemeModeRow(selected = themeMode, onSelect = onThemeModeChange) }
+
             item { SectionHeader("Playback") }
 
             item {
@@ -109,11 +120,11 @@ fun SettingsScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .plexFocusable(Radius.card, onClick = { onSelectServer(server) }, scaleOnFocus = false)
-                            .background(colours.surface, Radius.card)
+                            .liquidGlass(shape = Radius.card)
                             .border(
                                 1.dp,
                                 if (server.machineIdentifier == state.activeServerId) colours.accent
-                                else colours.border,
+                                else Color.Transparent,
                                 Radius.card,
                             )
                             .padding(Spacing.md),
@@ -154,7 +165,7 @@ fun SettingsScreen(
                         Modifier
                             .fillMaxWidth()
                             .padding(top = Spacing.lg)
-                            .background(colours.surfaceElevated, Radius.card)
+                            .liquidGlass(shape = Radius.card)
                             .border(1.dp, colours.accent, Radius.card)
                             .padding(Spacing.md),
                     ) {
@@ -173,6 +184,80 @@ fun SettingsScreen(
     }
 }
 
+/**
+ * The theme control: a glass panel carrying a three-way segmented switch for System, Light and
+ * Dark. The chosen segment fills with the amber accent; the others stay quiet. See CLAUDE.md
+ * section 2 and section 12.
+ */
+@Composable
+private fun ThemeModeRow(
+    selected: ThemeMode,
+    onSelect: (ThemeMode) -> Unit,
+) {
+    val colours = PlexTheme.colours
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .liquidGlass(shape = Radius.card)
+            .padding(Spacing.md),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        PlexText("Theme", style = PlexTheme.type.label)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(Radius.pill)
+                .background(colours.surface, Radius.pill)
+                .border(1.dp, colours.border, Radius.pill)
+                .padding(Spacing.xxs),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.xxs),
+        ) {
+            ThemeSegment("System", selected == ThemeMode.SYSTEM, Modifier.weight(1f)) {
+                onSelect(ThemeMode.SYSTEM)
+            }
+            ThemeSegment("Light", selected == ThemeMode.LIGHT, Modifier.weight(1f)) {
+                onSelect(ThemeMode.LIGHT)
+            }
+            ThemeSegment("Dark", selected == ThemeMode.DARK, Modifier.weight(1f)) {
+                onSelect(ThemeMode.DARK)
+            }
+        }
+    }
+}
+
+/**
+ * One segment of the theme switch. [plexFocusable] carries the focus ring and the springy
+ * squash-on-press bubble; the selected segment fills amber.
+ */
+@Composable
+private fun ThemeSegment(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val colours = PlexTheme.colours
+    Box(
+        modifier = modifier
+            .plexFocusable(Radius.pill, onClick = onClick, scaleOnFocus = false)
+            .clip(Radius.pill)
+            .background(if (selected) colours.accent else Color.Transparent, Radius.pill)
+            .padding(vertical = Spacing.xs),
+        contentAlignment = Alignment.Center,
+    ) {
+        PlexText(
+            text = label,
+            style = PlexTheme.type.label,
+            colour = when {
+                selected && colours.isDark -> colours.background
+                selected -> colours.surface
+                else -> colours.textSecondary
+            },
+            maxLines = 1,
+        )
+    }
+}
+
 @Composable
 private fun ToggleRow(
     title: String,
@@ -186,8 +271,7 @@ private fun ToggleRow(
         modifier = Modifier
             .fillMaxWidth()
             .plexFocusable(Radius.card, onClick = { onChange(!checked) }, scaleOnFocus = false)
-            .background(colours.surface, Radius.card)
-            .border(1.dp, colours.border, Radius.card)
+            .liquidGlass(shape = Radius.card)
             .padding(Spacing.md),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -209,13 +293,10 @@ private fun ChoiceRow(
     selected: String,
     onSelect: (String) -> Unit,
 ) {
-    val colours = PlexTheme.colours
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(colours.surface, Radius.card)
-            .border(1.dp, colours.border, Radius.card)
+            .liquidGlass(shape = Radius.card)
             .padding(Spacing.md),
         verticalArrangement = Arrangement.spacedBy(Spacing.xs),
     ) {

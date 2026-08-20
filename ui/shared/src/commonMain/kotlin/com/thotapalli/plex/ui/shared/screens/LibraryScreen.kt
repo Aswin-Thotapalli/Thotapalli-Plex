@@ -11,9 +11,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import com.thotapalli.plex.core.model.Library
@@ -23,6 +25,7 @@ import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
+import com.thotapalli.plex.ui.design.liquidGlass
 import com.thotapalli.plex.ui.shared.ActiveServer
 import com.thotapalli.plex.ui.shared.ArtworkSize
 import com.thotapalli.plex.ui.shared.CollectionTile
@@ -50,6 +53,7 @@ fun LibraryScreen(
     onCloseCollection: () -> Unit,
     onScanLibrary: (Library) -> Unit,
     itemActions: (MediaItem) -> ItemActions,
+    scanProgress: Float? = null,
     modifier: Modifier = Modifier,
 ) {
     val insideCollection = state.openCollection != null
@@ -92,6 +96,34 @@ fun LibraryScreen(
                         onClick = { onUnwatchedOnlyChange(!state.unwatchedOnly) },
                     )
                 }
+            }
+        }
+
+        // A live scan of the library's files, driven by the server's running jobs. A slim glass
+        // strip with the accent fill tracking the server's progress, mirroring Plex's own scan
+        // read-out. See CLAUDE.md section 5.
+        if (scanProgress != null && !insideCollection) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = PlexTheme.sizeClass.screenPadding, vertical = Spacing.xxs)
+                    .liquidGlass(shape = Radius.glassSmall)
+                    .padding(horizontal = Spacing.md, vertical = Spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+            ) {
+                PlexText(
+                    text = "Scanning…",
+                    style = PlexTheme.type.label,
+                    colour = PlexTheme.colours.textPrimary,
+                    maxLines = 1,
+                )
+                LinearProgressIndicator(
+                    progress = { scanProgress.coerceIn(0f, 1f) },
+                    modifier = Modifier.weight(1f).clip(Radius.pill),
+                    color = PlexTheme.colours.accent,
+                    trackColor = PlexTheme.colours.surface,
+                )
             }
         }
 
@@ -176,8 +208,18 @@ internal fun TextChip(
     val colours = PlexTheme.colours
     Box(
         modifier = modifier
-            .background(if (selected) colours.accent else colours.surface, Radius.pill)
-            .border(1.dp, if (selected) colours.accent else colours.border, Radius.pill)
+            .clip(Radius.pill)
+            // Selected is a solid amber pill; unselected is a sheet of frosted glass, so the chip
+            // reads as chrome without competing with the poster art around it. See CLAUDE.md §12.
+            .then(
+                if (selected) {
+                    Modifier
+                        .background(colours.accent, Radius.pill)
+                        .border(1.dp, colours.accent, Radius.pill)
+                } else {
+                    Modifier.liquidGlass(shape = Radius.pill)
+                },
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = Spacing.sm, vertical = Spacing.xs),
     ) {

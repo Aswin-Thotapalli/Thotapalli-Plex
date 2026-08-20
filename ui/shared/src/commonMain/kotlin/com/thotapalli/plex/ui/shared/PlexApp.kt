@@ -1,6 +1,9 @@
 package com.thotapalli.plex.ui.shared
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,6 +21,11 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -30,6 +38,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.thotapalli.plex.core.model.Library
@@ -38,8 +50,12 @@ import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
+import com.thotapalli.plex.ui.design.GlassScaffold
+import com.thotapalli.plex.ui.design.SizeClass
 import com.thotapalli.plex.ui.design.ThotapalliTheme
-import com.thotapalli.plex.ui.shared.material.glass
+import com.thotapalli.plex.ui.design.backgroundBrush
+import com.thotapalli.plex.ui.design.glassSource
+import com.thotapalli.plex.ui.design.liquidGlass
 import com.thotapalli.plex.ui.shared.player.PlayerScreen
 import com.thotapalli.plex.ui.shared.screens.DetailScreen
 import com.thotapalli.plex.ui.shared.screens.DownloadsScreen
@@ -82,8 +98,8 @@ fun PlexApp(
     }
 
     WithSizeClass(isTelevision = container.isTelevision) { sizeClass ->
-        ThotapalliTheme(sizeClass = sizeClass) {
-            Box(modifier.fillMaxSize().background(PlexTheme.colours.background)) {
+        ThotapalliTheme(sizeClass = sizeClass, themeMode = state.themeMode) {
+            Box(modifier.fillMaxSize().background(PlexTheme.colours.backgroundBrush())) {
                 when (state.phase) {
                     AppPhase.STARTING, AppPhase.CONNECTING ->
                         LoadingScreen(if (state.phase == AppPhase.STARTING) "Starting" else "Connecting")
@@ -184,7 +200,6 @@ private fun ReadyContent(
             onMarkUnwatched = { viewModel.setWatched(item, false) },
             onDownload = { viewModel.download(item) },
             onRefreshMetadata = { viewModel.refreshItemMetadata(item) },
-            onAnalyze = { viewModel.analyzeItem(item) },
             onDelete = { viewModel.deleteItem(item) },
             onRemoveFromContinueWatching = { viewModel.removeFromContinueWatching(item) },
         )
@@ -225,6 +240,9 @@ private fun ReadyContent(
                 onCloseCollection = viewModel::closeCollection,
                 onScanLibrary = viewModel::scanLibrary,
                 itemActions = itemActions,
+                scanProgress = state.scanActivities
+                    .firstOrNull { it.librarySectionId == state.library?.library?.key }
+                    ?.progress,
                 modifier = bodyModifier.then(topSafe),
             )
 
@@ -254,6 +272,8 @@ private fun ReadyContent(
                 onSubtitlesOnChange = viewModel::setSubtitlesOn,
                 onSelectServer = viewModel::selectServer,
                 onSignOut = viewModel::signOut,
+                themeMode = state.themeMode,
+                onThemeModeChange = viewModel::setThemeMode,
                 modifier = bodyModifier.then(topSafe),
             )
 
@@ -290,91 +310,436 @@ private fun ReadyContent(
         }
     }
 
-    // Compact uses a bottom bar, medium and expanded a side rail, television a top row.
-    // See CLAUDE.md section 13. Insets keep the chrome clear of the S26 cutout and gesture bar.
-    when (sizeClass.navigation) {
-        com.thotapalli.plex.ui.design.NavigationStyle.BOTTOM_BAR -> Column(Modifier.fillMaxSize()) {
-            Box(Modifier.weight(1f)) { bodyWithBack(Modifier) }
-            NavigationBar(destination, onDestinationChange, horizontal = true)
+    // The library the shell currently has open, so the navigation can mark where you are. Home
+    // clears it; opening any library sets it and drops back to the Home destination, where the
+    // body's library grid shows. See CLAUDE.md section 13.
+    val openLibraryKey = state.library?.library?.key
+    val onHome: () -> Unit = { viewModel.closeLibrary(); onDestinationChange(Destination.HOME) }
+    val onOpenLibrary: (Library) -> Unit = { library ->
+        viewModel.openLibrary(library)
+        onDestinationChange(Destination.HOME)
+    }
+
+    // One backdrop host publishes the ambient haze state; the body marks itself the glass source
+    // and the navigation frosts it. Compact rides a bottom glass bar with a Libraries sheet; every
+    // wider class — medium, expanded and television alike — gets the persistent left glass rail so
+    // the D-pad has a natural first column and the libraries are always one hop away.
+    GlassScaffold(Modifier.fillMaxSize()) {
+        // Compact keeps its libraries in a sheet whose state is hoisted here, so the sheet overlays
+        // the whole screen as a sibling of the nav rather than a child of the bar's column.
+        var librariesSheetOpen by remember { mutableStateOf(false) }
+
+        when (sizeClass.navigation) {
+            com.thotapalli.plex.ui.design.NavigationStyle.BOTTOM_BAR -> Column(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(1f).glassSource()) { bodyWithBack(Modifier) }
+                NavigationBottomBar(
+                    current = destination,
+                    openLibraryKey = openLibraryKey,
+                    librariesOpen = librariesSheetOpen,
+                    onHome = onHome,
+                    onSelect = onDestinationChange,
+                    onOpenLibraries = { librariesSheetOpen = true },
+                )
+            }
+
+            else -> Row(Modifier.fillMaxSize()) {
+                NavigationRail(
+                    current = destination,
+                    openLibraryKey = openLibraryKey,
+                    libraries = state.libraries,
+                    narrow = sizeClass == SizeClass.MEDIUM,
+                    onHome = onHome,
+                    onSelect = onDestinationChange,
+                    onOpenLibrary = onOpenLibrary,
+                    onScanLibrary = viewModel::scanLibrary,
+                )
+                Box(Modifier.weight(1f).glassSource()) { bodyWithBack(Modifier) }
+            }
         }
 
-        com.thotapalli.plex.ui.design.NavigationStyle.SIDE_RAIL -> Row(Modifier.fillMaxSize()) {
-            NavigationBar(destination, onDestinationChange, horizontal = false)
-            Box(Modifier.weight(1f)) { bodyWithBack(Modifier) }
-        }
-
-        com.thotapalli.plex.ui.design.NavigationStyle.TOP_ROW -> Column(Modifier.fillMaxSize()) {
-            NavigationBar(destination, onDestinationChange, horizontal = true)
-            Box(Modifier.weight(1f)) { bodyWithBack(Modifier) }
+        if (librariesSheetOpen) {
+            LibrarySheet(
+                libraries = state.libraries,
+                openLibraryKey = openLibraryKey,
+                onDismiss = { librariesSheetOpen = false },
+                onOpenLibrary = { library -> librariesSheetOpen = false; onOpenLibrary(library) },
+                onScanLibrary = viewModel::scanLibrary,
+            )
         }
     }
 }
 
+/**
+ * The persistent left glass rail for medium, expanded and television. A frosted full-height sheet:
+ * the four top-level destinations, a divider, then every library the server exposes as a row with a
+ * trailing overflow that scans it. The open library is marked in the amber accent. See CLAUDE.md
+ * section 13.
+ */
 @Composable
-private fun NavigationBar(
+private fun NavigationRail(
     current: Destination,
-    onChange: (Destination) -> Unit,
-    horizontal: Boolean,
+    openLibraryKey: String?,
+    libraries: List<Library>,
+    narrow: Boolean,
+    onHome: () -> Unit,
+    onSelect: (Destination) -> Unit,
+    onOpenLibrary: (Library) -> Unit,
+    onScanLibrary: (Library) -> Unit,
 ) {
     val colours = PlexTheme.colours
 
-    val entries: @Composable () -> Unit = {
+    Column(
+        modifier = Modifier
+            .width(if (narrow) 176.dp else 236.dp)
+            .fillMaxHeight()
+            .liquidGlass(shape = RectangleShape, elevated = true)
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .padding(vertical = Spacing.md, horizontal = Spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
+    ) {
         Destination.entries.forEach { entry ->
-            NavItem(entry = entry, selected = entry == current, onClick = { onChange(entry) })
+            val selected = entry == current && (entry != Destination.HOME || openLibraryKey == null)
+            RailNavRow(
+                icon = entry.icon,
+                label = entry.label,
+                selected = selected,
+                onClick = { if (entry == Destination.HOME) onHome() else onSelect(entry) },
+            )
         }
-    }
 
-    if (horizontal) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .glass(shape = androidx.compose.ui.graphics.RectangleShape)
-                .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(vertical = Spacing.xs),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.lg, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically,
-        ) { entries() }
-    } else {
-        Column(
-            modifier = Modifier
-                .width(96.dp)
-                .fillMaxHeight()
-                .glass(shape = androidx.compose.ui.graphics.RectangleShape)
-                .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(vertical = Spacing.md),
-            verticalArrangement = Arrangement.spacedBy(Spacing.lg),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) { entries() }
+        HorizontalDivider(
+            color = colours.border,
+            modifier = Modifier.padding(vertical = Spacing.xs),
+        )
+
+        PlexText(
+            text = "Libraries",
+            style = PlexTheme.type.caption,
+            colour = colours.textSecondary,
+            modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
+        )
+
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
+        ) {
+            items(libraries, key = { it.key }) { library ->
+                LibraryNavRow(
+                    library = library,
+                    selected = openLibraryKey == library.key,
+                    onClick = { onOpenLibrary(library) },
+                    onScan = { onScanLibrary(library) },
+                )
+            }
+        }
     }
 }
 
-/** A navigation entry: icon over label, with an accent tint and pill when selected. */
+/** A top-level destination in the rail: icon, label, and an accent pill when it is the one open. */
 @Composable
-private fun NavItem(entry: Destination, selected: Boolean, onClick: () -> Unit) {
+private fun RailNavRow(
+    icon: PlexIconKind,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
     val colours = PlexTheme.colours
     val tint = if (selected) colours.accent else colours.textSecondary
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .plexFocusable(shape = Radius.glassSmall, onClick = onClick, scaleOnFocus = false)
+            .clip(Radius.glassSmall)
+            .background(
+                if (selected) colours.accent.copy(alpha = 0.16f) else Color.Transparent,
+                Radius.glassSmall,
+            )
+            .padding(horizontal = Spacing.sm, vertical = Spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        PlexIcon(kind = icon, tint = tint, size = 22.dp)
+        PlexText(text = label, style = PlexTheme.type.label, colour = tint, maxLines = 1)
+    }
+}
 
+/** A library row in the rail: the title selects it, the trailing overflow scans it. */
+@Composable
+private fun LibraryNavRow(
+    library: Library,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onScan: () -> Unit,
+) {
+    val colours = PlexTheme.colours
+    val tint = if (selected) colours.accent else colours.textPrimary
+    var menuOpen by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(Radius.glassSmall)
+            .background(
+                if (selected) colours.accent.copy(alpha = 0.16f) else Color.Transparent,
+                Radius.glassSmall,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PlexText(
+            text = library.title,
+            style = PlexTheme.type.label,
+            colour = tint,
+            maxLines = 1,
+            modifier = Modifier
+                .weight(1f)
+                .plexFocusable(shape = Radius.glassSmall, onClick = onClick, scaleOnFocus = false)
+                .padding(start = Spacing.sm, top = Spacing.sm, bottom = Spacing.sm, end = Spacing.xs),
+        )
+        Box {
+            OverflowButton(onClick = { menuOpen = true })
+            LibraryOverflowMenu(
+                expanded = menuOpen,
+                onDismiss = { menuOpen = false },
+                onScan = { menuOpen = false; onScan() },
+            )
+        }
+    }
+}
+
+/**
+ * The bottom glass bar for compact. The four fixed destinations plus a Libraries entry that raises
+ * a glass sheet of every library, so the bar stays a stable four-and-one rather than growing a tab
+ * per library. See CLAUDE.md section 13.
+ */
+@Composable
+private fun NavigationBottomBar(
+    current: Destination,
+    openLibraryKey: String?,
+    librariesOpen: Boolean,
+    onHome: () -> Unit,
+    onSelect: (Destination) -> Unit,
+    onOpenLibraries: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .liquidGlass(shape = RectangleShape)
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .padding(vertical = Spacing.xs, horizontal = Spacing.sm),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xs, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Destination.entries.forEach { entry ->
+            val selected = !librariesOpen && entry == current &&
+                (entry != Destination.HOME || openLibraryKey == null)
+            BottomNavItem(
+                icon = entry.icon,
+                label = entry.label,
+                selected = selected,
+                onClick = { if (entry == Destination.HOME) onHome() else onSelect(entry) },
+            )
+        }
+        BottomNavItem(
+            icon = null,
+            label = "Libraries",
+            selected = librariesOpen,
+            onClick = onOpenLibraries,
+        )
+    }
+}
+
+/** A bottom-bar entry: icon over label with an accent pill when selected. A null [icon] is the
+ * Libraries entry, drawn as a three-line list glyph. */
+@Composable
+private fun BottomNavItem(
+    icon: PlexIconKind?,
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val colours = PlexTheme.colours
+    val tint = if (selected) colours.accent else colours.textSecondary
     Column(
         modifier = Modifier
-            .plexFocusable(shape = Radius.card, onClick = onClick, scaleOnFocus = false)
-            .clip(Radius.card)
+            .plexFocusable(shape = Radius.glassSmall, onClick = onClick, scaleOnFocus = false)
+            .clip(Radius.glassSmall)
+            .background(
+                if (selected) colours.accent.copy(alpha = 0.16f) else Color.Transparent,
+                Radius.glassSmall,
+            )
             .padding(horizontal = Spacing.sm, vertical = Spacing.xs),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        PlexIcon(kind = entry.icon, tint = tint, size = 26.dp)
+        if (icon != null) PlexIcon(kind = icon, tint = tint, size = 24.dp) else LibrariesGlyph(tint)
         Spacer(Modifier.height(Spacing.xxs))
+        PlexText(text = label, style = PlexTheme.type.caption, colour = tint, maxLines = 1)
+    }
+}
+
+/**
+ * The compact Libraries sheet: a scrim that dismisses on tap and a bottom-anchored glass panel
+ * listing every library, each selecting on tap with a trailing overflow that scans it.
+ */
+@Composable
+private fun LibrarySheet(
+    libraries: List<Library>,
+    openLibraryKey: String?,
+    onDismiss: () -> Unit,
+    onOpenLibrary: (Library) -> Unit,
+    onScanLibrary: (Library) -> Unit,
+) {
+    val colours = PlexTheme.colours
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(colours.scrim)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onDismiss,
+            ),
+    ) {
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .liquidGlass(shape = Radius.glass, elevated = true)
+                // Swallow taps on the panel itself so only the scrim dismisses.
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {},
+                )
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(Spacing.md),
+            verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+        ) {
+            Box(
+                Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .size(width = 36.dp, height = 4.dp)
+                    .clip(Radius.pill)
+                    .background(colours.border),
+            )
+            Spacer(Modifier.height(Spacing.xs))
+            SectionHeader("Libraries")
+            libraries.forEach { library ->
+                SheetLibraryRow(
+                    library = library,
+                    selected = openLibraryKey == library.key,
+                    onClick = { onOpenLibrary(library) },
+                    onScan = { onScanLibrary(library) },
+                )
+            }
+        }
+    }
+}
+
+/** A library row inside the compact sheet: the title selects it, the overflow scans it. */
+@Composable
+private fun SheetLibraryRow(
+    library: Library,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onScan: () -> Unit,
+) {
+    val colours = PlexTheme.colours
+    val tint = if (selected) colours.accent else colours.textPrimary
+    var menuOpen by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(Radius.glassSmall)
+            .background(
+                if (selected) colours.accent.copy(alpha = 0.16f) else colours.surface,
+                Radius.glassSmall,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
         PlexText(
-            text = entry.label,
-            style = PlexTheme.type.caption,
+            text = library.title,
+            style = PlexTheme.type.label,
             colour = tint,
+            maxLines = 1,
+            modifier = Modifier
+                .weight(1f)
+                .plexFocusable(shape = Radius.glassSmall, onClick = onClick, scaleOnFocus = false)
+                .padding(horizontal = Spacing.md, vertical = Spacing.md),
         )
-        Spacer(Modifier.height(Spacing.xxs))
-        Box(
-            Modifier
-                .size(width = 18.dp, height = 3.dp)
-                .clip(Radius.pill)
-                .background(if (selected) colours.accent else androidx.compose.ui.graphics.Color.Transparent),
+        Box {
+            OverflowButton(onClick = { menuOpen = true })
+            LibraryOverflowMenu(
+                expanded = menuOpen,
+                onDismiss = { menuOpen = false },
+                onScan = { menuOpen = false; onScan() },
+            )
+        }
+    }
+}
+
+/** The vertical three-dot overflow control, sized for a touch target. */
+@Composable
+private fun OverflowButton(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .plexFocusable(shape = Radius.pill, onClick = onClick)
+            .clip(Radius.pill)
+            .size(40.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        OverflowDots(tint = PlexTheme.colours.textSecondary)
+    }
+}
+
+/** A per-library overflow menu with the one server action a library carries: a files scan. */
+@Composable
+private fun LibraryOverflowMenu(
+    expanded: Boolean,
+    onDismiss: () -> Unit,
+    onScan: () -> Unit,
+) {
+    val colours = PlexTheme.colours
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = onDismiss,
+        modifier = Modifier.liquidGlass(shape = Radius.glassSmall),
+    ) {
+        DropdownMenuItem(
+            text = {
+                PlexText(
+                    text = "Scan library files",
+                    style = PlexTheme.type.label,
+                    colour = colours.textPrimary,
+                    maxLines = 1,
+                )
+            },
+            onClick = onScan,
         )
+    }
+}
+
+/** Three stacked dots, the vertical overflow glyph drawn to match the hand-drawn icon set. */
+@Composable
+private fun OverflowDots(tint: Color) {
+    Canvas(Modifier.size(20.dp)) {
+        val cx = size.width / 2f
+        val r = size.minDimension * 0.09f
+        listOf(0.26f, 0.5f, 0.74f).forEach { fy ->
+            drawCircle(tint, r, Offset(cx, size.height * fy))
+        }
+    }
+}
+
+/** A three-line list glyph standing in for the libraries the icon set does not draw. */
+@Composable
+private fun LibrariesGlyph(tint: Color) {
+    Canvas(Modifier.size(24.dp)) {
+        val x0 = size.width * 0.26f
+        val x1 = size.width * 0.74f
+        val sw = size.width * 0.09f
+        listOf(0.34f, 0.5f, 0.66f).forEach { fy ->
+            drawLine(tint, Offset(x0, size.height * fy), Offset(x1, size.height * fy), sw, StrokeCap.Round)
+        }
     }
 }
 

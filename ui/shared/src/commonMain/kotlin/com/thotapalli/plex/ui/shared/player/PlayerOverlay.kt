@@ -1,17 +1,23 @@
 package com.thotapalli.plex.ui.shared.player
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -20,7 +26,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -33,19 +42,23 @@ import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.thotapalli.plex.core.playback.PlaybackState
 import com.thotapalli.plex.core.playback.PlayerTrack
+import com.thotapalli.plex.ui.design.Layout
 import com.thotapalli.plex.ui.design.Motion
 import com.thotapalli.plex.ui.design.PlayerColours
 import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
+import com.thotapalli.plex.ui.design.liquidGlass
+import com.thotapalli.plex.ui.design.pressBubble
+import com.thotapalli.plex.ui.shared.Artwork
 import com.thotapalli.plex.ui.shared.LoadingIndicator
 import com.thotapalli.plex.ui.shared.PlexIcon
 import com.thotapalli.plex.ui.shared.PlexIconKind
@@ -53,14 +66,18 @@ import com.thotapalli.plex.ui.shared.formatPosition
 import com.thotapalli.plex.ui.shared.plexFocusable
 
 /**
- * The player overlay from CLAUDE.md section 12.
+ * The player overlay from CLAUDE.md section 12, dressed in the liquid-glass language.
  *
- * Idle is nothing on screen: no bar, no clock, no logo, no title. Active is a bottom
- * gradient scrim, the title, a progress bar and transport controls, and nothing else.
+ * Idle is nothing on screen: no bar, no clock, no logo, no title. Active is a bottom gradient
+ * scrim, the title, a progress bar and transport controls, and nothing else. The transport
+ * controls float in a frosted glass bar, the one warm-amber accent marks only the active scrubber
+ * fill and the call-to-action pills, and every control answers a press with a springy bubble.
  *
- * This is Compose content in a layer above the video surface. It never causes the surface
- * to be redrawn, and showing or hiding it never recreates the player or the surface.
- * See CLAUDE.md section 8.
+ * This is Compose content in a layer above the video surface. It never causes the surface to be
+ * redrawn, and showing or hiding it never recreates the player or the surface. The video is not a
+ * glass source — over full motion Haze cannot sample cheaply — so every glass panel here uses the
+ * translucent tinted fill with the same specular, rim and glow, which still reads as glass over the
+ * picture. See CLAUDE.md section 8 and section 12.
  */
 @Composable
 fun PlayerOverlay(
@@ -70,6 +87,8 @@ fun PlayerOverlay(
 ) {
     // The player screen ignores the light theme and always renders on the dark tokens.
     val colours = PlayerColours
+    val isTv = PlexTheme.sizeClass.isTelevision
+    val edge = if (isTv) Spacing.xl else Spacing.lg
 
     // The controls fade after three seconds of no input, but only once the picture is actually
     // playing. While the player is buffering, paused, or has not yet reached the first frame
@@ -153,7 +172,7 @@ fun PlayerOverlay(
             }
         }
 
-        // Top scrim and the back control, top left. A clearly visible way out of the player.
+        // Top scrim and the back control, top left. A frosted glass way out of the player.
         AnimatedVisibility(
             visible = controlsShown,
             enter = fadeIn(Motion.playerFade()),
@@ -164,7 +183,7 @@ fun PlayerOverlay(
                     Modifier
                         .fillMaxWidth()
                         .align(Alignment.TopCenter)
-                        .height(120.dp)
+                        .height(140.dp)
                         .background(
                             Brush.verticalGradient(0f to colours.scrim, 1f to Color.Transparent),
                         ),
@@ -172,13 +191,15 @@ fun PlayerOverlay(
                 Box(
                     Modifier
                         .align(Alignment.TopStart)
-                        .padding(Spacing.lg),
+                        .padding(edge),
                 ) {
-                    OverlayButton("← Back", onClick = actions.onBack)
+                    GlassIconButton(PlexIconKind.BACK, onClick = actions.onBack)
                 }
             }
         }
 
+        // The bottom cluster: gradient scrim, title, the scrubber, and the floating glass transport
+        // bar. Nothing else lives here. See CLAUDE.md section 12 "Active".
         AnimatedVisibility(
             visible = controlsShown,
             enter = fadeIn(Motion.playerFade()),
@@ -189,7 +210,7 @@ fun PlayerOverlay(
                     Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
-                        .height(220.dp)
+                        .height(280.dp)
                         .background(
                             Brush.verticalGradient(0f to Color.Transparent, 1f to colours.scrim),
                         ),
@@ -199,7 +220,7 @@ fun PlayerOverlay(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(Spacing.lg),
+                        .padding(horizontal = edge, vertical = edge),
                     verticalArrangement = Arrangement.spacedBy(Spacing.xs),
                 ) {
                     PlexText(
@@ -219,28 +240,48 @@ fun PlayerOverlay(
 
                     Spacer(Modifier.height(Spacing.xs))
 
-                    SeekBar(
-                        positionMs = state.displayPositionMs,
-                        durationMs = state.durationMs,
-                        trickplayUrlAt = state.trickplayUrlAt,
-                        onScrubStart = actions.onScrubStart,
-                        onScrub = actions.onScrub,
-                        onScrubEnd = actions.onScrubEnd,
-                    )
+                    // Position, progress bar and duration together, as CLAUDE.md section 14 item 7
+                    // lists them. The scrubber sits outside the glass bar so its trickplay preview
+                    // floats freely above the handle without being clipped by the glass.
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    ) {
+                        PlexText(
+                            text = formatPosition(state.displayPositionMs),
+                            style = PlexTheme.type.caption,
+                            colour = colours.textSecondary,
+                        )
+                        SeekBar(
+                            positionMs = state.displayPositionMs,
+                            durationMs = state.durationMs,
+                            trickplayUrlAt = state.trickplayUrlAt,
+                            onScrubStart = actions.onScrubStart,
+                            onScrub = actions.onScrub,
+                            onScrubEnd = actions.onScrubEnd,
+                            modifier = Modifier.weight(1f),
+                        )
+                        PlexText(
+                            text = formatPosition(state.durationMs),
+                            style = PlexTheme.type.caption,
+                            colour = colours.textSecondary,
+                        )
+                    }
 
-                    TransportRow(state = state, actions = actions)
+                    TransportBar(state = state, actions = actions)
                 }
             }
         }
 
-        // The skip button shows only while the intro marker is active.
+        // The skip button shows only while the intro marker is active. An amber glass pill.
         AnimatedVisibility(
             visible = state.showSkipIntro,
             enter = fadeIn(Motion.enter()),
             exit = fadeOut(Motion.exit()),
-            modifier = Modifier.align(Alignment.BottomEnd).padding(Spacing.xl),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(edge),
         ) {
-            OverlayButton("Skip intro", onClick = actions.onSkipIntro, primary = true)
+            GlassTextButton("Skip intro", onClick = actions.onSkipIntro, accent = true)
         }
 
         // The next episode prompt, lower right, with a ten second countdown.
@@ -248,7 +289,7 @@ fun PlayerOverlay(
             visible = state.showNextEpisodePrompt,
             enter = fadeIn(Motion.enter()),
             exit = fadeOut(Motion.exit()),
-            modifier = Modifier.align(Alignment.BottomEnd).padding(Spacing.xl),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(edge),
         ) {
             NextEpisodePrompt(
                 title = state.nextEpisodeTitle.orEmpty(),
@@ -259,23 +300,23 @@ fun PlayerOverlay(
         }
 
         // The transcoding chip. Lower left, fades after 4000 ms, never blocks the picture
-        // and never requires dismissal. See CLAUDE.md section 10.
+        // and never requires dismissal. A quiet glass chip. See CLAUDE.md section 10.
         AnimatedVisibility(
             visible = state.showTranscodingChip,
             enter = fadeIn(Motion.enter()),
             exit = fadeOut(Motion.exit()),
-            modifier = Modifier.align(Alignment.BottomStart).padding(Spacing.xl),
+            modifier = Modifier.align(Alignment.BottomStart).padding(edge),
         ) {
             Box(
                 Modifier
-                    .background(colours.surface.copy(alpha = 0.85f), Radius.pill)
+                    .liquidGlass(shape = Radius.pill, glow = false)
                     .padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
             ) {
                 PlexText("Transcoding", style = PlexTheme.type.caption, colour = colours.textSecondary)
             }
         }
 
-        // The centre play/pause flash on tap.
+        // The centre play/pause flash on tap: a glass burst around the icon.
         AnimatedVisibility(
             visible = flashVisible,
             enter = fadeIn(Motion.enter()),
@@ -284,7 +325,7 @@ fun PlayerOverlay(
         ) {
             Box(
                 Modifier
-                    .background(colours.scrim, Radius.pill)
+                    .liquidGlass(shape = Radius.pill)
                     .padding(Spacing.md),
                 contentAlignment = Alignment.Center,
             ) {
@@ -309,11 +350,11 @@ private fun SeekHint(visible: Boolean, label: String, modifier: Modifier = Modif
         visible = visible,
         enter = fadeIn(Motion.enter()),
         exit = fadeOut(Motion.exit()),
-        modifier = modifier.padding(horizontal = Spacing.xxl),
+        modifier = modifier.padding(horizontal = Spacing.xl),
     ) {
         Box(
             Modifier
-                .background(colours.scrim, Radius.pill)
+                .liquidGlass(shape = Radius.pill, glow = false)
                 .padding(horizontal = Spacing.md, vertical = Spacing.sm),
         ) {
             PlexText(label, style = PlexTheme.type.title, colour = colours.textPrimary)
@@ -321,53 +362,61 @@ private fun SeekHint(visible: Boolean, label: String, modifier: Modifier = Modif
     }
 }
 
+/**
+ * The floating transport bar: a sheet of frosted glass carrying the transport controls, left to
+ * right per CLAUDE.md section 14 item 7 — play/pause, seek back, seek forward, then the audio and
+ * subtitle selectors and the Windows full-screen toggle pushed to the right. Position, the progress
+ * bar and duration sit on the scrubber row just above. The tint is a touch denser than the ambient
+ * glass so white glyphs stay legible over bright footage.
+ */
 @Composable
-private fun TransportRow(state: PlayerScreenState, actions: PlayerActions) {
+private fun TransportBar(state: PlayerScreenState, actions: PlayerActions) {
     val colours = PlayerColours
+    val isTv = PlexTheme.sizeClass.isTelevision
 
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .liquidGlass(
+                shape = Radius.glass,
+                elevated = true,
+                tint = colours.surface.copy(alpha = 0.82f),
+            )
+            .padding(
+                horizontal = if (isTv) Spacing.md else Spacing.sm,
+                vertical = if (isTv) Spacing.sm else Spacing.xs,
+            ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
-        // Left to right, exactly as CLAUDE.md section 14 item 7 lists them.
-        OverlayButton(if (state.isPlaying) "Pause" else "Play", actions.onPlayPause, primary = true)
-        OverlayButton("-10s", actions.onSeekBack)
-        OverlayButton("+30s", actions.onSeekForward)
-
-        PlexText(
-            text = formatPosition(state.displayPositionMs),
-            style = PlexTheme.type.caption,
-            colour = colours.textSecondary,
+        GlassIconButton(
+            kind = if (state.isPlaying) PlexIconKind.PAUSE else PlexIconKind.PLAY,
+            onClick = actions.onPlayPause,
+            prominent = true,
         )
+        GlassTextButton("-10s", actions.onSeekBack)
+        GlassTextButton("+30s", actions.onSeekForward)
 
-        Spacer(Modifier.width(Spacing.xs))
-        Box(Modifier.weight(1f))
-
-        PlexText(
-            text = formatPosition(state.durationMs),
-            style = PlexTheme.type.caption,
-            colour = colours.textSecondary,
-        )
+        Spacer(Modifier.weight(1f))
 
         if (state.audioTracks.size > 1) {
-            OverlayButton("Audio", actions.onOpenAudioTracks)
+            GlassTextButton("Audio", actions.onOpenAudioTracks)
         }
         if (state.subtitleTracks.isNotEmpty()) {
-            OverlayButton("Subtitles", actions.onOpenSubtitleTracks)
+            GlassTextButton("Subtitles", actions.onOpenSubtitleTracks)
         }
         if (state.showFullScreenToggle) {
-            OverlayButton(
-                if (state.isFullScreen) "Exit full screen" else "Full screen",
-                actions.onToggleFullScreen,
+            GlassIconButton(
+                kind = if (state.isFullScreen) PlexIconKind.FULLSCREEN_EXIT else PlexIconKind.FULLSCREEN,
+                onClick = actions.onToggleFullScreen,
             )
         }
     }
 }
 
 /**
- * The seek bar, with the trickplay preview from CLAUDE.md section 12: a thumbnail above
- * the handle in a 12 radius card with no border.
+ * The seek bar, with the trickplay preview from CLAUDE.md section 12: a thumbnail above the handle
+ * in a glass card. The track carries the amber progress fill and a small glass handle rides it.
  */
 @Composable
 private fun SeekBar(
@@ -377,8 +426,10 @@ private fun SeekBar(
     onScrubStart: () -> Unit,
     onScrub: (Long) -> Unit,
     onScrubEnd: (Long) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colours = PlayerColours
+    val isTv = PlexTheme.sizeClass.isTelevision
     var dragging by remember { mutableStateOf(false) }
     var dragFraction by remember { mutableFloatStateOf(0f) }
 
@@ -390,21 +441,27 @@ private fun SeekBar(
         0f
     }
 
-    BoxWithConstraints(Modifier.fillMaxWidth().height(48.dp)) {
+    val thumb = if (isTv) 18.dp else 14.dp
+
+    BoxWithConstraints(modifier.fillMaxWidth().height(28.dp)) {
         val trackWidth = maxWidth
 
         if (dragging) {
             val previewMs = (dragFraction * durationMs).toLong()
+            val previewX = (trackWidth * fraction - PREVIEW_WIDTH / 2)
+                .coerceIn(0.dp, (trackWidth - PREVIEW_WIDTH).coerceAtLeast(0.dp))
             TrickplayPreview(
                 url = trickplayUrlAt(previewMs),
                 positionMs = previewMs,
-                offsetX = (trackWidth * fraction) - PREVIEW_WIDTH / 2,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .offset(x = previewX, y = -(PREVIEW_HEIGHT + Spacing.md)),
             )
         }
 
         Box(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
+                .align(Alignment.Center)
                 .fillMaxWidth()
                 .height(24.dp)
                 .pointerInput(durationMs) {
@@ -428,7 +485,7 @@ private fun SeekBar(
                         },
                     )
                 },
-            contentAlignment = Alignment.Center,
+            contentAlignment = Alignment.CenterStart,
         ) {
             Box(
                 Modifier
@@ -443,32 +500,47 @@ private fun SeekBar(
                         .background(colours.accent, Radius.pill),
                 )
             }
+
+            // The glass handle, riding the track at the current position.
+            Box(
+                Modifier
+                    .offset(
+                        x = (trackWidth * fraction - thumb / 2)
+                            .coerceIn(0.dp, (trackWidth - thumb).coerceAtLeast(0.dp)),
+                    )
+                    .size(thumb)
+                    .liquidGlass(shape = Radius.pill, glow = false),
+            )
         }
     }
 }
 
 @Composable
-private fun TrickplayPreview(url: String?, positionMs: Long, offsetX: Dp) {
+private fun TrickplayPreview(
+    url: String?,
+    positionMs: Long,
+    modifier: Modifier = Modifier,
+) {
     val colours = PlayerColours
 
     Column(
-        modifier = Modifier.offset(x = offsetX.coerceAtLeast(0.dp)),
+        modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
     ) {
         Box(
             Modifier
                 .width(PREVIEW_WIDTH)
                 .aspectRatio(16f / 9f)
-                // A 12 radius card with no border. See CLAUDE.md section 12.
-                .clip(Radius.card)
-                .background(colours.surfaceElevated),
+                // A glass-framed card above the handle. See CLAUDE.md section 12.
+                .liquidGlass(shape = Radius.card),
         ) {
             if (url != null) {
-                com.thotapalli.plex.ui.shared.Artwork(
+                Artwork(
                     url = url,
                     contentDescription = null,
                     fallbackTitle = "",
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize().clip(Radius.card),
                 )
             }
         }
@@ -491,45 +563,129 @@ private fun NextEpisodePrompt(
 
     Column(
         modifier = Modifier
-            .background(colours.surface.copy(alpha = 0.95f), Radius.card)
+            .liquidGlass(shape = Radius.glass, elevated = true)
             .padding(Spacing.md),
         verticalArrangement = Arrangement.spacedBy(Spacing.xs),
     ) {
         PlexText("Up next", style = PlexTheme.type.caption, colour = colours.textSecondary)
         PlexText(title, style = PlexTheme.type.label, colour = colours.textPrimary, maxLines = 1)
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-            OverlayButton("Play now ($secondsRemaining)", onPlayNow, primary = true)
-            OverlayButton("Cancel", onCancel)
+            GlassTextButton("Play now ($secondsRemaining)", onPlayNow, accent = true)
+            GlassTextButton("Cancel", onCancel)
         }
     }
 }
 
+/**
+ * A glass control button carrying a text label. The one warm accent fills the call-to-action pills
+ * (Skip intro, Play now); everything else is quiet frosted glass. Springs down under a press with a
+ * brightening specular, and grows behind an amber ring on television focus or pointer hover.
+ */
 @Composable
-private fun OverlayButton(label: String, onClick: () -> Unit, primary: Boolean = false) {
+private fun GlassTextButton(
+    label: String,
+    onClick: () -> Unit,
+    accent: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
     val colours = PlayerColours
-    Box(
-        modifier = Modifier
-            .plexFocusable(shape = Radius.pill, onClick = onClick, scaleOnFocus = false)
-            .background(
-                if (primary) colours.accent else colours.surface.copy(alpha = 0.7f),
-                Radius.pill,
-            )
-            .border(
-                1.dp,
-                if (primary) colours.accent else colours.border,
-                Radius.pill,
-            )
-            .padding(horizontal = Spacing.sm, vertical = Spacing.xs),
-    ) {
+    GlassControlButton(onClick = onClick, modifier = modifier, accent = accent) {
         PlexText(
             text = label,
             style = PlexTheme.type.label,
-            colour = if (primary) colours.background else colours.textPrimary,
+            colour = if (accent) colours.background else colours.textPrimary,
+            maxLines = 1,
         )
     }
 }
 
-/** A track chooser sheet. Sixteen radius, per section 12. */
+/** A glass control button carrying a single line icon. [prominent] sizes up the central control. */
+@Composable
+private fun GlassIconButton(
+    kind: PlexIconKind,
+    onClick: () -> Unit,
+    accent: Boolean = false,
+    prominent: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    val colours = PlayerColours
+    val isTv = PlexTheme.sizeClass.isTelevision
+    val iconSize = when {
+        prominent && isTv -> 34.dp
+        prominent -> 30.dp
+        isTv -> 26.dp
+        else -> 22.dp
+    }
+    GlassControlButton(onClick = onClick, modifier = modifier, accent = accent) {
+        PlexIcon(
+            kind = kind,
+            tint = if (accent) colours.background else colours.textPrimary,
+            size = iconSize,
+        )
+    }
+}
+
+/**
+ * The shared glass-pill control. Owns its interaction source so a press can both spring the bubble
+ * ([Modifier.pressBubble]) and brighten the glass ([liquidGlass]'s `specularBoost`), and a focus or
+ * hover can raise the amber ring and grow — so a remote, a keyboard and a mouse each get the same
+ * "this is the thing under me" cue. Glow is off so pills inside the transport bar do not stack halos.
+ */
+@Composable
+private fun GlassControlButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    shape: RoundedCornerShape = Radius.pill,
+    accent: Boolean = false,
+    content: @Composable RowScope.() -> Unit,
+) {
+    val colours = PlayerColours
+    val isTv = PlexTheme.sizeClass.isTelevision
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val focused by interaction.collectIsFocusedAsState()
+    val hovered by interaction.collectIsHoveredAsState()
+    val highlighted = focused || hovered
+
+    // Focus grows the control to the television focus scale; a pointer hover lifts it half as far,
+    // so a remote target still reads as the stronger selection when both are true.
+    val focusScale by animateFloatAsState(
+        targetValue = when {
+            focused -> Layout.TELEVISION_FOCUS_SCALE
+            hovered -> 1f + (Layout.TELEVISION_FOCUS_SCALE - 1f) * 0.5f
+            else -> 1f
+        },
+        animationSpec = Motion.spring(),
+        label = "player-control-focus",
+    )
+
+    Row(
+        modifier = modifier
+            .scale(focusScale)
+            .pressBubble(pressed)
+            .border(
+                width = if (highlighted) Layout.focusRingWidth else 0.dp,
+                color = if (highlighted) colours.focusRing else Color.Transparent,
+                shape = shape,
+            )
+            .liquidGlass(
+                shape = shape,
+                glow = false,
+                tint = if (accent) colours.accent else Color.Unspecified,
+                specularBoost = if (pressed) 1f else 0f,
+            )
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .padding(
+                horizontal = if (isTv) Spacing.md else Spacing.sm,
+                vertical = if (isTv) Spacing.sm else Spacing.xs,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xxs),
+        content = content,
+    )
+}
+
+/** A track chooser sheet, dressed as a sheet of liquid glass. Sixteen radius, per section 12. */
 @Composable
 fun TrackSheet(
     title: String,
@@ -551,7 +707,7 @@ fun TrackSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(colours.surface, Radius.sheet)
+                .liquidGlass(shape = Radius.sheet, elevated = true)
                 .padding(Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(Spacing.xs),
         ) {
@@ -574,14 +730,21 @@ private fun TrackRow(label: String, selected: Boolean, onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .plexFocusable(shape = Radius.card, onClick = onClick, scaleOnFocus = false)
-            .background(if (selected) colours.surfaceElevated else Color.Transparent, Radius.card)
+            .then(
+                if (selected) {
+                    Modifier.liquidGlass(shape = Radius.card, glow = false, tint = colours.accent)
+                } else {
+                    Modifier
+                },
+            )
             .padding(Spacing.sm),
     ) {
         PlexText(
             text = label,
-            colour = if (selected) colours.accent else colours.textPrimary,
+            colour = if (selected) colours.background else colours.textPrimary,
         )
     }
 }
 
 private val PREVIEW_WIDTH = 200.dp
+private val PREVIEW_HEIGHT = 112.dp
