@@ -47,6 +47,8 @@ import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
 import com.thotapalli.plex.ui.shared.LoadingIndicator
+import com.thotapalli.plex.ui.shared.PlexIcon
+import com.thotapalli.plex.ui.shared.PlexIconKind
 import com.thotapalli.plex.ui.shared.formatPosition
 import com.thotapalli.plex.ui.shared.plexFocusable
 
@@ -95,6 +97,19 @@ fun PlayerOverlay(
         }
     }
 
+    // A centre flash of the play or pause icon on every tap, so the toggle is unmistakable even
+    // when the controls are hidden. The counter fires the effect on each tap; the icon reflects
+    // the state the tap produced.
+    val playPauseFlash = remember { mutableIntStateOf(0) }
+    var flashVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(playPauseFlash.intValue) {
+        if (playPauseFlash.intValue > 0) {
+            flashVisible = true
+            delay(500)
+            flashVisible = false
+        }
+    }
+
     Box(modifier.fillMaxSize()) {
         // The gesture bed, beneath every control. A single tap plays or pauses; a double-tap on
         // the left or right half jumps ten seconds back or forward. The buttons, seek bar and
@@ -106,7 +121,10 @@ fun PlayerOverlay(
                 .pointerInput(Unit) {
                     detectTapGestures(
                         onPress = { actions.onUserInput() },
-                        onTap = { actions.onPlayPause() },
+                        onTap = {
+                            actions.onPlayPause()
+                            playPauseFlash.intValue += 1
+                        },
                         onDoubleTap = { offset ->
                             if (offset.x < size.width / 2f) {
                                 actions.onSeekBack()
@@ -254,6 +272,27 @@ fun PlayerOverlay(
                     .padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
             ) {
                 PlexText("Transcoding", style = PlexTheme.type.caption, colour = colours.textSecondary)
+            }
+        }
+
+        // The centre play/pause flash on tap.
+        AnimatedVisibility(
+            visible = flashVisible,
+            enter = fadeIn(Motion.enter()),
+            exit = fadeOut(Motion.exit()),
+            modifier = Modifier.align(Alignment.Center),
+        ) {
+            Box(
+                Modifier
+                    .background(colours.scrim, Radius.pill)
+                    .padding(Spacing.md),
+                contentAlignment = Alignment.Center,
+            ) {
+                PlexIcon(
+                    kind = if (state.isPlaying) PlexIconKind.PLAY else PlexIconKind.PAUSE,
+                    tint = colours.textPrimary,
+                    size = 48.dp,
+                )
             }
         }
 
