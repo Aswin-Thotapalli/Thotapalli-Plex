@@ -1,5 +1,6 @@
 package com.thotapalli.plex.core.api
 
+import com.thotapalli.plex.core.api.dto.ActivityContainer
 import com.thotapalli.plex.core.api.dto.DirectoryContainer
 import com.thotapalli.plex.core.api.dto.HubContainer
 import com.thotapalli.plex.core.api.dto.IdentityContainer
@@ -216,6 +217,31 @@ class PlexServerApi(
     // These are management actions, not browsing. The owner runs the server and asked for the
     // controls the official app exposes: scan a library, refresh or analyze an item, remove it
     // from Continue Watching, or delete it. Each is a single documented server call.
+
+    /**
+     * The server's running background jobs, narrowed to library-scan work.
+     *
+     * Drives the live scan-progress indicator and the auto-pickup of newly scanned items.
+     * Polled on a loop, so it must never take the interface down: any failure — no
+     * connection, a shape the mapper does not recognise — returns an empty list rather than
+     * throwing. See CLAUDE.md section 18 point 2.
+     */
+    suspend fun activities(scope: ServerScope): List<ServerActivity> = runCatching {
+        val response = client.get("${scope.baseUri}/activities") { scope.apply(this) }
+        if (response.status.value !in 200..299) return emptyList()
+        response.body<MediaContainerResponse<ActivityContainer>>()
+            .mediaContainer.activity
+            .filter { it.type?.startsWith("library.") == true }
+            .map { dto ->
+                ServerActivity(
+                    type = dto.type.orEmpty(),
+                    title = dto.title.orEmpty(),
+                    subtitle = dto.subtitle,
+                    progress = (dto.progress.coerceIn(0, 100)) / 100f,
+                    librarySectionId = dto.context?.librarySectionID,
+                )
+            }
+    }.getOrDefault(emptyList())
 
     /** Trigger a scan of one library section, so newly added files are picked up. */
     suspend fun scanLibrary(scope: ServerScope, libraryKey: String) {

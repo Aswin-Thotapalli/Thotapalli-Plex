@@ -1,6 +1,7 @@
 package com.thotapalli.plex.ui.shared
 
 import com.thotapalli.plex.core.session.KeyValueStore
+import com.thotapalli.plex.ui.design.ThemeMode
 
 /**
  * The settings screen from CLAUDE.md section 14 item 9.
@@ -41,6 +42,17 @@ class SettingsStore(
         get() = store.getString(SUBTITLES_ON)?.toBooleanStrictOrNull() ?: false
         set(value) = store.putString(SUBTITLES_ON, value.toString())
 
+    /**
+     * Light, dark or follow the system. Persisted by enum name and defaulting to
+     * [ThemeMode.SYSTEM]; an unrecognised stored value falls back to SYSTEM rather than
+     * crashing. PlexApp reads this to pick the theme. See CLAUDE.md sections 12 and 14.
+     */
+    var themeMode: ThemeMode
+        get() = store.getString(THEME_MODE)
+            ?.let { name -> ThemeMode.entries.firstOrNull { it.name == name } }
+            ?: ThemeMode.SYSTEM
+        set(value) = store.putString(THEME_MODE, value.name)
+
     /** Set by the platform layer, since only it knows whether Android or Windows is running. */
     var defaultUnmetered: Boolean = true
 
@@ -50,6 +62,7 @@ class SettingsStore(
         const val AUDIO_LANGUAGE = "setting_audio_language"
         const val SUBTITLE_LANGUAGE = "setting_subtitle_language"
         const val SUBTITLES_ON = "setting_subtitles_on"
+        const val THEME_MODE = "setting_theme_mode"
         const val DEFAULT_LANGUAGE = "eng"
     }
 }

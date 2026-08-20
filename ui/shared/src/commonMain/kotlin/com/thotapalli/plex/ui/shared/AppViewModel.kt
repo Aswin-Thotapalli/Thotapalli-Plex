@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.thotapalli.plex.core.api.PlexUrls
 import com.thotapalli.plex.core.api.SearchResults
+import com.thotapalli.plex.core.api.ServerActivity
 import com.thotapalli.plex.core.api.ServerScope
 import com.thotapalli.plex.core.model.Episode
 import com.thotapalli.plex.core.model.HomeUser
@@ -17,6 +18,7 @@ import com.thotapalli.plex.core.model.Show
 import com.thotapalli.plex.core.model.watched
 import com.thotapalli.plex.core.download.DownloadQueue
 import com.thotapalli.plex.core.download.OfflineResolver
+import com.thotapalli.plex.ui.design.ThemeMode
 import com.thotapalli.plex.ui.shared.screens.DownloadEntry
 import com.thotapalli.plex.ui.shared.screens.SettingsScreenState
 import kotlinx.coroutines.Job
@@ -24,6 +26,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,10 +42,13 @@ import kotlinx.coroutines.launch
  */
 class AppViewModel(private val container: AppContainer) : ViewModel() {
 
-    private val _state = MutableStateFlow(AppState())
+    private val _state = MutableStateFlow(AppState(themeMode = container.settings.themeMode))
     val state: StateFlow<AppState> = _state.asStateFlow()
 
     private var searchJob: Job? = null
+
+    /** The live scan-progress poll. Cancelled and replaced on server change and sign-out. */
+    private var scanJob: Job? = null
 
     /** Set by the platform so the update notice can open the artefact in a browser. */
     var onOpenUrl: ((String) -> Unit)? = null
@@ -79,8 +85,9 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     }
 
     fun signOut() {
+        scanJob?.cancel()
         container.session.signOut()
-        _state.value = AppState(phase = AppPhase.SIGNED_OUT)
+        _state.value = AppState(phase = AppPhase.SIGNED_OUT, themeMode = container.settings.themeMode)
     }
 
     /**
@@ -137,6 +144,50 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         refreshHome(active)
         refreshDownloads()
         checkForUpdate()
+        startScanPolling(active)
+    }
+
+    // --- live scan progress ----------------------------------------------------------------
+
+    /**
+     * Poll the server's running library scans while a server is active, so the interface can
+     * show live progress and pick up newly scanned items on its own.
+     *
+     * When a library's scan drops out of the list after having been present, that scan has
+     * finished: its contents are refreshed from the network and Home is rebuilt, so new items
+     * appear without the viewer reaching for a refresh. Lightweight and cancellable — a single
+     * job on [viewModelScope], replaced on every server change and stopped on sign-out.
+     */
+    private fun startScanPolling(server: ActiveServer) {
+        scanJob?.cancel()
+        scanJob = viewModelScope.launch {
+            var scanning = emptySet<String>()
+            while (isActive) {
+                val activities = container.serverApi.activities(server.scope)
+                _state.update { it.copy(scanActivities = activities) }
+
+                val current = activities.mapNotNull { it.librarySectionId }.toSet()
+                val finished = scanning - current
+                if (finished.isNotEmpty()) {
+                    finished.forEach { sectionId ->
+                        _state.value.libraries.firstOrNull { it.key == sectionId }?.let { library ->
+                            runCatching {
+                                container.repository.refreshLibraryContents(server.scope, library)
+                            }
+                        }
+                    }
+                    // If the viewer is looking at a library that just finished, reload it too.
+                    _state.value.library?.let { open ->
+                        if (open.library.key in finished) {
+                            loadLibraryContents(open.library, open.unwatchedOnly)
+                        }
+                    }
+                    refreshHome(server)
+                }
+                scanning = current
+                delay(SCAN_POLL_INTERVAL_MS)
+            }
+        }
     }
 
     fun refreshHome(server: ActiveServer = requireServer()) {
@@ -610,6 +661,15 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         _state.update { it.copy(settingsRevision = it.settingsRevision + 1) }
     }
 
+    /**
+     * Light, dark or follow the system. Persisted to the store and mirrored into state so the
+     * setting recomposes; PlexApp reads [AppState.themeMode] to apply the theme.
+     */
+    fun setThemeMode(mode: ThemeMode) {
+        container.settings.themeMode = mode
+        _state.update { it.copy(themeMode = mode, settingsRevision = it.settingsRevision + 1) }
+    }
+
     fun selectServer(server: com.thotapalli.plex.core.model.PlexServer) {
         container.session.selectServer(server)
         viewModelScope.launch { loadHome() }
@@ -639,6 +699,9 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         const val SEARCH_DEBOUNCE_MS = 300L
         const val MIN_QUERY_LENGTH = 2
         const val HOME_RAIL_LIMIT = 20
+
+        /** How often the live scan-progress poll asks the server for its running jobs. */
+        const val SCAN_POLL_INTERVAL_MS = 1500L
     }
 }
 
@@ -669,6 +732,10 @@ data class AppState(
     val availableUpdate: com.thotapalli.plex.core.session.AvailableUpdate? = null,
     /** A short transient message for a server action's result, shown as a snackbar. */
     val notice: String? = null,
+    /** Light, dark or follow the system. Applied by PlexApp, not here. */
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    /** Running library scans on the server, refreshed by the live poll for progress display. */
+    val scanActivities: List<ServerActivity> = emptyList(),
     val error: String? = null,
 )
 
