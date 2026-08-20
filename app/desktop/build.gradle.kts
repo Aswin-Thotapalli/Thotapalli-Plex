@@ -20,6 +20,9 @@ dependencies {
     implementation(project(":core:download"))
     implementation(project(":player:mpv"))
     implementation(compose.desktop.currentOs)
+    // For borderless full screen: hide the Windows taskbar via the Win32 shell APIs.
+    implementation(libs.jna)
+    implementation(libs.jna.platform)
     implementation(libs.coroutines.core)
     implementation(libs.coroutines.swing)
     // AppViewModel extends androidx.lifecycle.ViewModel, so its supertype has to be on the
