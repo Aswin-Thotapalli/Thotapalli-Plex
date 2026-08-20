@@ -49,6 +49,22 @@ class ConnectionSelector(
     }
 
     /**
+     * Confirm a single already-chosen [connection] still answers as this server, with one
+     * identity probe instead of the full parallel sweep. Returns a refreshed selection, or
+     * null when it no longer answers. This is what lets a relaunch reuse a persisted choice
+     * without waiting for every dead or remote connection to time out. See CLAUDE.md section 5.
+     */
+    suspend fun verify(server: PlexServer, connection: ServerConnection): SelectedConnection? {
+        val probe = probe(server, connection) ?: return null
+        return SelectedConnection(
+            machineIdentifier = server.machineIdentifier,
+            connection = probe.connection,
+            roundTripMs = probe.roundTripMs,
+            selectedAtMs = nowMs(),
+        )
+    }
+
+    /**
      * A probe confirms both reachability and identity. A reachable host that answers with
      * a different machine identifier is a different server, so it loses.
      */

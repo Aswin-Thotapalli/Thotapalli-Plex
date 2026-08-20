@@ -49,11 +49,19 @@ fun PosterTile(
     artworkUrl: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    actions: ItemActions? = null,
+    isContinueWatching: Boolean = false,
 ) {
     val colours = PlexTheme.colours
 
+    ItemMenuHost(
+        item = item,
+        actions = actions,
+        isContinueWatching = isContinueWatching,
+        modifier = modifier,
+    ) {
     Column(
-        modifier = modifier
+        modifier = Modifier
             .plexFocusable(shape = Radius.poster, onClick = onClick)
             .padding(Spacing.xxs),
     ) {
@@ -111,6 +119,7 @@ fun PosterTile(
             minLines = 1,
             maxLines = 1,
         )
+    }
     }
 }
 
@@ -194,11 +203,19 @@ fun WideProgressTile(
     artworkUrl: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    actions: ItemActions? = null,
+    isContinueWatching: Boolean = false,
 ) {
     val colours = PlexTheme.colours
 
+    ItemMenuHost(
+        item = item,
+        actions = actions,
+        isContinueWatching = isContinueWatching,
+        modifier = modifier,
+    ) {
     Column(
-        modifier = modifier
+        modifier = Modifier
             .plexFocusable(shape = Radius.card, onClick = onClick)
             .padding(Spacing.xxs),
     ) {
@@ -274,6 +291,7 @@ fun WideProgressTile(
             colour = colours.textSecondary,
             maxLines = 1,
         )
+    }
     }
 }
 
@@ -429,13 +447,15 @@ fun EpisodeRow(
     selected: Boolean = false,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
+    actions: ItemActions? = null,
 ) {
     val colours = PlexTheme.colours
     val play = onClick ?: onPlay
     val select = onClick ?: onSelect
 
+    ItemMenuHost(item = episode, actions = actions, modifier = modifier) {
     Row(
-        modifier = modifier
+        modifier = Modifier
             .fillMaxWidth()
             .plexFocusable(shape = Radius.card, onClick = select, scaleOnFocus = false)
             .clip(Radius.card)
@@ -550,6 +570,7 @@ fun EpisodeRow(
             Spacer(Modifier.width(Spacing.xs))
             WatchedBadge()
         }
+    }
     }
 }
 

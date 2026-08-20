@@ -16,6 +16,9 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.Snackbar
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -122,6 +125,38 @@ fun PlexApp(
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
+
+                // The transient result of a menu action (marked watched, deleted, scan
+                // started). Shown as a snackbar and dismissed once seen, and kept out of the
+                // player, which owns the whole screen while it is up.
+                val snackbarHostState = remember { SnackbarHostState() }
+                LaunchedEffect(state.notice) {
+                    val message = state.notice
+                    if (message != null) {
+                        snackbarHostState.showSnackbar(message)
+                        viewModel.dismissNotice()
+                    }
+                }
+                if (playback == null) {
+                    SnackbarHost(
+                        hostState = snackbarHostState,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .windowInsetsPadding(WindowInsets.safeDrawing)
+                            .padding(Spacing.md),
+                    ) { data ->
+                        Snackbar(
+                            containerColor = PlexTheme.colours.surfaceElevated,
+                            contentColor = PlexTheme.colours.textPrimary,
+                            shape = Radius.card,
+                        ) {
+                            PlexText(
+                                text = data.visuals.message,
+                                colour = PlexTheme.colours.textPrimary,
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -138,6 +173,21 @@ private fun ReadyContent(
     val server = state.server ?: return
     val sizeClass = PlexTheme.sizeClass
 
+    // One factory binds every server action to a given item, so the tiles and the detail
+    // overflow all raise the same menu. Remove-from-Continue-Watching is always bound; the
+    // menu only offers it where the host says the tile is a Continue Watching one.
+    val itemActions: (MediaItem) -> ItemActions = { item ->
+        ItemActions(
+            onMarkWatched = { viewModel.setWatched(item, true) },
+            onMarkUnwatched = { viewModel.setWatched(item, false) },
+            onDownload = { viewModel.download(item) },
+            onRefreshMetadata = { viewModel.refreshItemMetadata(item) },
+            onAnalyze = { viewModel.analyzeItem(item) },
+            onDelete = { viewModel.deleteItem(item) },
+            onRemoveFromContinueWatching = { viewModel.removeFromContinueWatching(item) },
+        )
+    }
+
     // A drill-in is anything with somewhere to go back to below a top-level destination.
     val canGoBack = state.detail != null ||
         state.library?.openCollection != null ||
@@ -153,6 +203,7 @@ private fun ReadyContent(
                 onToggleWatched = viewModel::toggleWatched,
                 onSeasonSelected = viewModel::selectSeason,
                 onSelectEpisode = viewModel::selectEpisode,
+                actions = itemActions(state.detail.item),
                 modifier = bodyModifier,
             )
 
@@ -163,6 +214,8 @@ private fun ReadyContent(
                 onCollectionClick = viewModel::openCollection,
                 onUnwatchedOnlyChange = viewModel::setUnwatchedOnly,
                 onCloseCollection = viewModel::closeCollection,
+                onScanLibrary = viewModel::scanLibrary,
+                itemActions = itemActions,
                 modifier = bodyModifier,
             )
 
@@ -203,6 +256,7 @@ private fun ReadyContent(
                 onItemClick = viewModel::openDetail,
                 onLibraryClick = { library: Library -> viewModel.openLibrary(library) },
                 onPlay = onPlay,
+                itemActions = itemActions,
                 modifier = bodyModifier,
             )
         }

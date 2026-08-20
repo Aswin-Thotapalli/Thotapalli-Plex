@@ -23,6 +23,7 @@ import com.thotapalli.plex.ui.design.Spacing
 import com.thotapalli.plex.ui.shared.ActiveServer
 import com.thotapalli.plex.ui.shared.ArtworkSize
 import com.thotapalli.plex.ui.shared.HomeHero
+import com.thotapalli.plex.ui.shared.ItemActions
 import com.thotapalli.plex.ui.shared.PosterTile
 import com.thotapalli.plex.ui.shared.SectionHeader
 import com.thotapalli.plex.ui.shared.WideProgressTile
@@ -44,6 +45,7 @@ fun HomeScreen(
     onItemClick: (MediaItem) -> Unit,
     onLibraryClick: (Library) -> Unit,
     onPlay: (MediaItem, Long) -> Unit,
+    itemActions: (MediaItem) -> ItemActions,
     modifier: Modifier = Modifier,
 ) {
     val sizeClass = PlexTheme.sizeClass
@@ -100,6 +102,8 @@ fun HomeScreen(
                                     ArtworkSize.WIDE_HEIGHT,
                                 ),
                                 onClick = { onItemClick(item) },
+                                actions = itemActions(item),
+                                isContinueWatching = true,
                                 modifier = Modifier.width(wideWidth).staggeredEntrance(i, key = item.ratingKey),
                             )
                         }
@@ -129,6 +133,7 @@ fun HomeScreen(
                                 ArtworkSize.POSTER_HEIGHT,
                             ),
                             onClick = { onItemClick(item) },
+                            actions = itemActions(item),
                             modifier = Modifier.width(posterWidth).staggeredEntrance(i, key = item.ratingKey),
                         )
                     }

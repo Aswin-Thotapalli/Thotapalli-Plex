@@ -5,6 +5,7 @@ import com.thotapalli.plex.core.api.PlexTvApi
 import com.thotapalli.plex.core.api.isStale
 import com.thotapalli.plex.core.model.PlexServer
 import com.thotapalli.plex.core.model.SelectedConnection
+import com.thotapalli.plex.core.model.ServerConnection
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -58,11 +59,27 @@ class ServerDirectory(
     /**
      * The connection to use for [server], probing when there is no live cached choice.
      * Returns null when no connection answered inside the probe timeout.
+     *
+     * The in-memory cache is checked first, then the connection persisted across process
+     * restarts: while it is still inside its thirty-minute window it is confirmed with a
+     * single fast identity probe and reused immediately, so the common relaunch does one
+     * quick check instead of waiting out a probe of every connection. Only a failed
+     * verification or a stale entry falls through to the full parallel probe.
      */
     suspend fun connection(server: PlexServer, forceReprobe: Boolean = false): SelectedConnection? {
         if (!forceReprobe) {
             val cached = lock.withLock { selections[server.machineIdentifier] }
             if (cached != null && !cached.isStale(nowMs())) return cached
+
+            val persisted = loadPersisted(server.machineIdentifier)
+            if (persisted != null && !persisted.isStale(nowMs())) {
+                val verified = selector.verify(server, persisted.connection)
+                if (verified != null) {
+                    lock.withLock { selections[server.machineIdentifier] = verified }
+                    persist(verified)
+                    return verified
+                }
+            }
         }
 
         val fresh = selector.select(server)
@@ -73,15 +90,56 @@ class ServerDirectory(
                 selections[server.machineIdentifier] = fresh
             }
         }
+        if (fresh != null) {
+            persist(fresh)
+        } else {
+            store.remove(persistKey(server.machineIdentifier))
+        }
         return fresh
     }
 
     /**
-     * Called when the device network changes. Drops every cached choice so the next
-     * request re-probes rather than trying a local address from the previous network.
+     * Called when the device network changes. Drops every cached choice, in memory and on
+     * disk, so the next request re-probes rather than trying a local address from the
+     * previous network.
      */
     suspend fun onNetworkChanged() {
-        lock.withLock { selections.clear() }
+        lock.withLock {
+            selections.clear()
+            servers.forEach { store.remove(persistKey(it.machineIdentifier)) }
+        }
+    }
+
+    private fun persistKey(machineIdentifier: String): String =
+        "${StorageKeys.CONNECTION_PREFIX}$machineIdentifier"
+
+    private fun persist(selection: SelectedConnection) {
+        // A newline delimiter is safe: a connection URI never contains one. Fields:
+        // uri, local, relay, roundTripMs, selectedAtMs. The machine identifier is the key.
+        val encoded = listOf(
+            selection.connection.uri,
+            selection.connection.local.toString(),
+            selection.connection.relay.toString(),
+            selection.roundTripMs.toString(),
+            selection.selectedAtMs.toString(),
+        ).joinToString("\n")
+        store.putString(persistKey(selection.machineIdentifier), encoded)
+    }
+
+    private fun loadPersisted(machineIdentifier: String): SelectedConnection? {
+        val raw = store.getString(persistKey(machineIdentifier)) ?: return null
+        val parts = raw.split("\n")
+        if (parts.size != 5) return null
+        val local = parts[1].toBooleanStrictOrNull() ?: return null
+        val relay = parts[2].toBooleanStrictOrNull() ?: return null
+        val roundTripMs = parts[3].toLongOrNull() ?: return null
+        val selectedAtMs = parts[4].toLongOrNull() ?: return null
+        return SelectedConnection(
+            machineIdentifier = machineIdentifier,
+            connection = ServerConnection(uri = parts[0], local = local, relay = relay),
+            roundTripMs = roundTripMs,
+            selectedAtMs = selectedAtMs,
+        )
     }
 
     /** The base URI for server requests, or null when the server is unreachable. */

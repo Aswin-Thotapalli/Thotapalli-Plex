@@ -41,6 +41,8 @@ import com.thotapalli.plex.ui.shared.CinematicBackdrop
 import com.thotapalli.plex.ui.shared.ambient.AmbientBackground
 import com.thotapalli.plex.ui.shared.DetailState
 import com.thotapalli.plex.ui.shared.EpisodeRow
+import com.thotapalli.plex.ui.shared.ItemActions
+import com.thotapalli.plex.ui.shared.ItemOverflowButton
 import com.thotapalli.plex.ui.shared.PlexIconKind
 import com.thotapalli.plex.ui.shared.PrimaryButton
 import com.thotapalli.plex.ui.shared.SecondaryButton
@@ -61,6 +63,7 @@ fun DetailScreen(
     onToggleWatched: (MediaItem) -> Unit,
     onSeasonSelected: (Season) -> Unit,
     onSelectEpisode: (Episode) -> Unit,
+    actions: ItemActions? = null,
     modifier: Modifier = Modifier,
 ) {
     val sizeClass = PlexTheme.sizeClass
@@ -128,6 +131,7 @@ fun DetailScreen(
                             onPlay = onPlay,
                             onDownload = onDownload,
                             onToggleWatched = onToggleWatched,
+                            actions = actions,
                             firstFocus = firstFocus,
                         )
 
@@ -317,6 +321,7 @@ private fun DetailActions(
     onPlay: (MediaItem, Long) -> Unit,
     onDownload: (MediaItem) -> Unit,
     onToggleWatched: (MediaItem) -> Unit,
+    actions: ItemActions? = null,
     firstFocus: FocusRequester? = null,
 ) {
     val item = state.item
@@ -361,6 +366,11 @@ private fun DetailActions(
             onClick = { onToggleWatched(item) },
             leadingIcon = if (item.watched) PlexIconKind.CHECK else null,
         )
+        // The overflow carries the rest of the server actions (refresh, analyze, delete) so the
+        // header stays to its primary Play and Download while everything else lives one tap away.
+        if (actions != null) {
+            ItemOverflowButton(item = item, actions = actions)
+        }
     }
 }
 

@@ -71,7 +71,24 @@ compose.desktop {
             // NoClassDefFoundError the packaged launcher reports as "Failed to launch JVM".
             includeAllModules = true
             packageName = "Thotapalli Plex"
-            packageVersion = providers.gradleProperty("thotapalli.versionName").get()
+            // An MSI only upgrades in place when its ProductVersion increases, and every build
+            // ships the same versionName (0.1.0). So derive major.minor from the version name
+            // and put the monotonic release version code into the build field. MSI allows
+            // major.minor.build with each field <= 65535, so the epoch-based code is folded into
+            // that range; a plain versionName is used when no code is supplied (local builds).
+            packageVersion = run {
+                val versionName = providers.gradleProperty("thotapalli.versionName").get()
+                val versionCode =
+                    providers.gradleProperty("thotapalli.versionCode").orNull?.toLongOrNull()
+                if (versionCode == null) {
+                    versionName
+                } else {
+                    val parts = versionName.split(".")
+                    val major = parts.getOrNull(0)?.takeIf { it.isNotBlank() } ?: "0"
+                    val minor = parts.getOrNull(1)?.takeIf { it.isNotBlank() } ?: "0"
+                    "$major.$minor.${versionCode % 65535}"
+                }
+            }
             vendor = "Thotapalli"
 
             windows {

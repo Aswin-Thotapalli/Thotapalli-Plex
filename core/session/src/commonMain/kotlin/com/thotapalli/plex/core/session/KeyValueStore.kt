@@ -32,4 +32,10 @@ object StorageKeys {
     const val ACCOUNT_USERNAME = "account_username"
     const val SELECTED_SERVER = "selected_server"
     const val HOME_USER_UUID = "home_user_uuid"
+
+    /**
+     * Prefix for the last winning connection per server, keyed by machine identifier. Lets a
+     * relaunch verify one known-good route instead of probing every connection. Not a secret.
+     */
+    const val CONNECTION_PREFIX = "connection_"
 }

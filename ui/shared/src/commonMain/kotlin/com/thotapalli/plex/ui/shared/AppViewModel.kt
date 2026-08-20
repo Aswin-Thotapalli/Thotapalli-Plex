@@ -330,6 +330,97 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         }
     }
 
+    /** Explicitly set watched or unwatched — the item menu offers both directly. */
+    fun setWatched(item: MediaItem, watched: Boolean) {
+        val server = _state.value.server ?: return
+        _state.update { st ->
+            val d = st.detail
+            if (d != null && d.item.ratingKey == item.ratingKey) {
+                st.copy(detail = d.copy(item = d.item.markedWatched(watched)))
+            } else {
+                st
+            }
+        }
+        viewModelScope.launch {
+            runCatching {
+                if (watched) container.serverApi.scrobble(server.scope, item.ratingKey)
+                else container.serverApi.unscrobble(server.scope, item.ratingKey)
+            }
+            refreshHome(server)
+        }
+    }
+
+    // --- server administration -------------------------------------------------------------
+    //
+    // The owner runs the server and asked for the management actions the official app exposes.
+    // Each is a single server call; the interface updates optimistically and reconciles from a
+    // Home refresh. Destructive ones (delete) are confirmed in the interface before they land here.
+
+    /** Remove an item from the Continue Watching row without changing its watched state. */
+    fun removeFromContinueWatching(item: MediaItem) {
+        val server = _state.value.server ?: return
+        _state.update {
+            it.copy(continueWatching = it.continueWatching.filterNot { m -> m.ratingKey == item.ratingKey })
+        }
+        viewModelScope.launch {
+            runCatching { container.serverApi.removeFromContinueWatching(server.scope, item.ratingKey) }
+                .onFailure { notify("Couldn't remove from Continue Watching") }
+            refreshHome(server)
+        }
+    }
+
+    /** Refresh one item's metadata from its agents. */
+    fun refreshItemMetadata(item: MediaItem) =
+        serverAction("Refreshing “${item.title}”…", "Couldn't refresh metadata") { s ->
+            container.serverApi.refreshMetadata(s.scope, item.ratingKey)
+        }
+
+    /** Analyze one item's media (bitrate, duration, resolution). */
+    fun analyzeItem(item: MediaItem) =
+        serverAction("Analyzing “${item.title}”…", "Couldn't analyze") { s ->
+            container.serverApi.analyze(s.scope, item.ratingKey)
+        }
+
+    /** Scan one library for newly added files. */
+    fun scanLibrary(library: Library) =
+        serverAction("Scanning “${library.title}”…", "Couldn't start the scan") { s ->
+            container.serverApi.scanLibrary(s.scope, library.key)
+        }
+
+    /** Permanently delete an item's media from the server. Irreversible; confirmed in the UI first. */
+    fun deleteItem(item: MediaItem) {
+        val server = _state.value.server ?: return
+        _state.update {
+            it.copy(
+                continueWatching = it.continueWatching.filterNot { m -> m.ratingKey == item.ratingKey },
+                detail = if (it.detail?.item?.ratingKey == item.ratingKey) null else it.detail,
+            )
+        }
+        viewModelScope.launch {
+            runCatching { container.serverApi.deleteItem(server.scope, item.ratingKey) }
+                .onSuccess { notify("Deleted “${item.title}”") }
+                .onFailure { notify("Couldn't delete “${item.title}”") }
+            refreshHome(server)
+        }
+    }
+
+    private fun serverAction(pending: String, failure: String, block: suspend (ActiveServer) -> Unit) {
+        val server = _state.value.server ?: return
+        notify(pending)
+        viewModelScope.launch {
+            runCatching { block(server) }.onFailure { notify(failure) }
+        }
+    }
+
+    /** A short transient message for an action's result, shown as a snackbar. */
+    private fun notify(message: String) {
+        _state.update { it.copy(notice = message) }
+    }
+
+    fun dismissNotice() {
+        _state.update { it.copy(notice = null) }
+    }
+
     // --- player ----------------------------------------------------------------------------
 
     /**
@@ -576,6 +667,8 @@ data class AppState(
     /** Bumped so a settings change recomposes; the values themselves live in the store. */
     val settingsRevision: Int = 0,
     val availableUpdate: com.thotapalli.plex.core.session.AvailableUpdate? = null,
+    /** A short transient message for a server action's result, shown as a snackbar. */
+    val notice: String? = null,
     val error: String? = null,
 )
 

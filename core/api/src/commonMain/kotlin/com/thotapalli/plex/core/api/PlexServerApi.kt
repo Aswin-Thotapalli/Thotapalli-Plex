@@ -18,9 +18,11 @@ import com.thotapalli.plex.core.model.Season
 import com.thotapalli.plex.core.model.Show
 import io.ktor.client.call.body
 import io.ktor.client.request.HttpRequestBuilder
+import io.ktor.client.request.delete
 import io.ktor.client.request.get
 import io.ktor.client.request.headers
 import io.ktor.client.request.parameter
+import io.ktor.client.request.put
 import io.ktor.client.statement.bodyAsText
 
 /**
@@ -207,6 +209,53 @@ class PlexServerApi(
             scope.apply(this)
         }
         response.requireSuccess("unscrobble $ratingKey")
+    }
+
+    // --- server administration ------------------------------------------------------------
+    //
+    // These are management actions, not browsing. The owner runs the server and asked for the
+    // controls the official app exposes: scan a library, refresh or analyze an item, remove it
+    // from Continue Watching, or delete it. Each is a single documented server call.
+
+    /** Trigger a scan of one library section, so newly added files are picked up. */
+    suspend fun scanLibrary(scope: ServerScope, libraryKey: String) {
+        val response = client.get("${scope.baseUri}/library/sections/$libraryKey/refresh") {
+            scope.apply(this)
+        }
+        response.requireSuccess("scan library $libraryKey")
+    }
+
+    /** Refresh one item's metadata from its agents. */
+    suspend fun refreshMetadata(scope: ServerScope, ratingKey: String) {
+        val response = client.put("${scope.baseUri}/library/metadata/$ratingKey/refresh") {
+            scope.apply(this)
+        }
+        response.requireSuccess("refresh metadata $ratingKey")
+    }
+
+    /** Analyze one item's media (bitrate, duration, resolution, and so on). */
+    suspend fun analyze(scope: ServerScope, ratingKey: String) {
+        val response = client.put("${scope.baseUri}/library/metadata/$ratingKey/analyze") {
+            scope.apply(this)
+        }
+        response.requireSuccess("analyze $ratingKey")
+    }
+
+    /** Remove one item from the Continue Watching hub without changing its watched state. */
+    suspend fun removeFromContinueWatching(scope: ServerScope, ratingKey: String) {
+        val response = client.put("${scope.baseUri}/actions/removeFromContinueWatching") {
+            parameter("ratingKey", ratingKey)
+            scope.apply(this)
+        }
+        response.requireSuccess("remove from continue watching $ratingKey")
+    }
+
+    /** Permanently delete one item's media from the server. Irreversible. */
+    suspend fun deleteItem(scope: ServerScope, ratingKey: String) {
+        val response = client.delete("${scope.baseUri}/library/metadata/$ratingKey") {
+            scope.apply(this)
+        }
+        response.requireSuccess("delete $ratingKey")
     }
 
     /**

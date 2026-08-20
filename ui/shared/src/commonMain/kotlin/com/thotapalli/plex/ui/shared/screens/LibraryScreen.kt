@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
+import com.thotapalli.plex.core.model.Library
 import com.thotapalli.plex.core.model.MediaCollection
 import com.thotapalli.plex.core.model.MediaItem
 import com.thotapalli.plex.ui.design.PlexText
@@ -25,6 +26,7 @@ import com.thotapalli.plex.ui.design.Spacing
 import com.thotapalli.plex.ui.shared.ActiveServer
 import com.thotapalli.plex.ui.shared.ArtworkSize
 import com.thotapalli.plex.ui.shared.CollectionTile
+import com.thotapalli.plex.ui.shared.ItemActions
 import com.thotapalli.plex.ui.shared.LibraryState
 import com.thotapalli.plex.ui.shared.PosterGrid
 import com.thotapalli.plex.ui.shared.PosterTile
@@ -46,6 +48,8 @@ fun LibraryScreen(
     onCollectionClick: (MediaCollection) -> Unit,
     onUnwatchedOnlyChange: (Boolean) -> Unit,
     onCloseCollection: () -> Unit,
+    onScanLibrary: (Library) -> Unit,
+    itemActions: (MediaItem) -> ItemActions,
     modifier: Modifier = Modifier,
 ) {
     val insideCollection = state.openCollection != null
@@ -74,11 +78,20 @@ fun LibraryScreen(
             if (insideCollection) {
                 TextChip(label = "Back to library", selected = false, onClick = onCloseCollection)
             } else {
-                TextChip(
-                    label = "Unwatched only",
-                    selected = state.unwatchedOnly,
-                    onClick = { onUnwatchedOnlyChange(!state.unwatchedOnly) },
-                )
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                    // A per-library scan, so the owner can pull in newly added files without
+                    // leaving the app. See CLAUDE.md section 5.
+                    TextChip(
+                        label = "Scan",
+                        selected = false,
+                        onClick = { onScanLibrary(state.library) },
+                    )
+                    TextChip(
+                        label = "Unwatched only",
+                        selected = state.unwatchedOnly,
+                        onClick = { onUnwatchedOnlyChange(!state.unwatchedOnly) },
+                    )
+                }
             }
         }
 
@@ -122,6 +135,7 @@ fun LibraryScreen(
                         ArtworkSize.POSTER_HEIGHT,
                     ),
                     onClick = { onItemClick(item) },
+                    actions = itemActions(item),
                     modifier = Modifier
                         .staggeredEntrance(index, key = item.ratingKey)
                         .then(
