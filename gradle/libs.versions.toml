@@ -12,6 +12,7 @@ sqldelight = "2.3.2"
 coil = "3.5.0"
 jna = "5.17.0"
 okio = "3.9.1"
+haze = "1.6.10"
 
 # Beyond CLAUDE.md section 4. Everything below was required to build what section 16 asks for
 # and was verified resolvable against Maven Central or Google Maven on 18 August 2026.
@@ -58,6 +59,7 @@ media3-ffmpeg = { module = "androidx.media3:media3-decoder-ffmpeg", version.ref 
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
 okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
+haze = { module = "dev.chrisbanes.haze:haze", version.ref = "haze" }
 
 # --- Compose Multiplatform, declared directly ---------------------------------------------
 # The plugin's compose.runtime / compose.foundation / compose.material3 / compose.ui accessors

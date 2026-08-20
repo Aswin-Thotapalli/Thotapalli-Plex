@@ -32,6 +32,7 @@ kotlin {
             implementation(libs.compose.navigation)
             implementation(libs.coroutines.core)
             implementation(project(":ui:design"))
+            implementation(libs.haze)
             implementation(project(":core:model"))
             implementation(project(":core:data"))
             implementation(project(":core:playback"))

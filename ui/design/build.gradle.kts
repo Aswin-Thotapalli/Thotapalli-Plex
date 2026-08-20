@@ -28,6 +28,7 @@ kotlin {
             implementation(libs.compose.ui.tooling.preview)
             // Bundled fonts (Inter, Sora) served through the generated Res class. See Fonts.kt.
             implementation(libs.compose.components.resources)
+            implementation(libs.haze)
         }
     }
 }
