@@ -9,9 +9,11 @@ import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
 import io.ktor.client.request.headers
 import io.ktor.http.isSuccess
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import com.thotapalli.plex.core.api.dto.IdentityContainer
 import com.thotapalli.plex.core.api.dto.MediaContainerResponse
 
@@ -34,15 +36,57 @@ class ConnectionSelector(
     suspend fun select(server: PlexServer): SelectedConnection? = coroutineScope {
         if (server.connections.isEmpty()) return@coroutineScope null
 
-        val probes = server.connections.map { connection ->
-            async { probe(server, connection) }
-        }.awaitAll().filterNotNull()
+        // Every probe races in parallel. Successes are published to this channel the moment
+        // they answer, rather than waiting for the whole batch, so a fast local connection is
+        // not held hostage by a dead or remote one still counting down its 3000 ms ceiling.
+        val results = Channel<Probe>(Channel.UNLIMITED)
+        val probeJobs = server.connections.map { connection ->
+            launch {
+                probe(server, connection)?.let { results.send(it) }
+            }
+        }
+        // Close the channel once every probe has settled, so the loop below can tell the
+        // difference between "still waiting" and "nothing left to answer".
+        val closer = launch {
+            probeJobs.joinAll()
+            results.close()
+        }
 
-        probes.minWithOrNull(RANKING)?.let { winner ->
+        val winner: Probe? = try {
+            // Wait (bounded by the per-probe ceiling) for the first success, or for the
+            // channel to close because every probe failed.
+            val first = results.receiveCatching().getOrNull()
+            when {
+                first == null -> null // nothing answered
+                // Local is always the top rank, so there is no reason to wait for anything else.
+                first.connection.local -> first
+                else -> {
+                    val successes = mutableListOf(first)
+                    // A non-local answered first. Give better connections a short grace window
+                    // to arrive instead of blocking on the slowest probe, and stop the instant
+                    // a local answers since nothing can beat it.
+                    withTimeoutOrNull(GRACE_WINDOW_MS) {
+                        while (true) {
+                            val next = results.receiveCatching().getOrNull() ?: break // all settled
+                            successes.add(next)
+                            if (next.connection.local) break
+                        }
+                    }
+                    successes.minWithOrNull(RANKING)
+                }
+            }
+        } finally {
+            // Decision made: cancel any probe still in flight so nothing leaks past this scope.
+            probeJobs.forEach { it.cancel() }
+            closer.cancel()
+            results.cancel()
+        }
+
+        winner?.let {
             SelectedConnection(
                 machineIdentifier = server.machineIdentifier,
-                connection = winner.connection,
-                roundTripMs = winner.roundTripMs,
+                connection = it.connection,
+                roundTripMs = it.roundTripMs,
                 selectedAtMs = nowMs(),
             )
         }
@@ -102,6 +146,13 @@ class ConnectionSelector(
 
     private companion object {
         const val PROBE_TIMEOUT_MS = 3_000L
+
+        /**
+         * How long to keep collecting once a non-local connection has answered, before ranking
+         * what arrived. Short enough that a dead connection's 3000 ms timeout is never waited on,
+         * long enough for a slightly slower but better-ranked connection to still be considered.
+         */
+        const val GRACE_WINDOW_MS = 700L
 
         /** Local first, then non-relay, then lowest round trip. */
         val RANKING: Comparator<Probe> = compareBy(

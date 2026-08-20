@@ -7,6 +7,7 @@ import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -17,6 +18,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.foundation.focusable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.thotapalli.plex.ui.design.GlassDefaults
 import com.thotapalli.plex.ui.design.Layout
 import com.thotapalli.plex.ui.design.Motion
 import com.thotapalli.plex.ui.design.PlexTheme
@@ -44,6 +46,7 @@ fun Modifier.plexFocusable(
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
     val hovered by interactionSource.collectIsHoveredAsState()
+    val pressed by interactionSource.collectIsPressedAsState()
     val colours = PlexTheme.colours
     val haptics = rememberHaptics()
 
@@ -51,16 +54,24 @@ fun Modifier.plexFocusable(
 
     // Hover lifts a touch less than focus so a keyboard or remote target still reads as the
     // stronger selection when both happen to be true.
-    val targetScale = when {
+    val focusScale = when {
         !scaleOnFocus -> 1f
         focused -> Layout.TELEVISION_FOCUS_SCALE
         hovered -> 1f + (Layout.TELEVISION_FOCUS_SCALE - 1f) * 0.5f
         else -> 1f
     }
 
+    // A press squashes the target down into a soft bubble, on top of whatever the focus grow is
+    // doing, so every control in the app answers a tap with the same springy give. Applied even
+    // where the focus grow is suppressed, since it is tap feedback rather than a selection cue.
+    val targetScale =
+        if (pressed && onClick != null) focusScale * GlassDefaults.pressedScale else focusScale
+
+    // One snappy spring drives focus, hover and press alike, so nothing in the interface reads as
+    // a mechanical tween. Bouncy on the press so the release pops; firmer for focus and hover.
     val scale by animateFloatAsState(
         targetValue = targetScale,
-        animationSpec = if (focused) Motion.focus() else Motion.hover(),
+        animationSpec = if (pressed) Motion.springBouncy() else Motion.spring(),
         label = "focus-scale",
     )
 

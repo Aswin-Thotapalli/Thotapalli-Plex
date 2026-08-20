@@ -13,15 +13,33 @@ import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.text.TextStyle
 
 /**
- * Light and dark, following the system setting. See CLAUDE.md section 2.
+ * Which palette a screen renders on. [SYSTEM] follows the OS light/dark setting, the default;
+ * [LIGHT] and [DARK] pin it regardless. The Settings screen sets this later; the theme only needs
+ * to honour it. The player always forces dark on top of whatever this resolves to.
+ */
+enum class ThemeMode { LIGHT, DARK, SYSTEM }
+
+/**
+ * Light and dark. Follows the system by default, or honours an explicit [themeMode]. See
+ * CLAUDE.md section 2.
  *
  * Material 3 is present because the shared components sit on top of it, but the palette is
- * entirely the section 12 tokens. Nothing here uses a Material default colour.
+ * entirely the design tokens. Nothing here uses a Material default colour.
  */
 @Composable
 fun ThotapalliTheme(
     sizeClass: SizeClass = LocalSizeClass.current,
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    /**
+     * The theme choice. [ThemeMode.SYSTEM] follows the OS; the Settings screen will drive this to
+     * pin light or dark. It only sets the default of [darkTheme] — pass [darkTheme] directly to
+     * override outright (a token gallery, a preview).
+     */
+    themeMode: ThemeMode = ThemeMode.SYSTEM,
+    darkTheme: Boolean = when (themeMode) {
+        ThemeMode.LIGHT -> false
+        ThemeMode.DARK -> true
+        ThemeMode.SYSTEM -> isSystemInDarkTheme()
+    },
     /** The player screen ignores the light theme entirely. See CLAUDE.md section 12. */
     forceDark: Boolean = false,
     content: @Composable () -> Unit,

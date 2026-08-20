@@ -21,6 +21,7 @@ import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
+import com.thotapalli.plex.ui.design.liquidGlass
 
 /**
  * The two buttons the detail screens and the hero use.
@@ -48,14 +49,14 @@ fun PrimaryButton(
         onClick = onClick,
         enabled = enabled,
         modifier = modifier
-            // The one primary action on a screen sits proud of the surface with a soft shadow,
-            // and a top-to-bottom accent gradient reads as a lit, convex pill rather than a flat
-            // fill. A hairline lip finishes the edge.
+            // The one primary action on a screen is a lit amber lozenge: a warm accent glow bleeds
+            // out around it so it reads as backlit glass rather than a flat fill, a top-to-bottom
+            // accent gradient gives it a convex sheen, and the bright glass rim catches the edge.
             .shadow(
-                elevation = if (enabled) Elevation.button else 0.dp,
+                elevation = if (enabled) Elevation.glassGlow else 0.dp,
                 shape = Radius.pill,
-                ambientColor = colours.elevationShadow,
-                spotColor = colours.elevationShadow,
+                ambientColor = colours.accent.copy(alpha = 0.55f),
+                spotColor = colours.accent.copy(alpha = 0.55f),
             )
             .clip(Radius.pill)
             .background(
@@ -66,7 +67,7 @@ fun PrimaryButton(
                 ),
                 Radius.pill,
             )
-            .border(1.dp, colours.edgeHighlight, Radius.pill),
+            .border(1.dp, colours.glassRim, Radius.pill),
     )
 }
 
@@ -85,14 +86,11 @@ fun SecondaryButton(
         contentColour = colours.textPrimary,
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier
-            .clip(Radius.pill)
-            // A quiet translucent fill plus a clean hairline reads as a control against either a
-            // solid surface or a cinematic backdrop, without competing with the filled primary
-            // beside it. The two-layer border — a soft light lip over the token line — keeps the
-            // edge crisp over bright artwork where a single hairline would wash out.
-            .background(Color(0x24FFFFFF), Radius.pill)
-            .border(1.dp, Color(0x33FFFFFF), Radius.pill),
+        // A secondary action is a sheet of liquid glass: it frosts whatever it floats over (a
+        // cinematic backdrop, a solid surface) and carries the same specular, rim and cool glow as
+        // every other glass surface, so it reads as a control without competing with the lit
+        // primary beside it.
+        modifier = modifier.liquidGlass(shape = Radius.pill),
     )
 }
 

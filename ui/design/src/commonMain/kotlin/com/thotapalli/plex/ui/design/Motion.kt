@@ -3,6 +3,9 @@ package com.thotapalli.plex.ui.design
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.SpringSpec
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 
 /**
@@ -76,4 +79,24 @@ object Motion {
      * vertical rise so navigation reads as motion between places rather than a hard cut.
      */
     fun <T> screen(): FiniteAnimationSpec<T> = tween(SCREEN_MS, easing = standard)
+
+    /**
+     * The liquid-glass spring. Snappy — a stiff, near-critically-damped curve that arrives fast and
+     * settles without a wobble. The default for a glass surface entering, a press releasing or a
+     * value moving, wherever a tween would feel mechanical. Nothing here should feel laggy.
+     */
+    fun <T> spring(): SpringSpec<T> = spring(
+        dampingRatio = Spring.DampingRatioNoBouncy,
+        stiffness = Spring.StiffnessMedium,
+    )
+
+    /**
+     * The bouncy cousin, for a control that should feel alive under the finger: the same quick
+     * stiffness with a small overshoot, so a press-release or a bubble pop lands with a little
+     * spring rather than a flat stop. Low bounce — a hint, not a jelly.
+     */
+    fun <T> springBouncy(): SpringSpec<T> = spring(
+        dampingRatio = 0.55f,
+        stiffness = Spring.StiffnessMedium,
+    )
 }

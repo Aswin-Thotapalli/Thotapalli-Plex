@@ -103,7 +103,7 @@ fun PosterTile(
 
             // A hairline lit lip around the card, drawn last so it sits above the artwork and
             // gives the poster a crisp edge against the near-black ground.
-            Box(Modifier.fillMaxSize().border(1.dp, colours.edgeHighlight, Radius.poster))
+            Box(Modifier.fillMaxSize().border(1.dp, colours.glassRim, Radius.poster))
         }
 
         Spacer(Modifier.height(Spacing.xs))
@@ -175,7 +175,7 @@ fun CollectionTile(
                     fallbackTitle = collection.title,
                     modifier = Modifier.fillMaxSize(),
                 )
-                Box(Modifier.fillMaxSize().border(1.dp, colours.edgeHighlight, Radius.poster))
+                Box(Modifier.fillMaxSize().border(1.dp, colours.glassRim, Radius.poster))
             }
         }
 
@@ -281,7 +281,7 @@ fun WideProgressTile(
                 )
             }
 
-            Box(Modifier.fillMaxSize().border(1.dp, colours.edgeHighlight, Radius.card))
+            Box(Modifier.fillMaxSize().border(1.dp, colours.glassRim, Radius.card))
         }
 
         Spacer(Modifier.height(Spacing.xs))
@@ -332,7 +332,7 @@ fun LibraryCard(
                     1f to colours.accentDeep.copy(alpha = if (colours.isDark) 0.28f else 0.16f),
                 ),
             )
-            .border(1.dp, colours.edgeHighlight, Radius.card),
+            .border(1.dp, colours.glassRim, Radius.card),
     ) {
         Row(
             modifier = Modifier.fillMaxSize().padding(horizontal = Spacing.md),
@@ -420,7 +420,7 @@ private fun LibraryCardMark(
                 )
             }
         }
-        Box(Modifier.fillMaxSize().border(1.dp, colours.edgeHighlight, Radius.card))
+        Box(Modifier.fillMaxSize().border(1.dp, colours.glassRim, Radius.card))
     }
 }
 
@@ -505,7 +505,7 @@ fun EpisodeRow(
                     .plexFocusable(shape = Radius.pill, onClick = play)
                     .size(Layout.playToken * 0.82f)
                     .background(colours.scrimHeavy, Radius.pill)
-                    .border(1.dp, colours.edgeHighlight, Radius.pill),
+                    .border(1.dp, colours.glassRim, Radius.pill),
                 contentAlignment = Alignment.Center,
             ) {
                 // The triangle sits a hair right of centre so it reads as balanced in the disc.
@@ -524,7 +524,7 @@ fun EpisodeRow(
                 )
             }
 
-            Box(Modifier.fillMaxSize().border(1.dp, colours.edgeHighlight, Radius.poster))
+            Box(Modifier.fillMaxSize().border(1.dp, colours.glassRim, Radius.poster))
         }
 
         Spacer(Modifier.width(Spacing.sm))

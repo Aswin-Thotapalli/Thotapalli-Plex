@@ -23,11 +23,11 @@ object Spacing {
 
 /** The corner radii from CLAUDE.md section 12. */
 object Radius {
-    /** Poster tiles. */
-    val poster = RoundedCornerShape(8.dp)
+    /** Poster tiles. Rounded a touch further for the redesign, still tight enough to keep art. */
+    val poster = RoundedCornerShape(10.dp)
 
-    /** Cards and dialogues. */
-    val card = RoundedCornerShape(12.dp)
+    /** Cards and dialogues. Bubblier than before, so a card reads as a soft tile of the new system. */
+    val card = RoundedCornerShape(16.dp)
 
     /** Sheets. */
     val sheet = RoundedCornerShape(16.dp)
@@ -35,9 +35,21 @@ object Radius {
     /** Pills. */
     val pill = RoundedCornerShape(999.dp)
 
-    val posterDp: Dp = 8.dp
-    val cardDp: Dp = 12.dp
+    /**
+     * The bubbly, continuous-looking corner of a liquid-glass panel. Far larger than a card so the
+     * pane reads as a soft lozenge of glass rather than a boxed surface — the single most defining
+     * shape of the redesign. A generous [RoundedCornerShape] reads as squircle-adjacent at this
+     * radius; every glass primitive clips to it by default.
+     */
+    val glass = RoundedCornerShape(24.dp)
+
+    /** A tighter glass corner for small floating controls and chips, still visibly bubbly. */
+    val glassSmall = RoundedCornerShape(16.dp)
+
+    val posterDp: Dp = 10.dp
+    val cardDp: Dp = 16.dp
     val sheetDp: Dp = 16.dp
+    val glassDp: Dp = 24.dp
 }
 
 /**
@@ -61,6 +73,12 @@ object Elevation {
 
     /** A control floating over a backdrop, and the raised state of a selected row. */
     val floating: Dp = 12.dp
+
+    /**
+     * The soft coloured halo cast by a glass panel. Larger than an ordinary shadow because the
+     * glow is meant to bleed and diffuse — a backlit bubble rather than a hard drop shadow.
+     */
+    val glassGlow: Dp = 20.dp
 }
 
 /**
