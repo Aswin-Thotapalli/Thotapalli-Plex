@@ -96,9 +96,11 @@ val DarkColours = PlexColours(
     backgroundGradientEnd = Color(0xFF0E1120),
     surface = Color(0xFF161A2E),
     surfaceElevated = Color(0xFF1E2440),
-    border = Color(0xFF2C3358),
+    border = Color(0xFF39406A),
     textPrimary = Color(0xFFEEF0F8),
-    textSecondary = Color(0xFF9AA0BE),
+    // Brightened from the old dim blue-grey so secondary text, captions and unselected chrome
+    // clear AA over the frosted panels and the indigo ground rather than sinking into them.
+    textSecondary = Color(0xFFBFC5DE),
     accent = Color(0xFFF5A623),
     focusRing = Color(0xFFF5A623),
     scrim = Color(0x9E0A0C17), // the indigo ground at 62 percent, so a scrim stays in the palette
@@ -110,22 +112,23 @@ val DarkColours = PlexColours(
     elevationShadow = Color(0xA8000000), // black at 66 percent, so tiles lift off the indigo ground
     skeletonBase = Color(0xFF1E2440),
     skeletonSheen = Color(0xFF2C3358),
-    glassTint = Color(0x8C1C2242), // indigo at 55 percent, the frost's own colour
+    glassTint = Color(0xB01A2040), // indigo at ~69 percent: frosted enough that text on glass holds
     glassHighlight = Color(0xB3FFFFFF), // white at 70 percent, the top specular
-    glassRim = Color(0x38FFFFFF), // white at 22 percent, the refractive edge
+    glassRim = Color(0x40FFFFFF), // white at 25 percent, the refractive edge
     glassGlow = Color(0x385B7CFF), // a cool blue at 22 percent, the backlit halo
     isDark = true,
 )
 
 val LightColours = PlexColours(
-    // A cool off-white, lifting toward a paler blue-grey rather than pure white.
-    background = Color(0xFFEDEFF6),
-    backgroundGradientEnd = Color(0xFFE3E7F2),
+    // A cool blue-grey ground, deep enough that a white card reads as a lifted panel rather than
+    // dissolving into a flat near-white void. The gradient sinks a further shade at the foot.
+    background = Color(0xFFE4E8F3),
+    backgroundGradientEnd = Color(0xFFD6DCEC),
     surface = Color(0xFFFFFFFF),
     surfaceElevated = Color(0xFFFFFFFF),
-    border = Color(0xFFD3D8E8),
+    border = Color(0xFFBEC6DC),
     textPrimary = Color(0xFF171A2B),
-    textSecondary = Color(0xFF5A6182),
+    textSecondary = Color(0xFF565E80),
     accent = Color(0xFFE08A12),
     focusRing = Color(0xFFE08A12),
     scrim = Color(0x66000000), // black at 40 percent
@@ -135,13 +138,15 @@ val LightColours = PlexColours(
     // A floating control always sits over artwork, so its disc stays dark on the light theme too.
     scrimHeavy = Color(0xB3000000),
     edgeHighlight = Color(0xB3FFFFFF), // white at 70 percent, a bright lip on pale glass
-    elevationShadow = Color(0x33000000), // black at 20 percent, a soft grounding shadow on white
-    skeletonBase = Color(0xFFE8EAED),
-    skeletonSheen = Color(0xFFF4F5F7),
-    glassTint = Color(0x8CFFFFFF), // white at 55 percent, the frost over a pale ground
+    elevationShadow = Color(0x40243A66), // a cool shadow at ~25 percent, grounding cards on the pale ground
+    skeletonBase = Color(0xFFDBE0EC),
+    skeletonSheen = Color(0xFFEEF1F7),
+    // A near-solid white frost: on a pale ground a translucent pane vanishes, so light glass reads
+    // as a crisp white panel with a faint refracted tint rather than a washed-out ghost.
+    glassTint = Color(0xE0FFFFFF), // white at ~88 percent
     glassHighlight = Color(0xE6FFFFFF), // white at 90 percent, a crisp specular on light glass
-    glassRim = Color(0xD9FFFFFF), // white at 85 percent, a near-solid refractive edge
-    glassGlow = Color(0x245B7CFF), // a cool blue at 14 percent, a quieter halo on light
+    glassRim = Color(0x66FFFFFF), // white at 40 percent, a soft lip that no longer disappears on white
+    glassGlow = Color(0x33243A66), // a cool shadow-tinted halo so light panels cast real depth
     isDark = false,
 )
 

@@ -145,4 +145,25 @@ class ServerDirectory(
     /** The base URI for server requests, or null when the server is unreachable. */
     suspend fun baseUri(server: PlexServer): String? =
         connection(server)?.uri?.trimEnd('/')
+
+    // --- optimistic start: the last active target's non-secret parts -------------------------
+
+    /** Persist the machine identifier, name and base URI of the current target (no secret). */
+    fun persistActiveTargetMeta(machineIdentifier: String, name: String, baseUri: String) {
+        store.putString(
+            StorageKeys.ACTIVE_TARGET_META,
+            listOf(machineIdentifier, name, baseUri).joinToString("\n"),
+        )
+    }
+
+    /** The persisted target meta, read synchronously with no network. */
+    fun cachedActiveTargetMeta(): TargetMeta? {
+        val raw = store.getString(StorageKeys.ACTIVE_TARGET_META) ?: return null
+        val parts = raw.split("\n")
+        if (parts.size != 3) return null
+        return TargetMeta(machineIdentifier = parts[0], name = parts[1], baseUri = parts[2])
+    }
 }
+
+/** The non-secret half of a cached active target (see [ServerDirectory.cachedActiveTargetMeta]). */
+data class TargetMeta(val machineIdentifier: String, val name: String, val baseUri: String)

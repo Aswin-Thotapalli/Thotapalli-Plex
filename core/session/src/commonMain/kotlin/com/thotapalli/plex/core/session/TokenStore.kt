@@ -32,6 +32,11 @@ class TokenStore(
 
     fun isSignedIn(): Boolean = !accountToken().isNullOrBlank()
 
+    /** The last active server's access token (a secret), for the optimistic-start path. */
+    fun serverToken(): String? = secure.getSecret(StorageKeys.SERVER_TOKEN)
+
+    fun storeServerToken(token: String) = secure.putSecret(StorageKeys.SERVER_TOKEN, token)
+
     /**
      * Sign out. Clears the token and the account, and deliberately leaves the client
      * identifier in place: it is bound to this installation, not to the account, and
@@ -43,5 +48,7 @@ class TokenStore(
         plain.remove(StorageKeys.ACCOUNT_USERNAME)
         plain.remove(StorageKeys.HOME_USER_UUID)
         plain.remove(StorageKeys.SELECTED_SERVER)
+        secure.removeSecret(StorageKeys.SERVER_TOKEN)
+        plain.remove(StorageKeys.ACTIVE_TARGET_META)
     }
 }

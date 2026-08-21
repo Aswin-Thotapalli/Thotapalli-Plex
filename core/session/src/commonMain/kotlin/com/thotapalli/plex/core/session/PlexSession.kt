@@ -64,7 +64,35 @@ class PlexSession(
     suspend fun activeTarget(): ServerTarget? {
         val server = activeServer() ?: return null
         val uri = directory.baseUri(server) ?: return null
-        return ServerTarget(server = server, baseUri = uri, accessToken = server.accessToken)
+        val target = ServerTarget(server = server, baseUri = uri, accessToken = server.accessToken)
+        // Remember it so the next launch can render Home from it instantly (see [cachedTarget]).
+        directory.persistActiveTargetMeta(server.machineIdentifier, server.name, uri)
+        tokens.storeServerToken(server.accessToken)
+        return target
+    }
+
+    /**
+     * The last active target, rebuilt from persisted state with **no network call** — the basis of
+     * the optimistic start: Home renders from this immediately while [activeTarget] reconciles with
+     * plex.tv in the background. Null on the very first run, before any successful connect.
+     */
+    fun cachedTarget(): ServerTarget? {
+        val meta = directory.cachedActiveTargetMeta() ?: return null
+        val token = tokens.serverToken() ?: return null
+        val server = PlexServer(
+            machineIdentifier = meta.machineIdentifier,
+            name = meta.name,
+            accessToken = token,
+            owned = false,
+            connections = listOf(
+                com.thotapalli.plex.core.model.ServerConnection(
+                    uri = meta.baseUri,
+                    local = false,
+                    relay = false,
+                ),
+            ),
+        )
+        return ServerTarget(server = server, baseUri = meta.baseUri, accessToken = token)
     }
 }
 

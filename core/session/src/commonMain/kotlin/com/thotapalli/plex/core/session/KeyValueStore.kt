@@ -38,4 +38,15 @@ object StorageKeys {
      * relaunch verify one known-good route instead of probing every connection. Not a secret.
      */
     const val CONNECTION_PREFIX = "connection_"
+
+    /**
+     * The last active target's non-secret parts — machine identifier, display name and base URI —
+     * so a relaunch can render Home from the last-known-good server immediately and reconcile with
+     * plex.tv in the background instead of blocking startup on it. The matching server access token
+     * is a secret and lives in [SERVER_TOKEN].
+     */
+    const val ACTIVE_TARGET_META = "active_target_meta"
+
+    /** The active server's access token (a secret), the partner of [ACTIVE_TARGET_META]. */
+    const val SERVER_TOKEN = "active_server_token"
 }

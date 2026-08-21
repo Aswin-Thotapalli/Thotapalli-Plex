@@ -67,7 +67,17 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                 _state.update { it.copy(phase = AppPhase.SIGNED_OUT) }
                 return@launch
             }
-            connect()
+            // Optimistic start: if a previous session left a known-good target, render Home from
+            // it immediately and reconcile with plex.tv in the background. This turns the common
+            // relaunch from a serial plex.tv (home users + resources) + probe sequence into an
+            // instant local start — the single biggest win for perceived startup speed.
+            val cached = container.session.cachedTarget()
+            if (cached != null) {
+                applyTarget(cached)
+                launch { reconcile(cached) }
+            } else {
+                connect()
+            }
         }
     }
 
@@ -130,7 +140,16 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             }
             return
         }
+        applyTarget(target)
+    }
 
+    /**
+     * Bind [target] as the active server and fill Home. Used both by the full [connect] path and
+     * by the optimistic start, which hands in a target rebuilt from cache with no network. The
+     * full server list (only Settings' picker needs it) loads off the hot path so it never gates
+     * Home appearing.
+     */
+    private fun applyTarget(target: com.thotapalli.plex.core.session.ServerTarget) {
         val active = ActiveServer(
             name = target.server.name,
             machineIdentifier = target.server.machineIdentifier,
@@ -138,13 +157,30 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             urls = PlexUrls(target.baseUri, target.accessToken),
         )
         container.bindDownloadServer(active.scope)
-        val servers = runCatching { container.session.servers() }.getOrDefault(emptyList())
-        _state.update { it.copy(server = active, allServers = servers, phase = AppPhase.READY) }
+        _state.update { it.copy(server = active, phase = AppPhase.READY) }
 
         refreshHome(active)
         refreshDownloads()
         checkForUpdate()
         startScanPolling(active)
+
+        viewModelScope.launch {
+            val servers = runCatching { container.session.servers() }.getOrDefault(emptyList())
+            if (servers.isNotEmpty()) _state.update { it.copy(allServers = servers) }
+        }
+    }
+
+    /**
+     * Background reconciliation after an optimistic start: confirm — or re-probe — the real target
+     * and rebind only if the connection or token actually changed since it was cached. Silent; the
+     * user is already on Home. If plex.tv is unreachable but the cached connection still answers,
+     * nothing changes and the app keeps working.
+     */
+    private suspend fun reconcile(cached: com.thotapalli.plex.core.session.ServerTarget) {
+        val fresh = runCatching { container.session.activeTarget() }.getOrNull() ?: return
+        if (fresh.baseUri != cached.baseUri || fresh.accessToken != cached.accessToken) {
+            applyTarget(fresh)
+        }
     }
 
     // --- live scan progress ----------------------------------------------------------------

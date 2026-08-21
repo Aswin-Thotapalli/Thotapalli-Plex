@@ -402,7 +402,10 @@ private fun NavigationRail(
         modifier = Modifier
             .width(if (narrow) 176.dp else 236.dp)
             .fillMaxHeight()
-            .liquidGlass(shape = RectangleShape, elevated = true)
+            // The rail frosts the scrolling posters behind it, and a light frost of bright artwork
+            // left the labels barely legible. A near-solid surface tint gives the text a stable,
+            // high-contrast bed while the glass rim, specular and glow keep the material reading.
+            .liquidGlass(shape = RectangleShape, elevated = true, tint = navPanelTint(colours))
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .padding(vertical = Spacing.md, horizontal = Spacing.sm),
         verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
@@ -445,6 +448,17 @@ private fun NavigationRail(
     }
 }
 
+/**
+ * The frost tint for the navigation panels. A glass panel over scrolling artwork blurs whatever is
+ * behind it, and bright posters left the nav labels sitting on a pale, unpredictable bed. A
+ * near-solid surface tint pins the bed to a known high-contrast colour — deep indigo on dark, white
+ * on light — so the labels are always legible, while the rim, specular and glow still read as glass.
+ */
+private fun navPanelTint(colours: com.thotapalli.plex.ui.design.PlexColours): Color =
+    // surface is already deep indigo on dark and white on light, so a single near-solid alpha
+    // gives each theme the right high-contrast bed.
+    colours.surface.copy(alpha = 0.94f)
+
 /** A top-level destination in the rail: icon, label, and an accent pill when it is the one open. */
 @Composable
 private fun RailNavRow(
@@ -454,7 +468,9 @@ private fun RailNavRow(
     onClick: () -> Unit,
 ) {
     val colours = PlexTheme.colours
-    val tint = if (selected) colours.accent else colours.textSecondary
+    // Unselected chrome reads at near-primary strength so every destination is plainly legible;
+    // the amber selected state is what stands out, not a fight to read the rest.
+    val tint = if (selected) colours.accent else colours.textPrimary.copy(alpha = 0.82f)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -533,7 +549,9 @@ private fun NavigationBottomBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .liquidGlass(shape = RectangleShape)
+            // Same solid frost bed as the rail, so the bottom bar's labels and icons stay crisp
+            // over whatever scrolls beneath it rather than fading into blurred artwork.
+            .liquidGlass(shape = RectangleShape, tint = navPanelTint(PlexTheme.colours))
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .padding(vertical = Spacing.xs, horizontal = Spacing.sm),
         horizontalArrangement = Arrangement.spacedBy(Spacing.xs, Alignment.CenterHorizontally),
@@ -568,7 +586,7 @@ private fun BottomNavItem(
     onClick: () -> Unit,
 ) {
     val colours = PlexTheme.colours
-    val tint = if (selected) colours.accent else colours.textSecondary
+    val tint = if (selected) colours.accent else colours.textPrimary.copy(alpha = 0.82f)
     Column(
         modifier = Modifier
             .plexFocusable(shape = Radius.glassSmall, onClick = onClick, scaleOnFocus = false)
@@ -687,17 +705,26 @@ private fun SheetLibraryRow(
     }
 }
 
-/** The vertical three-dot overflow control, sized for a touch target. */
+/**
+ * The vertical three-dot overflow control. A full 40 dp touch target holds the tap, but the focus
+ * and hover indicator is drawn on a compact rounded-square core rather than the whole circle, so the
+ * accent ring reads as a small, tasteful chip instead of a large amber disc swallowing the row.
+ */
 @Composable
 private fun OverflowButton(onClick: () -> Unit) {
     Box(
-        modifier = Modifier
-            .plexFocusable(shape = Radius.pill, onClick = onClick)
-            .clip(Radius.pill)
-            .size(40.dp),
+        modifier = Modifier.size(40.dp),
         contentAlignment = Alignment.Center,
     ) {
-        OverflowDots(tint = PlexTheme.colours.textSecondary)
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .plexFocusable(shape = Radius.glassSmall, onClick = onClick, scaleOnFocus = false)
+                .clip(Radius.glassSmall),
+            contentAlignment = Alignment.Center,
+        ) {
+            OverflowDots(tint = PlexTheme.colours.textSecondary)
+        }
     }
 }
 
