@@ -66,3 +66,11 @@ kotlin {
         }
     }
 }
+
+// The brand mark (brand/Files artwork) lives in commonMain/composeResources/drawable and is
+// reached through the generated Res class below, shared by the sign-in logo and the launch splash.
+compose.resources {
+    publicResClass = false
+    packageOfResClass = "com.thotapalli.plex.ui.shared.resources"
+    generateResClass = always
+}

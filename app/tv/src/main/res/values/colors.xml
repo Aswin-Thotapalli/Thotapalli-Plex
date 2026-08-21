@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The app's deep-indigo ground (CLAUDE.md section 12 background token), used only for the
+         pre-Compose window background and the Android 12 launch screen so the first frame matches
+         the app and the animated splash. Every other colour comes from the ui/design tokens. -->
+    <color name="brand_ground">#0A0C17</color>
+</resources>

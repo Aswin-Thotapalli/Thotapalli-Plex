@@ -6,8 +6,14 @@
       the activity a translucent-status-bar window before Compose takes over.
     -->
     <style name="Theme.ThotapalliPlex" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">@android:color/background_dark</item>
+        <!-- The deep-indigo ground, so the first frame before Compose matches the app and the
+             animated launch splash rather than flashing white or black. -->
+        <item name="android:windowBackground">@color/brand_ground</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
+        <!-- Android 12+ launch screen: the mark on the indigo ground, handed over seamlessly to
+             the Compose BrandSplash animation. minSdk is 31, so these core attributes apply. -->
+        <item name="android:windowSplashScreenBackground">@color/brand_ground</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
     </style>
 </resources>

@@ -175,6 +175,16 @@ fun PlexApp(
                         }
                     }
                 }
+
+                // The branded launch animation, over everything, once per process launch. It
+                // covers the first frames while the app loads underneath, then fades to reveal it.
+                var splashDone by remember { mutableStateOf(false) }
+                if (!splashDone) {
+                    BrandSplash(
+                        onFinished = { splashDone = true },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
         }
     }

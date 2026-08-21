@@ -746,18 +746,32 @@ LazyVerticalGrid(
 
 ## 15. Branding
 
-The mark is a rounded plate carrying a horizontal bar above a play triangle. The two forms read
-as the letter T and as a play control. Original artwork, no relationship to the Plex mark.
+The mark is an interlocked **T/P monogram** in an amber gradient over a dark plate: the T and the
+P share a stroke, a play triangle sits in the counter, and three equalizer bars fall beneath —
+reading as the initials, a play control and a media stack at once. Original artwork, no
+relationship to the Plex mark. The master artwork lives in `brand/Files` (`Thotapalli_Plex_*`,
+2048px PNG + vector master); the app mark is extracted from it into
+`ui/shared/src/commonMain/composeResources/drawable/brand_mark.png`, the single source shared by
+the Compose mark ([AppLogo]), the animated launch splash, the Android adaptive icon, the television
+banner and the Windows raster icon.
 
 | Asset | Specification |
 |---|---|
-| Source file | `logo.svg`, 512 by 512 viewBox |
-| Plate colour | Gradient `#262A30` to `#101215` |
-| Mark colour | Gradient `#FFCE63` through `#F5A623` to `#D4820C` |
-| Android launcher | Adaptive icon, foreground and background layers, 108dp |
-| Android TV banner | 320 by 180 px, mark left, wordmark right |
+| Source artwork | `brand/Files/Thotapalli_Plex_*` (2048px PNG + `*_Vector_Master.svg`/`.pdf`) |
+| App mark | `ui/shared/.../composeResources/drawable/brand_mark.png`, extracted from the master |
+| Plate colour | Dark gradient `#1B1E27` to `#05060A` with a faint warm centre glow |
+| Mark colour | Amber gradient (gold) with a charcoal T |
+| Android launcher | Adaptive icon, PNG foreground (the mark) over a dark plate background, 108dp |
+| Android TV banner | 640 by 360 px, mark left, wordmark right |
 | Windows icon | ICO with 16, 32, 48, 64, 128, 256 px sizes |
 | Wordmark typeface | Inter SemiBold, letter spacing -1% |
+
+**Animated launch.** On a cold start the app plays a branded intro (`BrandSplash`) on the dark
+ground: the mark rises under a warm amber bloom, springs to size with a hair of overshoot, holds a
+beat, then lifts and fades to reveal the app loading underneath. On Android the Android 12 launch
+screen shows the mark on the dark ground first, handing over to the Compose animation with no
+flash. It runs once per process launch. The reveal is driven off the first rendered frame, so the
+whole animation is seen even after a slow cold start.
 
 ---
 
