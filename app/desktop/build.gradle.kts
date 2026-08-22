@@ -63,6 +63,10 @@ compose.desktop {
     application {
         mainClass = "com.thotapalli.plex.desktop.MainKt"
 
+        // Faster cold start: stop JIT at the cheap tier (UI work is light; heavy decode is native
+        // in libmpv) and use the serial collector so the JVM spins up with fewer threads.
+        jvmArgs += listOf("-XX:+UseSerialGC", "-XX:TieredStopAtLevel=1")
+
         nativeDistributions {
             targetFormats(TargetFormat.Msi)
             // Bundle every JDK module in the runtime. The default jlink image is minimal and
@@ -78,16 +82,14 @@ compose.desktop {
             // that range; a plain versionName is used when no code is supplied (local builds).
             packageVersion = run {
                 val versionName = providers.gradleProperty("thotapalli.versionName").get()
-                val versionCode =
-                    providers.gradleProperty("thotapalli.versionCode").orNull?.toLongOrNull()
-                if (versionCode == null) {
-                    versionName
-                } else {
-                    val parts = versionName.split(".")
-                    val major = parts.getOrNull(0)?.takeIf { it.isNotBlank() } ?: "0"
-                    val minor = parts.getOrNull(1)?.takeIf { it.isNotBlank() } ?: "0"
-                    "$major.$minor.${versionCode % 65535}"
-                }
+                val parts = versionName.split(".")
+                val major = parts.getOrNull(0)?.takeIf { it.isNotBlank() } ?: "0"
+                val minor = parts.getOrNull(1)?.takeIf { it.isNotBlank() } ?: "0"
+                // Auto build field: hours since 2026-01-01, so the MSI ProductVersion increases on
+                // every build (in-place upgrade) yet stays a monotonic value under the 65535 cap
+                // for years. See the matching auto versionCode in the Android modules.
+                val hours = (System.currentTimeMillis() / 1000L - 1_767_225_600L) / 3600L
+                "$major.$minor.${hours.coerceIn(1L, 65534L)}"
             }
             vendor = "Thotapalli"
 

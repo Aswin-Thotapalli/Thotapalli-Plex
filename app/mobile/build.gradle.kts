@@ -51,7 +51,10 @@ android {
         applicationId = "com.thotapalli.plex"
         minSdk = providers.gradleProperty("thotapalli.minSdk").get().toInt()
         targetSdk = providers.gradleProperty("thotapalli.targetSdk").get().toInt()
-        versionCode = providers.gradleProperty("thotapalli.versionCode").get().toInt()
+        // Auto-incrementing: minutes since 2026-01-01, so every build gets a strictly higher
+        // versionCode with no manual bump (fixes the Play "existing users can't upgrade" error).
+        // Monotonic and far under Play's ~2.1B ceiling.
+        versionCode = ((System.currentTimeMillis() / 1000L - 1_767_225_600L) / 60L).toInt()
         versionName = providers.gradleProperty("thotapalli.versionName").get()
     }
 

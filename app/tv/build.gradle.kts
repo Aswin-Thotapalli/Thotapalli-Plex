@@ -50,7 +50,9 @@ android {
         applicationId = "com.thotapalli.plex"
         minSdk = providers.gradleProperty("thotapalli.minSdk").get().toInt()
         targetSdk = providers.gradleProperty("thotapalli.targetSdk").get().toInt()
-        versionCode = providers.gradleProperty("thotapalli.versionCode").get().toInt()
+        // Auto-incrementing: minutes since 2026-01-01, matched to the phone module so both share a
+        // monotonic versionCode with no manual bump. See app/mobile for the rationale.
+        versionCode = ((System.currentTimeMillis() / 1000L - 1_767_225_600L) / 60L).toInt()
         versionName = providers.gradleProperty("thotapalli.versionName").get()
     }
 
