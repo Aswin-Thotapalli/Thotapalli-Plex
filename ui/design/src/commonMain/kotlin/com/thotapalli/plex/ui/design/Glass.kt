@@ -56,7 +56,7 @@ import dev.chrisbanes.haze.rememberHazeState
  */
 object GlassDefaults {
     /** The frost blur radius. Wide enough that text behind the glass dissolves into colour. */
-    val blurRadius: Dp = 28.dp
+    val blurRadius: Dp = 40.dp
 
     /** A faint grain over the frost, breaking up the blur into something that reads as a surface. */
     const val noiseFactor: Float = 0.06f

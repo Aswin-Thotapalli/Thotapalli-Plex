@@ -112,7 +112,7 @@ val DarkColours = PlexColours(
     elevationShadow = Color(0xA8000000), // black at 66 percent, so tiles lift off the indigo ground
     skeletonBase = Color(0xFF1E2440),
     skeletonSheen = Color(0xFF2C3358),
-    glassTint = Color(0xB01A2040), // indigo at ~69 percent: frosted enough that text on glass holds
+    glassTint = Color(0x571A2040), // indigo at ~34 percent — translucent frost, real see-through glass
     glassHighlight = Color(0xB3FFFFFF), // white at 70 percent, the top specular
     glassRim = Color(0x40FFFFFF), // white at 25 percent, the refractive edge
     glassGlow = Color(0x385B7CFF), // a cool blue at 22 percent, the backlit halo
@@ -143,7 +143,7 @@ val LightColours = PlexColours(
     skeletonSheen = Color(0xFFEEF1F7),
     // A near-solid white frost: on a pale ground a translucent pane vanishes, so light glass reads
     // as a crisp white panel with a faint refracted tint rather than a washed-out ghost.
-    glassTint = Color(0xE0FFFFFF), // white at ~88 percent
+    glassTint = Color(0x73FFFFFF), // white at ~45 percent — translucent frost, real see-through glass
     glassHighlight = Color(0xE6FFFFFF), // white at 90 percent, a crisp specular on light glass
     glassRim = Color(0x66FFFFFF), // white at 40 percent, a soft lip that no longer disappears on white
     glassGlow = Color(0x33243A66), // a cool shadow-tinted halo so light panels cast real depth

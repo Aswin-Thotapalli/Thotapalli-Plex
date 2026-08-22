@@ -181,6 +181,7 @@ fun PlexApp(
                 var splashDone by remember { mutableStateOf(false) }
                 if (!splashDone) {
                     BrandSplash(
+                        ready = state.phase == AppPhase.READY,
                         onFinished = { splashDone = true },
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -339,9 +340,18 @@ private fun ReadyContent(
         // the whole screen as a sibling of the nav rather than a child of the bar's column.
         var librariesSheetOpen by remember { mutableStateOf(false) }
 
+        // A full-bleed, darkened backdrop of the featured artwork sits behind the whole shell as the
+        // single glass source, so the floating navigation frosts real, colourful pixels — the liquid
+        // glass look. The body content is drawn opaque on top; only the translucent nav reveals it.
+        AmbientBackdrop(
+            server = server,
+            item = state.continueWatching.firstOrNull() ?: state.detail?.item,
+            modifier = Modifier.fillMaxSize().glassSource(),
+        )
+
         when (sizeClass.navigation) {
             com.thotapalli.plex.ui.design.NavigationStyle.BOTTOM_BAR -> Column(Modifier.fillMaxSize()) {
-                Box(Modifier.weight(1f).glassSource()) { bodyWithBack(Modifier) }
+                Box(Modifier.weight(1f)) { bodyWithBack(Modifier) }
                 NavigationBottomBar(
                     current = destination,
                     openLibraryKey = openLibraryKey,
@@ -363,7 +373,7 @@ private fun ReadyContent(
                     onOpenLibrary = onOpenLibrary,
                     onScanLibrary = viewModel::scanLibrary,
                 )
-                Box(Modifier.weight(1f).glassSource()) { bodyWithBack(Modifier) }
+                Box(Modifier.weight(1f)) { bodyWithBack(Modifier) }
             }
         }
 
@@ -455,9 +465,41 @@ private fun NavigationRail(
  * on light — so the labels are always legible, while the rim, specular and glow still read as glass.
  */
 private fun navPanelTint(colours: com.thotapalli.plex.ui.design.PlexColours): Color =
-    // surface is already deep indigo on dark and white on light, so a single near-solid alpha
-    // gives each theme the right high-contrast bed.
-    colours.surface.copy(alpha = 0.94f)
+    // A translucent bed so the nav reads as real glass — the darkened ambient backdrop behind the
+    // shell shows through the frost — while staying dark/opaque enough that labels stay legible.
+    colours.surface.copy(alpha = if (colours.isDark) 0.20f else 0.42f)
+
+/**
+ * The full-bleed field the whole shell floats on and the single Haze source the navigation frosts.
+ * The featured artwork under a heavy scrim, so the frosted nav carries the artwork's colour (real
+ * liquid glass) while staying a dark, stable bed for the labels; a plain ground when nothing plays.
+ */
+@Composable
+private fun AmbientBackdrop(
+    server: ActiveServer,
+    item: MediaItem?,
+    modifier: Modifier = Modifier,
+) {
+    val colours = PlexTheme.colours
+    Box(modifier.background(PlexTheme.colours.backgroundBrush())) {
+        val art = item?.let {
+            server.urls.artwork(
+                it.artPath ?: it.thumbPath,
+                ArtworkSize.BACKDROP_WIDTH,
+                ArtworkSize.BACKDROP_HEIGHT,
+            )
+        }
+        if (art != null) {
+            Artwork(
+                url = art,
+                contentDescription = null,
+                fallbackTitle = "",
+                modifier = Modifier.fillMaxSize(),
+            )
+            Box(Modifier.fillMaxSize().background(colours.background.copy(alpha = 0.42f)))
+        }
+    }
+}
 
 /** A top-level destination in the rail: icon, label, and an accent pill when it is the one open. */
 @Composable

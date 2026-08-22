@@ -12,6 +12,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Alignment
@@ -33,10 +34,11 @@ import org.jetbrains.compose.resources.decodeToImageBitmap
  * even after a slow cold start rather than being burned through during the invisible JVM warmup.
  */
 @Composable
-fun BrandSplash(onFinished: () -> Unit, modifier: Modifier = Modifier) {
+fun BrandSplash(ready: Boolean, onFinished: () -> Unit, modifier: Modifier = Modifier) {
     val frames = remember { mutableStateListOf<ImageBitmap>() }
     val fade = remember { Animatable(1f) }
     var index by remember { mutableIntStateOf(0) }
+    val readyState = rememberUpdatedState(ready)
 
     LaunchedEffect(Unit) {
         // Decode the sequence up front so playback never stutters mid-animation. Guarded so a
@@ -48,6 +50,8 @@ fun BrandSplash(onFinished: () -> Unit, modifier: Modifier = Modifier) {
             }
             frames.addAll(loaded)
 
+            // Play the logo build once, off the real frame clock (measured from the first frame,
+            // so the whole thing is seen even after a slow cold start).
             var start = -1L
             while (true) {
                 val now = withFrameMillis { it }
@@ -57,7 +61,16 @@ fun BrandSplash(onFinished: () -> Unit, modifier: Modifier = Modifier) {
                 if (i >= FRAME_COUNT - 1) break
             }
             index = FRAME_COUNT - 1
-            fade.animateTo(0f, tween(durationMillis = 300, delayMillis = 220))
+
+            // Hold on the finished logo while the connection settles in the background, revealing
+            // the instant the app is READY so it feels immediate — capped so it never drags.
+            var holdStart = -1L
+            while (!readyState.value) {
+                val now = withFrameMillis { it }
+                if (holdStart < 0L) holdStart = now
+                if (now - holdStart >= MAX_HOLD_MS) break
+            }
+            fade.animateTo(0f, tween(durationMillis = 320))
         } catch (_: Throwable) {
             // Fall through to reveal the app regardless.
         } finally {
@@ -86,4 +99,5 @@ fun BrandSplash(onFinished: () -> Unit, modifier: Modifier = Modifier) {
 
 private const val FRAME_COUNT = 32
 private const val FRAME_MS = 78L // 32 frames ≈ 2.5s — snappy for a launch intro
+private const val MAX_HOLD_MS = 3000L // longest the finished logo waits on the connection
 private val SPLASH_GROUND = Color(0xFF040406)
