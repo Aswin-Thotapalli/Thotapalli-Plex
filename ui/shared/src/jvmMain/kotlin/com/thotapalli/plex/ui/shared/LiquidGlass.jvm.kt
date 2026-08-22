@@ -7,9 +7,13 @@ import androidx.compose.ui.graphics.Shape
 import com.thotapalli.plex.ui.design.liquidGlass
 
 /**
- * Desktop keeps the Haze-based frosted glass (the ambient backdrop is marked as the Haze source
- * elsewhere with `glassSource`, so the panel below frosts it). A Skia `RuntimeShader` refraction
- * port is the next step for parity with the Android/Kyant path.
+ * Desktop keeps the Haze-based see-through frosted glass (the ambient backdrop is marked as the
+ * Haze source elsewhere with `glassSource`, so the panel below frosts it, blurred and translucent).
+ *
+ * The Android path (Kyant AGSL) adds true optical refraction and a Fresnel edge; a Skia
+ * `RuntimeShader` port of that for desktop needs Compose-Desktop backdrop-capture plumbing that the
+ * framework does not expose cleanly, so it is tracked separately. The user accepted that the
+ * Windows build may differ slightly from Android.
  */
 actual class LiquidBackdrop
 
