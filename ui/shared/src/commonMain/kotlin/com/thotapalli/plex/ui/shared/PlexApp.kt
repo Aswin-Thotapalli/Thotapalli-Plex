@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -340,13 +341,15 @@ private fun ReadyContent(
         // the whole screen as a sibling of the nav rather than a child of the bar's column.
         var librariesSheetOpen by remember { mutableStateOf(false) }
 
-        // A full-bleed, darkened backdrop of the featured artwork sits behind the whole shell as the
-        // single glass source, so the floating navigation frosts real, colourful pixels — the liquid
-        // glass look. The body content is drawn opaque on top; only the translucent nav reveals it.
+        // The shared liquid-glass backdrop: on Android this is Kyant's AGSL layer (real refraction),
+        // on desktop the Haze source. A full-bleed, darkened backdrop of the featured artwork is
+        // marked as that source, so the floating navigation samples real, colourful pixels — the
+        // liquid glass look. The body content is drawn opaque on top; only the nav reveals it.
+        val backdrop = rememberLiquidBackdrop()
         AmbientBackdrop(
             server = server,
             item = state.continueWatching.firstOrNull() ?: state.detail?.item,
-            modifier = Modifier.fillMaxSize().glassSource(),
+            modifier = Modifier.fillMaxSize().glassSource().liquidBackdropSource(backdrop),
         )
 
         when (sizeClass.navigation) {
@@ -356,6 +359,7 @@ private fun ReadyContent(
                     current = destination,
                     openLibraryKey = openLibraryKey,
                     librariesOpen = librariesSheetOpen,
+                    backdrop = backdrop,
                     onHome = onHome,
                     onSelect = onDestinationChange,
                     onOpenLibraries = { librariesSheetOpen = true },
@@ -368,6 +372,7 @@ private fun ReadyContent(
                     openLibraryKey = openLibraryKey,
                     libraries = state.libraries,
                     narrow = sizeClass == SizeClass.MEDIUM,
+                    backdrop = backdrop,
                     onHome = onHome,
                     onSelect = onDestinationChange,
                     onOpenLibrary = onOpenLibrary,
@@ -401,6 +406,7 @@ private fun NavigationRail(
     openLibraryKey: String?,
     libraries: List<Library>,
     narrow: Boolean,
+    backdrop: LiquidBackdrop,
     onHome: () -> Unit,
     onSelect: (Destination) -> Unit,
     onOpenLibrary: (Library) -> Unit,
@@ -412,10 +418,15 @@ private fun NavigationRail(
         modifier = Modifier
             .width(if (narrow) 176.dp else 236.dp)
             .fillMaxHeight()
-            // The rail frosts the scrolling posters behind it, and a light frost of bright artwork
-            // left the labels barely legible. A near-solid surface tint gives the text a stable,
-            // high-contrast bed while the glass rim, specular and glow keep the material reading.
-            .liquidGlass(shape = RectangleShape, elevated = true, tint = navPanelTint(colours))
+            // Real liquid glass: on Android Kyant refracts the featured backdrop through the rail
+            // (optical lens + Fresnel edge); on desktop the Haze frost. A rounded right edge makes
+            // it read as a floating pane (Kyant's lens also requires a corner-based shape). The
+            // translucent tint keeps labels legible while the artwork stays visible under the glass.
+            .liquidGlassPanel(
+                backdrop,
+                RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
+                navPanelTint(colours),
+            )
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .padding(vertical = Spacing.md, horizontal = Spacing.sm),
         verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
@@ -584,6 +595,7 @@ private fun NavigationBottomBar(
     current: Destination,
     openLibraryKey: String?,
     librariesOpen: Boolean,
+    backdrop: LiquidBackdrop,
     onHome: () -> Unit,
     onSelect: (Destination) -> Unit,
     onOpenLibraries: () -> Unit,
@@ -591,9 +603,14 @@ private fun NavigationBottomBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            // Same solid frost bed as the rail, so the bottom bar's labels and icons stay crisp
-            // over whatever scrolls beneath it rather than fading into blurred artwork.
-            .liquidGlass(shape = RectangleShape, tint = navPanelTint(PlexTheme.colours))
+            // Same liquid-glass material as the rail: Kyant refraction on Android, Haze frost on
+            // desktop, translucent so the content beneath stays visible under the bar. Rounded top
+            // edge for a floating pane (and Kyant's lens needs a corner-based shape).
+            .liquidGlassPanel(
+                backdrop,
+                RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                navPanelTint(PlexTheme.colours),
+            )
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .padding(vertical = Spacing.xs, horizontal = Spacing.sm),
         horizontalArrangement = Arrangement.spacedBy(Spacing.xs, Alignment.CenterHorizontally),

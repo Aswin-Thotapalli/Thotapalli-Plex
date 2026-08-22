@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Debug-only. A standalone preview of the liquid-glass navigation over a vivid test backdrop,
+    so the Kyant refraction/Fresnel material can be verified on a device/emulator without signing
+    in. Launched with: adb shell am start -n com.thotapalli.plex/.GlassPreviewActivity
+    Not present in release builds.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity
+            android:name=".GlassPreviewActivity"
+            android:exported="true"
+            android:theme="@style/Theme.ThotapalliPlex" />
+    </application>
+</manifest>
