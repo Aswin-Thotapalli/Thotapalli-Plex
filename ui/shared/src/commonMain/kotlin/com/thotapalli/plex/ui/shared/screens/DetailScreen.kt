@@ -3,6 +3,7 @@ package com.thotapalli.plex.ui.shared.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.FlowRow
@@ -100,7 +101,6 @@ fun DetailScreen(
     // On a television the primary Play/Resume action takes first focus on entry, so the
     // remote lands on the one action that matters. See CLAUDE.md section 13.
     val firstFocus = rememberFirstFocus(enabled = sizeClass.isTelevision)
-    val heroHeight = if (sizeClass.twoPaneDetail) 460.dp else 320.dp
     // Content sits in a readable measure and never stretches to a television's full width.
     val contentPadding = sizeClass.screenPadding
     val backdropUrl = server.urls.artwork(
@@ -109,12 +109,23 @@ fun DetailScreen(
         ArtworkSize.BACKDROP_HEIGHT,
     )
 
-    Box(
+    BoxWithConstraints(
         modifier
             .fillMaxSize()
             // The deep-indigo ground under everything, so the art dissolves onto the page.
             .background(PlexTheme.colours.backgroundBrush()),
     ) {
+        // The hero height is relative to the actual viewport, not a fixed dp. The two-pane layout
+        // puts the hero above the panes in a column, so a fixed 460dp hero on a short tablet-
+        // LANDSCAPE viewport (~540dp) left the Resume action and episode list crammed into the
+        // remaining sliver and effectively unscrollable. Capping it at ~44% of the height keeps the
+        // panes tall enough to read and scroll. The single-column layout scrolls as one, so its hero
+        // can stay a comfortable fixed height. See CLAUDE.md sections 13 and 14.
+        val heroHeight = if (sizeClass.twoPaneDetail) {
+            (maxHeight * 0.44f).coerceIn(220.dp, 460.dp)
+        } else {
+            320.dp
+        }
         // The whole screen takes on the colour of the content's own artwork, and that wash is the
         // glass source: every frosted panel below samples and blurs it.
         AmbientBackground(

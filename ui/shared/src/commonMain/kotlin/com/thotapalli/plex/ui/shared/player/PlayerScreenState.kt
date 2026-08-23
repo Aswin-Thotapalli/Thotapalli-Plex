@@ -24,6 +24,9 @@ data class PlayerScreenState(
     val openSheet: TrackSheetKind? = null,
 
     val showSkipIntro: Boolean = false,
+    /** True while the credits marker is active — offers a manual "Skip Credits" button (never an
+     *  automatic jump). See CLAUDE.md section 14 (per user: skip is an option, not automatic). */
+    val showSkipCredits: Boolean = false,
     val showNextEpisodePrompt: Boolean = false,
     val nextEpisodeTitle: String? = null,
     val countdownSeconds: Int = 10,
@@ -91,6 +94,7 @@ data class PlayerActions(
     val onScrub: (Long) -> Unit = {},
     val onScrubEnd: (Long) -> Unit = {},
     val onSkipIntro: () -> Unit = {},
+    val onSkipCredits: () -> Unit = {},
     /** The auto-play route: the credit skip, the countdown and a natural end all fire this. */
     val onPlayNext: () -> Unit = {},
     /** The explicit transport control: play the previous episode now. */

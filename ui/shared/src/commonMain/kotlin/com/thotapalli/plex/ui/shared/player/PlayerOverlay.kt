@@ -428,6 +428,18 @@ fun PlayerOverlay(
             GlassTextButton("Skip intro", onClick = actions.onSkipIntro, accent = true)
         }
 
+        // A manual "Skip credits" button while the credits marker is active — never an automatic
+        // jump. Suppressed when the next-episode countdown is up (that prompt's own "Play now" is the
+        // skip for an episode), so the two never overlap; this covers movies and last episodes.
+        AnimatedVisibility(
+            visible = state.showSkipCredits && !state.showNextEpisodePrompt,
+            enter = fadeIn(Motion.enter()),
+            exit = fadeOut(Motion.exit()),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(edge),
+        ) {
+            GlassTextButton("Skip credits", onClick = actions.onSkipCredits, accent = true)
+        }
+
         // The next episode prompt, lower right, with a ten second countdown.
         AnimatedVisibility(
             visible = state.showNextEpisodePrompt,

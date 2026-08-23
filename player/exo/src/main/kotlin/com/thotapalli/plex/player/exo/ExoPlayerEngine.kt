@@ -5,6 +5,8 @@ import android.app.UiModeManager
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.res.Configuration
+import android.os.Handler
+import android.os.Looper
 import android.view.SurfaceView
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -124,6 +126,16 @@ class ExoPlayerEngine(
     private var durationMs: Long = 0
 
     val player: ExoPlayer by lazy { buildPlayer() }
+
+    // ExoPlayer must be touched only on the thread that created it (the main looper). The controller
+    // calls into the engine from coroutines that are not always on main — most dangerously the
+    // failure-driven transcode retry, which runs in the engine-state collector — so every method
+    // that touches the player routes through here. Without this a dropped stream, a transcode
+    // fallback, or an end-of-item retry crashes with "Player is accessed on the wrong thread".
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private inline fun onMain(crossinline block: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) block() else mainHandler.post { block() }
+    }
 
     // experimentalSetDynamicSchedulingEnabled carries its own opt-in marker on top of
     // UnstableApi. The marker is a Java @RequiresOptIn checked by Android Lint, so it needs
@@ -245,7 +257,7 @@ class ExoPlayerEngine(
         surfaceView = null
     }
 
-    override fun load(source: PlaybackSource, startAtMs: Long) {
+    override fun load(source: PlaybackSource, startAtMs: Long) = onMain {
         _renderedFirstFrame.value = false
         _cues.value = emptyList()
         _state.value = PlaybackState.Buffering
@@ -290,7 +302,7 @@ class ExoPlayerEngine(
         watchForFirstFrame()
     }
 
-    override fun play() {
+    override fun play() = onMain {
         player.playWhenReady = true
         // Screen-locked / background audio is carried by the wakelock + audio-focus set on the
         // player (see buildPlayer) and the MediaSession for media-button handling. We deliberately
@@ -301,11 +313,11 @@ class ExoPlayerEngine(
         ensureMediaSession()
     }
 
-    override fun pause() {
+    override fun pause() = onMain {
         player.playWhenReady = false
     }
 
-    override fun seekTo(ms: Long) {
+    override fun seekTo(ms: Long) = onMain {
         player.seekTo(ms)
         _positionMs.value = ms
     }
@@ -314,23 +326,23 @@ class ExoPlayerEngine(
      * Scrubbing mode, added in Media3 1.8. On seek bar drag start and false on drag end.
      * See CLAUDE.md section 8.
      */
-    override fun setScrubbing(active: Boolean) {
+    override fun setScrubbing(active: Boolean) = onMain {
         player.setScrubbingModeEnabled(active)
     }
 
-    override fun selectAudioTrack(id: String) = selectTrack(id, C.TRACK_TYPE_AUDIO)
+    override fun selectAudioTrack(id: String) = onMain { selectTrack(id, C.TRACK_TYPE_AUDIO) }
 
-    override fun selectSubtitleTrack(id: String?) {
+    override fun selectSubtitleTrack(id: String?) = onMain {
         if (id == null) {
             trackSelector.parameters = trackSelector.buildUponParameters()
                 .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
                 .build()
-            return
+        } else {
+            trackSelector.parameters = trackSelector.buildUponParameters()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                .build()
+            selectTrack(id, C.TRACK_TYPE_TEXT)
         }
-        trackSelector.parameters = trackSelector.buildUponParameters()
-            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
-            .build()
-        selectTrack(id, C.TRACK_TYPE_TEXT)
     }
 
     private fun selectTrack(id: String, trackType: Int) {
@@ -349,7 +361,7 @@ class ExoPlayerEngine(
     }
 
     /** 1.0 is normal; the overlay offers 0.75x–2x. See CLAUDE.md section 8. */
-    override fun setPlaybackSpeed(speed: Float) {
+    override fun setPlaybackSpeed(speed: Float) = onMain {
         player.setPlaybackSpeed(speed)
     }
 
@@ -365,19 +377,21 @@ class ExoPlayerEngine(
     override fun release() {
         positionJob?.cancel()
         positionJob = null
-        // Put any refresh-rate change back before the player leaves, so a switched mode does not
-        // stick after playback. Guarded inside the controller. See CLAUDE.md section 9.
-        runCatching { displayModeController?.restore() }
-        // Tear the session down before the player it wraps, and clear the shared handle so the
-        // foreground service stops advertising a dead session. See CLAUDE.md section 8.
-        mediaSession?.let { session ->
-            if (activeSession === session) activeSession = null
-            runCatching { session.release() }
+        onMain {
+            // Put any refresh-rate change back before the player leaves, so a switched mode does not
+            // stick after playback. Guarded inside the controller. See CLAUDE.md section 9.
+            runCatching { displayModeController?.restore() }
+            // Tear the session down before the player it wraps, and clear the shared handle so the
+            // foreground service stops advertising a dead session. See CLAUDE.md section 8.
+            mediaSession?.let { session ->
+                if (activeSession === session) activeSession = null
+                runCatching { session.release() }
+            }
+            mediaSession = null
+            player.removeListener(listener)
+            player.release()
+            _state.value = PlaybackState.Idle
         }
-        mediaSession = null
-        player.removeListener(listener)
-        player.release()
-        _state.value = PlaybackState.Idle
     }
 
     /**
@@ -403,7 +417,8 @@ class ExoPlayerEngine(
         positionJob?.cancel()
         positionJob = scope.launch {
             while (isActive) {
-                _positionMs.value = player.currentPosition
+                // player.currentPosition must be read on the main thread too.
+                onMain { _positionMs.value = player.currentPosition }
                 delay(POSITION_POLL_MS)
             }
         }

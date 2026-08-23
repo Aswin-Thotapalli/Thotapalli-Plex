@@ -26,12 +26,14 @@ class MarkerController(
     fun skipIntroTargetMs(): Long? = intro?.endMs
 
     /**
-     * A credits marker skips automatically into the next episode rather than offering a
-     * button, so this is true only when there is a next episode to skip into. On the last
-     * episode of a show the credits play out.
+     * True while the credits are on screen and a manual "Skip Credits" button should be offered.
+     * Skipping is a per-title choice the viewer makes, never an automatic jump — so this is offered
+     * for movies and episodes alike, whenever the server reported a credits marker.
      */
-    fun shouldAutoSkipCredits(positionMs: Long): Boolean =
-        hasNextEpisode && credits?.contains(positionMs) == true
+    fun showSkipCredits(positionMs: Long): Boolean = credits?.contains(positionMs) == true
+
+    /** Where the Skip Credits button jumps to — the end of the credits (usually the item's end). */
+    fun skipCreditsTargetMs(): Long? = credits?.endMs
 
     /**
      * The next episode prompt window: the credits marker, or the final thirty seconds when

@@ -404,12 +404,7 @@ class PlaybackController(
             durationMs = snapshot.durationMs,
         )
 
-        // A credits marker skips automatically into the next episode.
-        if (markers.shouldAutoSkipCredits(position)) {
-            playNext()
-            return
-        }
-
+        // Credits are never skipped automatically — the viewer chooses via the Skip Credits button.
         val showPrompt = markers.showNextEpisodePrompt(position)
         if (showPrompt) countdown.start()
         if (countdown.isElapsed()) {
@@ -424,6 +419,7 @@ class PlaybackController(
         _state.update {
             it.copy(
                 showSkipIntro = markers.showSkipIntro(position),
+                showSkipCredits = markers.showSkipCredits(position),
                 showNextEpisodePrompt = showPrompt && countdown.isRunning,
                 countdownSeconds = countdown.remainingSeconds(),
                 controlsVisible = controlsVisible,
@@ -515,6 +511,13 @@ class PlaybackController(
         onSkipIntro = {
             noteInput()
             markers.skipIntroTargetMs()?.let {
+                engine.seekTo(it)
+                reportSeek(it)
+            }
+        },
+        onSkipCredits = {
+            noteInput()
+            markers.skipCreditsTargetMs()?.let {
                 engine.seekTo(it)
                 reportSeek(it)
             }
