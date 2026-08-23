@@ -63,6 +63,16 @@ compose.desktop {
     application {
         mainClass = "com.thotapalli.plex.desktop.MainKt"
 
+        // Do NOT minify the desktop release. ProGuard on this app strips classes the runtime needs
+        // reflectively — the Ktor engine, the SQLite JDBC driver, JNA-bound natives, the libmpv
+        // bindings, even the Compose entry point — which the packaged launcher reports as
+        // "Failed to launch JVM". The MSI is a little larger unminified, but it actually runs. (The
+        // Haze/Skiko unresolved-reference warning that needed compose-desktop.pro was only a symptom
+        // of running ProGuard at all; with ProGuard off it no longer applies.)
+        buildTypes.release.proguard {
+            isEnabled.set(false)
+        }
+
         // Faster cold start: stop JIT at the cheap tier (UI work is light; heavy decode is native
         // in libmpv) and use the serial collector so the JVM spins up with fewer threads.
         jvmArgs += listOf("-XX:+UseSerialGC", "-XX:TieredStopAtLevel=1")
@@ -81,15 +91,19 @@ compose.desktop {
             // major.minor.build with each field <= 65535, so the epoch-based code is folded into
             // that range; a plain versionName is used when no code is supplied (local builds).
             packageVersion = run {
+                // A strictly-monotonic Windows ProductVersion so every build upgrades in place. MSI
+                // caps each field (major<=255, minor<=255, build<=65535), so an absolute timestamp
+                // will not fit a single field: encode minutes-since-2026 across the minor and build
+                // fields (headroom to ~2057), keeping the app major from the version name. Minutes,
+                // not hours, so builds only minutes apart still get a higher version. See the
+                // matching auto versionCode (raw epoch seconds) in the Android modules.
                 val versionName = providers.gradleProperty("thotapalli.versionName").get()
-                val parts = versionName.split(".")
-                val major = parts.getOrNull(0)?.takeIf { it.isNotBlank() } ?: "0"
-                val minor = parts.getOrNull(1)?.takeIf { it.isNotBlank() } ?: "0"
-                // Auto build field: hours since 2026-01-01, so the MSI ProductVersion increases on
-                // every build (in-place upgrade) yet stays a monotonic value under the 65535 cap
-                // for years. See the matching auto versionCode in the Android modules.
-                val hours = (System.currentTimeMillis() / 1000L - 1_767_225_600L) / 3600L
-                "$major.$minor.${hours.coerceIn(1L, 65534L)}"
+                val major = versionName.split(".").getOrNull(0)?.takeIf { it.isNotBlank() } ?: "0"
+                val minutes = ((System.currentTimeMillis() / 1000L - 1_767_225_600L) / 60L)
+                    .coerceAtLeast(1L)
+                val hi = (minutes / 65536L).coerceIn(0L, 255L)
+                val lo = minutes % 65536L
+                "$major.$hi.$lo"
             }
             vendor = "Thotapalli"
 

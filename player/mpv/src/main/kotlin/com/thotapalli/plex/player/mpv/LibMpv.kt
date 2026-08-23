@@ -104,11 +104,23 @@ val MPV_OPTIONS: List<Pair<String, String>> = listOf(
     "demuxer-max-bytes" to "256MiB",
     "demuxer-readahead-secs" to "20",
 
-    // Section 8 asks for exclusive audio so bitstream passthrough reaches a receiver
-    // untouched. In practice WASAPI exclusive mode fails or stalls on an ordinary desktop
-    // whose output device is shared, which reads as "buffering forever". Shared mode is
-    // used for reliable playback; passthrough for a receiver is a follow-up.
-    "audio-exclusive" to "no",
+    // Section 8: exclusive audio plus spdif so Dolby/DTS bitstream reaches a receiver
+    // untouched. The tradeoff: WASAPI exclusive mode can fail or stall on an ordinary
+    // desktop whose output device is already held by another app, which earlier read as
+    // "buffering forever". This is made safely reversible rather than disabled:
+    //
+    //   - audio-exclusive=yes and audio-spdif restore the spec-correct passthrough path.
+    //   - audio-fallback-to-null=no means a device that will not open exclusively does NOT
+    //     get silently routed to the null sink; mpv retries the ao chain and lands on the
+    //     shared/PCM path instead of a null device that would look like a permanent stall.
+    //   - The load path (MpvPlayerEngine.load) does not block waiting on the ao opening, so
+    //     even a slow exclusive-mode negotiation cannot hang the caller.
+    //
+    // Net effect: passthrough by default per spec; on a device where exclusive/spdif cannot
+    // open, mpv degrades to shared PCM and playback continues rather than hanging.
+    "audio-exclusive" to "yes",
+    "audio-spdif" to "ac3,eac3,dts-hd,truehd",
+    "audio-fallback-to-null" to "no",
 
     "sub-auto" to "no",
     "sub-ass-override" to "no",

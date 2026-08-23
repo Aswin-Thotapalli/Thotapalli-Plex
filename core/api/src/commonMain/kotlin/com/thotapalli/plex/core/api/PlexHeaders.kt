@@ -23,6 +23,9 @@ object PlexHeaderNames {
     const val DEVICE_NAME = "X-Plex-Device-Name"
     const val SESSION_IDENTIFIER = "X-Plex-Session-Identifier"
     const val TOKEN = "X-Plex-Token"
+
+    /** Carries a client capability profile on the playback decision request. */
+    const val CLIENT_PROFILE_EXTRA = "X-Plex-Client-Profile-Extra"
 }
 
 /** Fixed product name. Sent on every request and shown on the account's device list. */

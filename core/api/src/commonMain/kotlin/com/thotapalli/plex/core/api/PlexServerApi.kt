@@ -1,6 +1,7 @@
 package com.thotapalli.plex.core.api
 
 import com.thotapalli.plex.core.api.dto.ActivityContainer
+import com.thotapalli.plex.core.api.dto.DecisionContainer
 import com.thotapalli.plex.core.api.dto.DirectoryContainer
 import com.thotapalli.plex.core.api.dto.HubContainer
 import com.thotapalli.plex.core.api.dto.IdentityContainer
@@ -58,20 +59,46 @@ class PlexServerApi(
     }
 
     /**
-     * A library's contents, sorted by title ascending. The sort is fixed and has no
-     * control in the interface. See CLAUDE.md section 14.
+     * A library's contents, sorted by title ascending with only the unwatched filter.
+     *
+     * The title-ascending default is the fixed sort the home and library screens have always
+     * used (CLAUDE.md section 14). It delegates to the generalised overload so a single query
+     * builder serves both.
      */
     override suspend fun libraryContents(
         scope: ServerScope,
         libraryKey: String,
         kind: LibraryContentType,
         unwatchedOnly: Boolean,
+    ): List<MediaItem> = libraryContents(
+        scope = scope,
+        libraryKey = libraryKey,
+        kind = kind,
+        sort = LibrarySort.TITLE_ASC,
+        filter = LibraryFilter(unwatchedOnly = unwatchedOnly),
+    )
+
+    /**
+     * A library's contents with an explicit sort and filter set, for the library screen's
+     * sort and filter controls. See CLAUDE.md section 16.
+     *
+     * Each filter maps to the Plex query parameter of the same purpose. An absent filter is
+     * simply not sent, so the server applies none.
+     */
+    override suspend fun libraryContents(
+        scope: ServerScope,
+        libraryKey: String,
+        kind: LibraryContentType,
+        sort: LibrarySort,
+        filter: LibraryFilter,
     ): List<MediaItem> {
         val response = client.get("${scope.baseUri}/library/sections/$libraryKey/all") {
             parameter("type", kind.code)
-            parameter("sort", "titleSort:asc")
-            // The one filter the library screen offers.
-            if (unwatchedOnly) parameter("unwatched", "1")
+            parameter("sort", sort.wire)
+            filter.genre?.takeIf { it.isNotBlank() }?.let { parameter("genre", it) }
+            filter.year?.let { parameter("year", it) }
+            filter.resolution?.takeIf { it.isNotBlank() }?.let { parameter("resolution", it) }
+            if (filter.unwatchedOnly) parameter("unwatched", "1")
             scope.apply(this)
         }
         response.requireSuccess("library $libraryKey contents")
@@ -102,6 +129,57 @@ class PlexServerApi(
         return response.body<MediaContainerResponse<MetadataContainer>>()
             .mediaContainer.metadata.firstOrNull()?.toMediaDetail()
     }
+
+    /**
+     * Ask the server whether this part can be direct-played, sending the client's capability
+     * profile so the server judges against what this client can actually decode. See
+     * CLAUDE.md section 10.
+     *
+     * Defensive by construction: any failure — no connection, a non-success status, an
+     * unrecognised body — returns true, which hands the decision back to the caller's own
+     * direct→transcode fallback. The only time this returns false is when the server gives a
+     * definitive "must transcode" verdict.
+     */
+    override suspend fun canDirectPlay(
+        scope: ServerScope,
+        ratingKey: String,
+        partId: String,
+    ): Boolean = runCatching {
+        val response = client.get("${scope.baseUri}/video/:/transcode/universal/decision") {
+            parameter("path", "/library/metadata/$ratingKey")
+            parameter("mediaIndex", -1)
+            parameter("partIndex", -1)
+            parameter("protocol", "hls")
+            parameter("hasMDE", 1)
+            parameter("directPlay", 1)
+            parameter("directStream", 1)
+            // The capability profile: the containers and codecs this client can play, so the
+            // server's verdict reflects this client rather than a generic one.
+            parameter(PlexHeaderNames.CLIENT_PROFILE_EXTRA, DIRECT_PLAY_PROFILE)
+            scope.apply(this)
+        }
+        if (response.status.value !in 200..299) return true
+
+        val container = response.body<MediaContainerResponse<DecisionContainer>>().mediaContainer
+
+        // An explicit success code is the clearest signal the server can direct-play.
+        if (container.directPlayDecisionCode == DIRECT_PLAY_OK) return true
+
+        // Otherwise fall back to the per-stream verdicts the server attached.
+        val decisions = container.metadata
+            .flatMap { it.media }
+            .flatMap { listOf(it.decision) + it.part.map { part -> part.decision } }
+            .filterNotNull()
+            .map { it.lowercase() }
+
+        if (decisions.any { it == "directplay" }) return true
+
+        // A definitive answer was given and it was not direct play: honour it.
+        if (container.directPlayDecisionCode != null || decisions.isNotEmpty()) return false
+
+        // Nothing definitive parsed: defer to the caller's own fallback.
+        true
+    }.getOrDefault(true)
 
     /** Direct children: seasons of a show, or items of a collection. */
     override suspend fun children(scope: ServerScope, ratingKey: String): List<MediaItem> {
@@ -367,6 +445,33 @@ class PlexServerApi(
 
         /** At most twenty per group on the search screen. See CLAUDE.md section 14. */
         const val GROUP_LIMIT = 20
+
+        /** The decision endpoint's success code for direct play. */
+        const val DIRECT_PLAY_OK = 1000
+
+        // The capability profile from CLAUDE.md section 10. These lists mirror the ones in
+        // core/playback's PlaybackCapabilities, restated here rather than imported because the
+        // dependency graph (CLAUDE.md section 3) forbids core:api depending on core:playback.
+        val CONTAINERS = listOf("mkv", "mp4", "mov", "avi", "ts", "m2ts", "webm")
+        val VIDEO_CODECS = listOf("h264", "hevc", "av1", "vp9", "mpeg2video", "vc1")
+        val AUDIO_CODECS =
+            listOf("aac", "ac3", "eac3", "dts", "truehd", "flac", "mp3", "opus", "vorbis", "pcm")
+        val SUBTITLE_CODECS = listOf("srt", "ass", "ssa", "pgs", "vobsub", "dvb_subtitle")
+
+        /**
+         * The capability profile as a Plex direct-play profile string, sent on the decision
+         * request so the server judges against what this client can decode. Ktor URL-encodes
+         * it when it becomes a query parameter.
+         */
+        val DIRECT_PLAY_PROFILE = buildString {
+            append("add-direct-play-profile(")
+            append("type=videoProfile")
+            append("&container=").append(CONTAINERS.joinToString(","))
+            append("&videoCodec=").append(VIDEO_CODECS.joinToString(","))
+            append("&audioCodec=").append(AUDIO_CODECS.joinToString(","))
+            append("&subtitleCodec=").append(SUBTITLE_CODECS.joinToString(","))
+            append(")")
+        }
     }
 }
 
@@ -388,6 +493,30 @@ enum class LibraryContentType(val code: Int) {
     EPISODE(4),
     COLLECTION(18),
 }
+
+/**
+ * A library sort, mapping to the Plex `sort` query parameter. Title ascending is the fixed
+ * default the home and library screens use; the rest drive the library screen's sort control.
+ * See CLAUDE.md section 16.
+ */
+enum class LibrarySort(val wire: String) {
+    TITLE_ASC("titleSort:asc"),
+    TITLE_DESC("titleSort:desc"),
+    ADDED_DESC("addedAt:desc"),
+    YEAR_DESC("year:desc"),
+    RATING_DESC("rating:desc"),
+}
+
+/**
+ * The optional library filters, each mapping to a Plex query parameter. A null or blank field
+ * is not sent, so the server applies no constraint for it. See CLAUDE.md section 16.
+ */
+data class LibraryFilter(
+    val genre: String? = null,
+    val year: Int? = null,
+    val resolution: String? = null,
+    val unwatchedOnly: Boolean = false,
+)
 
 enum class TimelineState(val wire: String) {
     PLAYING("playing"),

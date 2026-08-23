@@ -1,7 +1,11 @@
 package com.thotapalli.plex.ui.shared.player
 
+import com.thotapalli.plex.core.model.Chapter
+import com.thotapalli.plex.core.model.MediaItem
+import com.thotapalli.plex.core.playback.PlaybackQuality
 import com.thotapalli.plex.core.playback.PlaybackState
 import com.thotapalli.plex.core.playback.PlayerTrack
+import com.thotapalli.plex.core.playback.SubtitleStyle
 
 /** Everything the overlay draws. */
 data class PlayerScreenState(
@@ -35,6 +39,21 @@ data class PlayerScreenState(
     val isFullScreen: Boolean = false,
 
     val trickplayUrlAt: (Long) -> String? = { null },
+
+    // --- Wave 2 additions -----------------------------------------------------------------
+    /** Current playback rate; the overlay's speed control reflects and sets it (#12). */
+    val playbackSpeed: Float = 1f,
+    /** Chapter marks for the scrubber + a chapter list, from the item's metadata (#15). */
+    val chapters: List<Chapter> = emptyList(),
+    /** Remaining time on the sleep timer, or null when off (#18). */
+    val sleepTimerRemainingMs: Long? = null,
+    /** Subtitle appearance the engine is applying; the appearance control edits it (#14). */
+    val subtitleStyle: SubtitleStyle = SubtitleStyle(),
+    /** The offered streaming qualities and the active one (#11). Empty when only original applies. */
+    val qualities: List<PlaybackQuality> = emptyList(),
+    val currentQualityLabel: String? = null,
+    /** Upcoming items (the rest of the show / a built queue) for an Up Next panel (#19). */
+    val upNext: List<MediaItem> = emptyList(),
 ) {
     val isPlaying: Boolean get() = playbackState is PlaybackState.Playing
 
@@ -49,6 +68,11 @@ data class PlayerActions(
     val onPlayPause: () -> Unit = {},
     /** Any tap or press on the picture — reveals the controls without changing playback. */
     val onUserInput: () -> Unit = {},
+    /**
+     * A single tap on the picture (touch): show the controls if hidden, hide them if shown. A tap
+     * must never pause — pausing is only the transport button. See CLAUDE.md section 12 (overlay).
+     */
+    val onToggleControls: () -> Unit = {},
     val onSeekBack: () -> Unit = {},
     val onSeekForward: () -> Unit = {},
     /** Double-tap the right of the picture: jump forward ten seconds. */
@@ -76,4 +100,18 @@ data class PlayerActions(
     val onDismissSheet: () -> Unit = {},
     val onToggleFullScreen: () -> Unit = {},
     val onBack: () -> Unit = {},
+
+    // --- Wave 2 additions -----------------------------------------------------------------
+    /** Set playback rate (0.75×–2×) (#12). */
+    val onSetSpeed: (Float) -> Unit = {},
+    /** Seek to an absolute position — used by chapter jumps and the chapter list (#15). */
+    val onSeekToPosition: (Long) -> Unit = {},
+    /** Arm the sleep timer for the given milliseconds, or null to cancel (#18). */
+    val onSetSleepTimer: (Long?) -> Unit = {},
+    /** Apply subtitle appearance live (#14). */
+    val onSetSubtitleStyle: (com.thotapalli.plex.core.playback.SubtitleStyle) -> Unit = {},
+    /** Switch streaming quality; reloads at the new cap at the same position (#11). */
+    val onSelectQuality: (com.thotapalli.plex.core.playback.PlaybackQuality) -> Unit = {},
+    /** Play a specific upcoming item from the Up Next panel (#19). */
+    val onPlayUpNext: (com.thotapalli.plex.core.model.MediaItem) -> Unit = {},
 )

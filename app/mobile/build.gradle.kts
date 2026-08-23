@@ -84,7 +84,34 @@ android {
         // VERSION_NAME is sent as X-Plex-Version on every request. See CLAUDE.md section 5.
         buildConfig = true
     }
+
+    // The shared Compose resources (brand mark, splash frames, fonts) live in ui:shared / ui:design,
+    // whose com.android.kotlin.multiplatform.library plugin does NOT emit composeResources into
+    // consuming Android apps (only the JVM/desktop target packages them). Without this the app
+    // crashes on the sign-in screen with MissingResourceException: brand_mark.png. We copy those
+    // resources into this app's assets under the exact runtime path (see copyComposeResources) and
+    // register that directory as an assets source so mergeAssets packages it.
+    sourceSets.getByName("main").assets.srcDir(
+        layout.buildDirectory.dir("generated/composeResourcesAssets").get().asFile,
+    )
 }
+
+// Copies ui:shared and ui:design composeResources into this app's assets, laid out exactly as the
+// Compose resource reader expects: composeResources/<packageOfResClass>/<category>/<file>.
+val copyComposeResources by tasks.registering(Copy::class) {
+    into(layout.buildDirectory.dir("generated/composeResourcesAssets"))
+    from(rootProject.file("ui/shared/src/commonMain/composeResources")) {
+        into("composeResources/com.thotapalli.plex.ui.shared.resources")
+    }
+    from(rootProject.file("ui/design/src/commonMain/composeResources")) {
+        into("composeResources/com.thotapalli.plex.ui.design.resources")
+    }
+}
+
+// mergeAssets (per variant) must see the copied files, and preBuild is the umbrella every variant
+// depends on.
+tasks.matching { it.name == "preBuild" || (it.name.startsWith("merge") && it.name.endsWith("Assets")) }
+    .configureEach { dependsOn(copyComposeResources) }
 
 kotlin {
     jvmToolchain(providers.gradleProperty("thotapalli.jdk").get().toInt())
@@ -98,6 +125,8 @@ dependencies {
     implementation(project(":core:playback"))
     implementation(project(":core:download"))
     implementation(project(":player:exo"))
+    // PlaybackService hosts the engine's MediaSession for background / lock-screen playback (#2).
+    implementation(libs.media3.session)
     implementation(libs.compose.runtime)
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)

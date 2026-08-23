@@ -18,6 +18,7 @@ import com.thotapalli.plex.core.playback.PlaybackSource
 import com.thotapalli.plex.core.playback.PlaybackState
 import com.thotapalli.plex.core.playback.PlayerEngine
 import com.thotapalli.plex.core.playback.PlayerTracks
+import com.thotapalli.plex.core.playback.SubtitleStyle
 import com.thotapalli.plex.player.mpv.MpvPlayerEngine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -101,5 +102,7 @@ private class UnavailablePlayerEngine : PlayerEngine {
     override fun setScrubbing(active: Boolean) {}
     override fun selectAudioTrack(id: String) {}
     override fun selectSubtitleTrack(id: String?) {}
+    override fun setPlaybackSpeed(speed: Float) {}
+    override fun setSubtitleStyle(style: SubtitleStyle) {}
     override fun release() {}
 }

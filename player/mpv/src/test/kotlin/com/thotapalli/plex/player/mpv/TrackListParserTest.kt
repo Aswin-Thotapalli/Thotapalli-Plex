@@ -129,7 +129,12 @@ class MpvOptionsTest {
     fun passthroughReachesTheReceiverUntouched() {
         val options = MPV_OPTIONS.toMap()
 
+        // Spec-correct passthrough (section 8, item 8): exclusive output plus bitstream spdif.
         assertEquals("yes", options["audio-exclusive"])
         assertEquals("ac3,eac3,dts-hd,truehd", options["audio-spdif"])
+
+        // The safety valve: a device that cannot open exclusively degrades to shared PCM
+        // rather than being routed to a null sink that would look like a permanent stall.
+        assertEquals("no", options["audio-fallback-to-null"])
     }
 }

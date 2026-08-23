@@ -36,9 +36,9 @@ enum class SizeClass {
     /** The minimum poster width the adaptive grid is built from. */
     val posterMinWidth: Dp
         get() = when (this) {
-            COMPACT -> 132.dp
-            MEDIUM -> 152.dp
-            EXPANDED -> 176.dp
+            COMPACT -> 150.dp
+            MEDIUM -> 168.dp
+            EXPANDED -> 196.dp
             TELEVISION -> 200.dp
         }
 

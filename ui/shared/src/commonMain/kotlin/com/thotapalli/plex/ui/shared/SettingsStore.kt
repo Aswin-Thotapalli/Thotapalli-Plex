@@ -43,6 +43,39 @@ class SettingsStore(
         set(value) = store.putString(SUBTITLES_ON, value.toString())
 
     /**
+     * Default remote streaming quality as a maximum bitrate in kilobits per second, or null for
+     * "Original" (no client-imposed cap — direct play / maximum). Persisted as a decimal string;
+     * a null is stored as an empty string, which reads back as null. See CLAUDE.md section 10.
+     */
+    var streamingMaxBitrateKbps: Int?
+        get() = store.getString(STREAMING_BITRATE)?.toIntOrNull()
+        set(value) = store.putString(STREAMING_BITRATE, value?.toString() ?: "")
+
+    /**
+     * Subtitle text size as a percentage of the base size. 100 is the untouched size; the UI offers
+     * 75 (small), 100 (normal) and 150 (large). Feeds core/playback SubtitleStyle.scalePercent.
+     */
+    var subtitleScalePercent: Int
+        get() = store.getString(SUBTITLE_SCALE)?.toIntOrNull() ?: 100
+        set(value) = store.putString(SUBTITLE_SCALE, value.toString())
+
+    /**
+     * Subtitle text colour as a packed ARGB value. Defaults to opaque white; the UI offers white
+     * and amber-yellow. Feeds core/playback SubtitleStyle.foregroundArgb.
+     */
+    var subtitleForegroundArgb: Long
+        get() = store.getString(SUBTITLE_FOREGROUND)?.toLongOrNull() ?: DEFAULT_SUBTITLE_FOREGROUND
+        set(value) = store.putString(SUBTITLE_FOREGROUND, value.toString())
+
+    /**
+     * Opacity of the box drawn behind subtitle text, as a percentage. 0 is no background; the UI
+     * offers none and a semi-opaque 60. Feeds core/playback SubtitleStyle.backgroundOpacityPercent.
+     */
+    var subtitleBackgroundOpacityPercent: Int
+        get() = store.getString(SUBTITLE_BACKGROUND_OPACITY)?.toIntOrNull() ?: 0
+        set(value) = store.putString(SUBTITLE_BACKGROUND_OPACITY, value.toString())
+
+    /**
      * Light, dark or follow the system. Persisted by enum name and defaulting to
      * [ThemeMode.SYSTEM]; an unrecognised stored value falls back to SYSTEM rather than
      * crashing. PlexApp reads this to pick the theme. See CLAUDE.md sections 12 and 14.
@@ -77,9 +110,14 @@ class SettingsStore(
         const val AUDIO_LANGUAGE = "setting_audio_language"
         const val SUBTITLE_LANGUAGE = "setting_subtitle_language"
         const val SUBTITLES_ON = "setting_subtitles_on"
+        const val STREAMING_BITRATE = "setting_streaming_max_bitrate_kbps"
+        const val SUBTITLE_SCALE = "setting_subtitle_scale_percent"
+        const val SUBTITLE_FOREGROUND = "setting_subtitle_foreground_argb"
+        const val SUBTITLE_BACKGROUND_OPACITY = "setting_subtitle_background_opacity_percent"
         const val THEME_MODE = "setting_theme_mode"
         const val LIBRARY_ORDER = "setting_library_order"
         const val DEFAULT_LANGUAGE = "eng"
+        const val DEFAULT_SUBTITLE_FOREGROUND = 0xFFFFFFFF
         const val ORDER_DELIMITER = "\n"
     }
 }

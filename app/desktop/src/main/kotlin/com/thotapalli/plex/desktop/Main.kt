@@ -36,6 +36,7 @@ import com.thotapalli.plex.core.session.currentDeviceInfo
 import com.thotapalli.plex.player.mpv.DisplayRateMatcher
 import com.thotapalli.plex.ui.design.ThotapalliTheme
 import com.thotapalli.plex.ui.shared.AppContainer
+import com.thotapalli.plex.ui.shared.installImageLoader
 import com.thotapalli.plex.ui.shared.AppState
 import com.thotapalli.plex.ui.shared.AppViewModel
 import com.thotapalli.plex.ui.shared.PlexApp
@@ -44,7 +45,11 @@ import com.thotapalli.plex.ui.shared.input.keyToPlayerAction
 import com.thotapalli.plex.ui.shared.player.PlayerOverlay
 import com.thotapalli.plex.ui.shared.player.TrackSheet
 import com.thotapalli.plex.ui.shared.player.TrackSheetKind
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.awt.Desktop
+import java.net.NetworkInterface
 import java.net.URI
 
 private const val APP_VERSION = "0.1.0"
@@ -72,6 +77,10 @@ fun main() {
     // its saved settings. Mirrors the taskbar hook above; a no-op when nothing was changed.
     // See CLAUDE.md section 9.
     Runtime.getRuntime().addShutdownHook(Thread { DisplayRateMatcher.restore() })
+    // Install the shared Coil loader (generous memory cache + 512 MB disk cache under
+    // %LOCALAPPDATA%\ThotapalliPlex\image_cache) before the Compose window opens and any poster is
+    // requested, so artwork is cached from its first fetch. See CLAUDE.md sections 5 and 13.
+    installImageLoader()
     ui()
 }
 
@@ -160,6 +169,25 @@ private fun ui() = application {
     val appState by viewModel.state.collectAsState()
 
     val windowState = rememberWindowState(width = 1280.dp, height = 800.dp)
+
+    // Windows has no ConnectivityManager, so this is a best-effort stand-in for the OS
+    // network-change signal the Android apps get for free. Every 30s the set of up, non-loopback
+    // network interfaces (name + bound addresses) is snapshotted; when it differs from the last
+    // snapshot the device's network has changed, so the server connection is re-probed. See
+    // CLAUDE.md section 5, connection selection point 4. The first snapshot is taken without
+    // firing — startup already probes — and the poll runs off the UI thread so it never blocks
+    // rendering or startup.
+    LaunchedEffect(viewModel) {
+        var last = withContext(Dispatchers.IO) { upInterfaceSignature() }
+        while (true) {
+            delay(30_000)
+            val current = withContext(Dispatchers.IO) { upInterfaceSignature() }
+            if (current != last) {
+                last = current
+                viewModel.onNetworkChanged()
+            }
+        }
+    }
 
     // The main window's AWT frame, so the floating overlay can track its content area.
     var mainWindow by remember { mutableStateOf<ComposeWindow?>(null) }
@@ -374,6 +402,25 @@ private fun buildContainer(): AppContainer {
 
     return container
 }
+
+/**
+ * A stable fingerprint of the machine's currently usable network interfaces: for every interface
+ * that is up and not loopback, its name plus each bound IP address. A change in this set between
+ * polls means an adapter went up or down, a cable was plugged, Wi-Fi switched, or a VPN connected
+ * or dropped — i.e. a device network change worth re-probing on. Any failure yields an empty set
+ * rather than throwing, so the poll can never crash the app.
+ */
+private fun upInterfaceSignature(): Set<String> = runCatching {
+    val out = mutableSetOf<String>()
+    val ifaces = NetworkInterface.getNetworkInterfaces() ?: return@runCatching emptySet()
+    for (iface in ifaces) {
+        if (!iface.isUp || iface.isLoopback) continue
+        for (addr in iface.inetAddresses) {
+            out += "${iface.name}|${addr.hostAddress}"
+        }
+    }
+    out
+}.getOrDefault(emptySet())
 
 private fun openBrowser(url: String) {
     runCatching {

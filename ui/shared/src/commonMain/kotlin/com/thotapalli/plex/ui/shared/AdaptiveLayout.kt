@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyGridScope
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,6 +33,7 @@ import com.thotapalli.plex.ui.design.Spacing
 fun PosterGrid(
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(PlexTheme.sizeClass.screenPadding),
+    state: LazyGridState = rememberLazyGridState(),
     content: LazyGridScope.() -> Unit,
 ) {
     val sizeClass = PlexTheme.sizeClass
@@ -38,6 +41,7 @@ fun PosterGrid(
     ContentWidthCap(modifier) {
         LazyVerticalGrid(
             columns = GridCells.Adaptive(minSize = sizeClass.posterMinWidth),
+            state = state,
             contentPadding = contentPadding,
             horizontalArrangement = Arrangement.spacedBy(Layout.gridHorizontalGap),
             verticalArrangement = Arrangement.spacedBy(Layout.gridVerticalGap),

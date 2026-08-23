@@ -156,6 +156,47 @@ data class StreamDto(
     val key: String? = null,
 )
 
+/**
+ * The playback decision response from `/video/:/transcode/universal/decision`.
+ *
+ * Every field is nullable with a safe default per the working rules, because the decision
+ * endpoint's shape is the least stable of all — Plex changes it between server builds. When a
+ * field the mapper reads is absent, the caller treats it as "no definitive answer" and falls
+ * back to its own direct→transcode path rather than trusting a guess. See CLAUDE.md section 10.
+ *
+ * The top-level `directPlayDecisionCode` is 1000 when the server will let the client direct-play.
+ * The nested `Media`/`Part` `decision` strings ("directplay", "copy", "transcode") are the
+ * per-stream verdict and are read as a fallback when the code is absent.
+ */
+@Serializable
+data class DecisionContainer(
+    val generalDecisionCode: Int? = null,
+    val generalDecisionText: String? = null,
+    val directPlayDecisionCode: Int? = null,
+    val directPlayDecisionText: String? = null,
+    val transcodeDecisionCode: Int? = null,
+    val transcodeDecisionText: String? = null,
+    val mdeDecisionCode: Int? = null,
+    @SerialName("Metadata") val metadata: List<DecisionMetadataDto> = emptyList(),
+)
+
+@Serializable
+data class DecisionMetadataDto(
+    @SerialName("Media") val media: List<DecisionMediaDto> = emptyList(),
+)
+
+@Serializable
+data class DecisionMediaDto(
+    val decision: String? = null,
+    val protocol: String? = null,
+    @SerialName("Part") val part: List<DecisionPartDto> = emptyList(),
+)
+
+@Serializable
+data class DecisionPartDto(
+    val decision: String? = null,
+)
+
 @Serializable
 data class MarkerDto(
     val id: String = "",

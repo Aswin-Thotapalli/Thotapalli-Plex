@@ -150,6 +150,37 @@ class AndroidDisplayModeController(
         return true
     }
 
+    /**
+     * Puts the display back after playback.
+     *
+     * Clears the window's preferred mode id so Android returns to its default refresh rate, and
+     * clears the content frame-rate hint on the surface. Safe to call when the surface is already
+     * gone — the window part still runs — and every failure is swallowed so teardown is never
+     * obstructed. See CLAUDE.md section 9.
+     */
+    fun restore() {
+        runCatching {
+            val window = activity.window ?: return@runCatching
+            activity.runOnUiThread {
+                window.attributes = window.attributes.apply { preferredDisplayModeId = 0 }
+            }
+        }.onFailure { Log.w(TAG, "clearing preferredDisplayModeId failed", it) }
+
+        val surface: Surface? = surfaceViewProvider()?.holder?.surface
+        if (surface != null && surface.isValid) {
+            runCatching {
+                // A frame rate of 0 clears any rate this session set on the surface.
+                surface.setFrameRate(
+                    0f,
+                    Surface.FRAME_RATE_COMPATIBILITY_DEFAULT,
+                    Surface.CHANGE_FRAME_RATE_ALWAYS,
+                )
+            }.onFailure { Log.w(TAG, "clearing setFrameRate failed", it) }
+        }
+
+        Log.i(TAG, "display mode restored to default")
+    }
+
     private companion object {
         const val TAG = "ThotapalliFrameRate"
 

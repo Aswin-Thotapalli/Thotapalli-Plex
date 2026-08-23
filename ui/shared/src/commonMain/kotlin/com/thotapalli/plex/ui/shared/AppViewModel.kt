@@ -2,6 +2,9 @@ package com.thotapalli.plex.ui.shared
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.thotapalli.plex.core.api.LibraryContentType
+import com.thotapalli.plex.core.api.LibraryFilter
+import com.thotapalli.plex.core.api.LibrarySort
 import com.thotapalli.plex.core.api.PlexUrls
 import com.thotapalli.plex.core.api.SearchResults
 import com.thotapalli.plex.core.api.ServerActivity
@@ -9,6 +12,7 @@ import com.thotapalli.plex.core.api.ServerScope
 import com.thotapalli.plex.core.model.Episode
 import com.thotapalli.plex.core.model.HomeUser
 import com.thotapalli.plex.core.model.Library
+import com.thotapalli.plex.core.model.LibraryKind
 import com.thotapalli.plex.core.model.MediaCollection
 import com.thotapalli.plex.core.model.MediaDetail
 import com.thotapalli.plex.core.model.MediaItem
@@ -69,6 +73,10 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                 _state.update { it.copy(phase = AppPhase.SIGNED_OUT) }
                 return@launch
             }
+            // Show the signed-in account name from the moment we know we're signed in, so the
+            // profile chip never reads a bare "Account" during the optimistic start (connect()
+            // later upgrades it to the active Home user's name where there is one).
+            _state.update { it.copy(accountName = container.session.signedInUsername()) }
             // Optimistic start: if a previous session left a known-good target, render Home from
             // it immediately and reconcile with plex.tv in the background. This turns the common
             // relaunch from a serial plex.tv (home users + resources) + probe sequence into an
@@ -115,6 +123,20 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             return
         }
 
+        // Exactly one Home user skips the picker silently — but we still record that user so the
+        // profile chip and top bar can show their name. Without this, the single-user case left
+        // homeUser null and the name never appeared.
+        if (_state.value.homeUser == null && homeUsers.isNotEmpty()) {
+            _state.update { it.copy(homeUser = homeUsers.first()) }
+        }
+
+        // The display name: the active Home user if there is one, otherwise the signed-in account
+        // name (a single non-Home account never returns any Home users, so homeUser stays null and
+        // the chip would otherwise read "Account").
+        _state.update {
+            it.copy(accountName = it.homeUser?.title ?: container.session.signedInUsername())
+        }
+
         loadHome()
     }
 
@@ -122,7 +144,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             runCatching { container.session.switchHomeUser(user, pin) }
                 .onSuccess {
-                    _state.update { it.copy(homeUser = user) }
+                    _state.update { it.copy(homeUser = user, accountName = user.title) }
                     loadHome()
                 }
                 .onFailure { error -> _state.update { it.copy(error = error.message) } }
@@ -143,6 +165,38 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             return
         }
         applyTarget(target)
+        // Now that the server answered, flush any progress recorded while offline (§11). Runs here
+        // so it also fires after a reconnect (onNetworkChanged -> loadHome).
+        replayOfflineTimeline()
+    }
+
+    /**
+     * Replay offline-recorded progress to the server on reconnection (§11). The queue keeps only the
+     * newest row per item; each accepted row is deleted, a stale one (server newer) is dropped, and a
+     * still-failing one stays for next time.
+     */
+    private fun replayOfflineTimeline() {
+        val server = _state.value.server ?: return
+        viewModelScope.launch {
+            val sid = container.identity.newSessionIdentifier()
+            runCatching {
+                container.offlineTimeline.replay { row ->
+                    runCatching {
+                        container.serverApi.timeline(
+                            scope = server.scope,
+                            ratingKey = row.ratingKey,
+                            state = com.thotapalli.plex.core.api.TimelineState.STOPPED,
+                            positionMs = row.positionMs,
+                            durationMs = row.durationMs,
+                            sessionIdentifier = sid,
+                        )
+                    }.fold(
+                        onSuccess = { com.thotapalli.plex.core.download.ReplayOutcome.ACCEPTED },
+                        onFailure = { com.thotapalli.plex.core.download.ReplayOutcome.FAILED },
+                    )
+                }
+            }
+        }
     }
 
     /**
@@ -271,7 +325,63 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     fun setUnwatchedOnly(unwatchedOnly: Boolean) {
         val current = _state.value.library ?: return
         _state.update { it.copy(library = current.copy(unwatchedOnly = unwatchedOnly, loading = true)) }
-        loadLibraryContents(current.library, unwatchedOnly)
+        refreshLibraryView()
+    }
+
+    /** Change the library sort (#16). Overrides the fixed-sort brief §14.3 per the owner's request. */
+    fun setSort(sort: String) {
+        val current = _state.value.library ?: return
+        _state.update { it.copy(library = current.copy(sort = sort, loading = true)) }
+        refreshLibraryView()
+    }
+
+    /** Filter the library by genre (#16); null clears. */
+    fun setGenre(genre: String?) {
+        val current = _state.value.library ?: return
+        _state.update { it.copy(library = current.copy(selectedGenre = genre, loading = true)) }
+        refreshLibraryView()
+    }
+
+    /**
+     * Re-query the open library for the current sort + filters. The default view (title A–Z, no
+     * genre) uses the cache-first repository; any other sort or a genre goes straight to the server,
+     * because the local cache holds only the default order.
+     */
+    private fun refreshLibraryView() {
+        val lib = _state.value.library ?: return
+        if (lib.sort == "titleSort:asc" && lib.selectedGenre == null) {
+            loadLibraryContents(lib.library, lib.unwatchedOnly)
+            return
+        }
+        val server = requireServer()
+        val contentType = when (lib.library.kind) {
+            LibraryKind.MOVIE -> LibraryContentType.MOVIE
+            LibraryKind.SHOW -> LibraryContentType.SHOW
+            else -> null
+        }
+        viewModelScope.launch {
+            val items = if (contentType == null) {
+                emptyList()
+            } else {
+                runCatching {
+                    container.serverApi.libraryContents(
+                        server.scope,
+                        lib.library.key,
+                        contentType,
+                        LibrarySort.entries.firstOrNull { it.wire == lib.sort } ?: LibrarySort.TITLE_ASC,
+                        LibraryFilter(genre = lib.selectedGenre, unwatchedOnly = lib.unwatchedOnly),
+                    )
+                }.getOrDefault(emptyList())
+            }
+            _state.update { s ->
+                s.copy(
+                    library = s.library?.copy(
+                        items = items.filterNot { it is MediaCollection },
+                        loading = false,
+                    ),
+                )
+            }
+        }
     }
 
     private fun loadLibraryContents(library: Library, unwatchedOnly: Boolean) {
@@ -321,13 +431,34 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             val detail = runCatching { container.repository.detail(server.scope, item.ratingKey) }.getOrNull()
 
-            if (item is Show) {
-                val seasons = runCatching { container.repository.seasons(server.scope, item) }
+            // Episodic content — a Show, or an Episode opened directly (e.g. from the Home
+            // "Continue Watching" hero) — loads the parent show's full season and episode set so
+            // the detail screen can offer season/episode navigation regardless of entry point.
+            // A movie has neither, so it takes the plain branch. See CLAUDE.md section 14 item 5.
+            val show: Show? = when (item) {
+                is Show -> item
+                is Episode -> resolveShow(item)
+                else -> null
+            }
+
+            if (show != null) {
+                val seasons = runCatching { container.repository.seasons(server.scope, show) }
                     .getOrDefault(emptyList())
-                val episodes = runCatching { container.repository.episodes(server.scope, item) }
+                val episodes = runCatching { container.repository.episodes(server.scope, show) }
                     .getOrDefault(emptyList())
-                val next = runCatching { container.repository.nextUnwatchedEpisode(server.scope, item) }
+                val next = runCatching { container.repository.nextUnwatchedEpisode(server.scope, show) }
                     .getOrNull()
+
+                // The season shown first: when opened on an episode, that episode's own season;
+                // otherwise the season holding the next unwatched episode.
+                val targetSeasonKey = (item as? Episode)?.seasonRatingKey ?: next?.seasonRatingKey
+                val selectedSeason = seasons.firstOrNull { it.ratingKey == targetSeasonKey }
+                    ?: seasons.firstOrNull()
+                // When opened on an episode, that episode is the one highlighted in the list and
+                // resumed by the primary action; prefer the freshly loaded copy for its watch state.
+                val selectedEpisode = (item as? Episode)?.let { opened ->
+                    episodes.firstOrNull { it.ratingKey == opened.ratingKey } ?: opened
+                }
 
                 _state.update {
                     it.copy(
@@ -336,9 +467,8 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                             detail = detail,
                             seasons = seasons,
                             episodes = episodes,
-                            selectedSeason = seasons.firstOrNull { season ->
-                                season.ratingKey == next?.seasonRatingKey
-                            } ?: seasons.firstOrNull(),
+                            selectedSeason = selectedSeason,
+                            selectedEpisode = selectedEpisode,
                             nextUnwatched = next,
                             loading = false,
                         ),
@@ -349,6 +479,31 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             }
         }
     }
+
+    /**
+     * The parent show for an episode-opened detail, so the season/episode navigation works from
+     * any entry point. Prefers the cached show, which carries the real library key; falls back to
+     * a synthetic show built from the episode's own fields when the show is not cached — the
+     * season and episode reads key on the show rating key, so navigation still works either way.
+     */
+    private fun resolveShow(episode: Episode): Show =
+        (container.repository.cachedItem(episode.showRatingKey) as? Show)
+            ?: Show(
+                ratingKey = episode.showRatingKey,
+                title = episode.showTitle,
+                year = null,
+                summary = "",
+                thumbPath = null,
+                artPath = null,
+                durationMs = 0L,
+                viewOffsetMs = 0L,
+                viewCount = 0,
+                titleSort = episode.showTitle,
+                libraryKey = "",
+                childCount = 0,
+                leafCount = 0,
+                viewedLeafCount = 0,
+            )
 
     fun selectSeason(season: Season) {
         _state.update { it.copy(detail = it.detail?.copy(selectedSeason = season, selectedEpisode = null)) }
@@ -437,6 +592,25 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                 else container.serverApi.unscrobble(server.scope, item.ratingKey)
             }
             refreshHome(server)
+        }
+    }
+
+    /**
+     * Marks an entire container — a whole show or a single season — watched or unwatched. Plex's
+     * scrobble endpoint applied to a container key marks every child in one call, so this covers
+     * the series without walking the episodes. The open detail is then reloaded so its season and
+     * episode rows reflect the new state. See CLAUDE.md section 5 (§12 high-value parity).
+     */
+    fun setContainerWatched(containerRatingKey: String, watched: Boolean) {
+        val server = _state.value.server ?: return
+        viewModelScope.launch {
+            runCatching {
+                if (watched) container.serverApi.scrobble(server.scope, containerRatingKey)
+                else container.serverApi.unscrobble(server.scope, containerRatingKey)
+            }
+            refreshHome(server)
+            // Reload the open detail so every episode row shows the new watch state.
+            _state.value.detail?.item?.let { openDetail(it) }
         }
     }
 
@@ -765,6 +939,11 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { downloads?.delete(ratingKey); refreshDownloads() }
     }
 
+    /** Resolve a completed download to its [MediaItem] so the Downloads screen can play it. The
+     *  player then plays the local file offline via the resolver (§11, #1). */
+    fun playableDownloadItem(entry: DownloadEntry): MediaItem? =
+        container.repository.cachedItem(entry.row.ratingKey)
+
     /**
      * The launch update check. At most once per 24 hours, and it never blocks anything:
      * a failure says nothing at all. See CLAUDE.md section 17 point 4.
@@ -789,9 +968,14 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             audioLanguage = settings.preferredAudioLanguage,
             subtitleLanguage = settings.preferredSubtitleLanguage,
             subtitlesOn = settings.subtitlesOnByDefault,
+            streamingMaxBitrateKbps = settings.streamingMaxBitrateKbps,
+            subtitleScalePercent = settings.subtitleScalePercent,
+            subtitleForegroundArgb = settings.subtitleForegroundArgb,
+            subtitleBackgroundOpacityPercent = settings.subtitleBackgroundOpacityPercent,
             servers = _state.value.allServers,
             activeServerId = _state.value.server?.machineIdentifier,
-            signedInAs = container.session.accountToken()?.let { _ -> _state.value.homeUser?.title },
+            signedInAs = container.session.accountToken()
+                ?.let { _ -> _state.value.accountName ?: _state.value.homeUser?.title },
             updateAvailable = _state.value.availableUpdate?.versionName,
             onDownloadUpdate = { _state.value.availableUpdate?.let { onOpenUrl?.invoke(it.downloadUrl) } },
         )
@@ -823,6 +1007,26 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         _state.update { it.copy(settingsRevision = it.settingsRevision + 1) }
     }
 
+    fun setStreamingBitrate(value: Int?) {
+        container.settings.streamingMaxBitrateKbps = value
+        _state.update { it.copy(settingsRevision = it.settingsRevision + 1) }
+    }
+
+    fun setSubtitleScale(value: Int) {
+        container.settings.subtitleScalePercent = value
+        _state.update { it.copy(settingsRevision = it.settingsRevision + 1) }
+    }
+
+    fun setSubtitleForeground(value: Long) {
+        container.settings.subtitleForegroundArgb = value
+        _state.update { it.copy(settingsRevision = it.settingsRevision + 1) }
+    }
+
+    fun setSubtitleBackgroundOpacity(value: Int) {
+        container.settings.subtitleBackgroundOpacityPercent = value
+        _state.update { it.copy(settingsRevision = it.settingsRevision + 1) }
+    }
+
     /**
      * Light, dark or follow the system. Persisted to the store and mirrored into state so the
      * setting recomposes; PlexApp reads [AppState.themeMode] to apply the theme.
@@ -835,6 +1039,20 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     fun selectServer(server: com.thotapalli.plex.core.model.PlexServer) {
         container.session.selectServer(server)
         viewModelScope.launch { loadHome() }
+    }
+
+    /**
+     * A real OS network transition (Wi-Fi/cellular change, connect/disconnect). Clears the cached
+     * connection so the next request re-probes, and — once past sign-in — re-resolves the active
+     * server and refreshes Home. Debounced by the platform callers. See CLAUDE.md section 5 point 4.
+     */
+    fun onNetworkChanged() {
+        viewModelScope.launch {
+            runCatching { container.session.onNetworkChanged() }
+            if (_state.value.phase == AppPhase.READY || _state.value.phase == AppPhase.ERROR) {
+                loadHome()
+            }
+        }
     }
 
     private fun requireServer(): ActiveServer =
@@ -874,6 +1092,9 @@ data class AppState(
     val signIn: com.thotapalli.plex.core.session.SignInState? = null,
     val homeUsers: List<HomeUser> = emptyList(),
     val homeUser: HomeUser? = null,
+    /** Display name for the profile chip / top bar: the active Home user, or the signed-in account
+     *  name when there is no Home user. Null only before sign-in. */
+    val accountName: String? = null,
     val server: ActiveServer? = null,
     val libraries: List<Library> = emptyList(),
     val continueWatching: List<MediaItem> = emptyList(),
@@ -913,6 +1134,11 @@ data class LibraryState(
     val collections: List<MediaCollection> = emptyList(),
     val openCollection: MediaCollection? = null,
     val unwatchedOnly: Boolean = false,
+    /** Plex sort string, e.g. "titleSort:asc" (#16). */
+    val sort: String = "titleSort:asc",
+    /** Genres offered in the filter sheet; empty hides the genre chooser. */
+    val genres: List<String> = emptyList(),
+    val selectedGenre: String? = null,
     val loading: Boolean = false,
 )
 

@@ -3,7 +3,9 @@ package com.thotapalli.plex.tv
 import android.app.Application
 import android.app.UiModeManager
 import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
+import androidx.core.content.ContextCompat
 import com.thotapalli.plex.core.data.DatabaseDriverFactory
 import com.thotapalli.plex.core.session.AndroidKeyValueStore
 import com.thotapalli.plex.core.session.AndroidSecureStore
@@ -12,6 +14,8 @@ import com.thotapalli.plex.core.download.AndroidNetworkConditions
 import com.thotapalli.plex.core.session.UpdateTarget
 import com.thotapalli.plex.core.session.currentDeviceInfo
 import com.thotapalli.plex.ui.shared.AppContainer
+import com.thotapalli.plex.ui.shared.installImageLoader
+import kotlinx.coroutines.launch
 
 /**
  * Holds the one [AppContainer] for the process.
@@ -34,6 +38,11 @@ class ThotapalliApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
+        // Install the shared Coil loader (generous memory cache + 512 MB disk cache) before any
+        // screen can request a poster, so artwork is cached from its first fetch. See CLAUDE.md
+        // sections 5 and 13.
+        installImageLoader()
+
         container = AppContainer(
             keyValueStore = AndroidKeyValueStore(this),
             secureStore = AndroidSecureStore(this),
@@ -50,6 +59,38 @@ class ThotapalliApplication : Application() {
             // "Download on unmetered networks only" defaults on for Android.
             // See CLAUDE.md section 11.
             it.settings.defaultUnmetered = true
+        }
+
+        observeDownloadsForForegroundService()
+    }
+
+    /**
+     * A download must survive the app being backgrounded. Nothing else keeps the process alive while
+     * no activity is showing, so the queue going busy is what starts [DownloadService], which
+     * promotes the process to foreground for the duration.
+     *
+     * Observing the queue's active flow here (rather than at each enqueue call site) covers every
+     * entry point that can start a download. The [downloadServiceRunning] latch keeps a burst of
+     * non-null emissions — the queue stepping from one item to the next — from starting the service
+     * repeatedly; the service itself mirrors progress and stops when the flow returns to null.
+     */
+    private fun observeDownloadsForForegroundService() {
+        val queue = container.downloadQueue ?: return
+        var downloadServiceRunning = false
+        container.scope.launch {
+            queue.active.collect { active ->
+                if (active != null) {
+                    if (!downloadServiceRunning) {
+                        downloadServiceRunning = true
+                        ContextCompat.startForegroundService(
+                            this@ThotapalliApplication,
+                            Intent(this@ThotapalliApplication, DownloadService::class.java),
+                        )
+                    }
+                } else {
+                    downloadServiceRunning = false
+                }
+            }
         }
     }
 

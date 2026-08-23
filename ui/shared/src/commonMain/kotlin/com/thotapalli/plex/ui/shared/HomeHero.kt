@@ -73,6 +73,7 @@ fun HomeHero(
     dotCount: Int = 0,
     activeDot: Int = 0,
     onAdd: (() -> Unit)? = null,
+    remainingBadge: Boolean = false,
 ) {
     val colours = PlexTheme.colours
     val resuming = item.viewOffsetMs > 0L
@@ -143,13 +144,26 @@ fun HomeHero(
                     onPlay = onPlay,
                     onDetails = onDetails,
                     onAdd = onAdd,
+                    dotCount = dotCount,
+                    activeDot = activeDot,
+                    // Compact carries the dots down beneath the actions, per the mobile mockup,
+                    // where the top-right corner holds the "Xm left" badge instead.
+                    dotsBelowActions = remainingBadge,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
 
-        // Carousel dots in the corner: one per continue-watching item, the featured one lit.
-        if (dotCount > 1) {
+        // Top-right corner: the compact hero badges how much of the featured title is left; the
+        // wide hero instead counts the continue-watching queue with carousel dots.
+        if (remainingBadge) {
+            RemainingBadge(
+                item = item,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(Spacing.md),
+            )
+        } else if (dotCount > 1) {
             CarouselDots(
                 count = dotCount,
                 active = activeDot,
@@ -174,6 +188,9 @@ private fun HeroCaption(
     onDetails: () -> Unit,
     onAdd: (() -> Unit)?,
     modifier: Modifier = Modifier,
+    dotCount: Int = 0,
+    activeDot: Int = 0,
+    dotsBelowActions: Boolean = false,
 ) {
     var appeared by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { appeared = true }
@@ -234,6 +251,12 @@ private fun HeroCaption(
                 onClick = onDetails,
             )
             if (onAdd != null) AddButton(onClick = onAdd)
+        }
+
+        // On compact the queue dots sit beneath the actions rather than in the top corner.
+        if (dotsBelowActions && dotCount > 1) {
+            Spacer(Modifier.height(Spacing.xs))
+            CarouselDots(count = dotCount, active = activeDot)
         }
     }
 }
@@ -301,7 +324,8 @@ private fun heroMetadata(item: MediaItem): String? {
  */
 private fun heroHeight(sizeClass: SizeClass, viewportHeight: Dp?): Dp {
     val designed = when (sizeClass) {
-        SizeClass.COMPACT -> 380.dp
+        // Compact is the mobile hero card: a shallow, poster-forward card per the mockup.
+        SizeClass.COMPACT -> 260.dp
         SizeClass.MEDIUM -> 420.dp
         SizeClass.EXPANDED -> 460.dp
         SizeClass.TELEVISION -> 560.dp

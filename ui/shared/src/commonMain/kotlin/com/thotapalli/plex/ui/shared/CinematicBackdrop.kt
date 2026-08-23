@@ -116,6 +116,26 @@ fun CinematicBackdrop(
                 ),
         )
 
+        // 6. A dark scrim behind the caption, ALWAYS dark (independent of theme), so the title and
+        // its facts stay legible over any bright still — a tall, wrapped title can otherwise ride up
+        // into the picture where the theme-background fade hasn't reached. The caption text is drawn
+        // light to match. This is why a hero title reads on every backdrop the way it does in Plex.
+        if (content != null) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.62f)
+                    .background(
+                        Brush.verticalGradient(
+                            0.00f to Color.Transparent,
+                            0.55f to Color(0x66000000),
+                            1.00f to Color(0xE6000000),
+                        ),
+                    ),
+            )
+        }
+
         if (content != null) {
             Box(
                 modifier = Modifier

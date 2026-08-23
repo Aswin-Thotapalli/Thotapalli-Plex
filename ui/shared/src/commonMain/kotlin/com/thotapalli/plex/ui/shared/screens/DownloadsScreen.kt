@@ -59,6 +59,7 @@ fun DownloadsScreen(
     onPause: (String) -> Unit,
     onResume: (String) -> Unit,
     onDelete: (String) -> Unit,
+    onPlayDownload: (DownloadEntry) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colours = PlexTheme.colours
@@ -125,7 +126,7 @@ fun DownloadsScreen(
                 }
 
                 items(entries, key = { it.row.ratingKey }) { entry ->
-                    DownloadRowItem(entry, onPause, onResume, onDelete)
+                    DownloadRowItem(entry, onPause, onResume, onDelete, onPlayDownload)
                 }
             }
         }
@@ -138,6 +139,7 @@ private fun DownloadRowItem(
     onPause: (String) -> Unit,
     onResume: (String) -> Unit,
     onDelete: (String) -> Unit,
+    onPlayDownload: (DownloadEntry) -> Unit,
 ) {
     val colours = PlexTheme.colours
     val row = entry.row
@@ -172,8 +174,10 @@ private fun DownloadRowItem(
                     DownloadState.PAUSED, DownloadState.FAILED ->
                         DownloadAction("Resume", PlexIconKind.PLAY, emphasised = true) { onResume(row.ratingKey) }
 
-                    // A completed row shows delete only.
-                    DownloadState.COMPLETED -> Unit
+                    // A completed row plays offline: Play sits first as the primary action,
+                    // Delete follows below.
+                    DownloadState.COMPLETED ->
+                        DownloadAction("Play", PlexIconKind.PLAY, emphasised = true) { onPlayDownload(entry) }
                 }
                 DownloadAction("Delete", PlexIconKind.CLOSE) { onDelete(row.ratingKey) }
             }

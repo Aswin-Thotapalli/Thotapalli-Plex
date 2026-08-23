@@ -3,11 +3,32 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Voice search on the TV (SpeechRecognizer). The microphone feature is not required, so a
+         TV or remote without a mic still installs; the mic affordance simply reports unavailable. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- A backgrounded download keeps the process alive via a foreground service (CLAUDE.md
+         section 11). DATA_SYNC is the type for a network transfer. POST_NOTIFICATIONS is a runtime
+         permission on Android 13+; if the user denies it the service still runs, the ongoing
+         notification simply does not appear. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- A television has no touchscreen and no camera, and declaring leanback is what
          makes this build eligible for the Android TV launcher. -->
     <uses-feature android:name="android.software.leanback" android:required="true" />
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
+    <!-- Package-visibility filter (API 30+): without this, SpeechRecognizer cannot see the
+         on-device recognition service and reports itself unavailable. -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
 
     <application
         android:name=".ThotapalliApplication"
@@ -34,6 +55,25 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Keeps a download running while the app is backgrounded. Not exported: only this app
+             starts it, via ContextCompat.startForegroundService. See DownloadService. -->
+        <service
+            android:name=".DownloadService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
+
+        <!-- Keeps audio playing with the screen off and draws the lock-screen / notification
+             transport controls. Exported with the MediaSessionService action so the platform media
+             framework can bind it. See PlaybackService and CLAUDE.md section 8 (request #2). -->
+        <service
+            android:name=".PlaybackService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
 
     </application>
 

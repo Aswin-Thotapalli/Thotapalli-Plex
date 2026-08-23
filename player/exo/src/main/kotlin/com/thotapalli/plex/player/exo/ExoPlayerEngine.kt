@@ -1,7 +1,10 @@
 package com.thotapalli.plex.player.exo
 
+import android.app.Activity
 import android.app.UiModeManager
 import android.content.Context
+import android.content.ContextWrapper
+import android.content.Intent
 import android.content.res.Configuration
 import android.view.SurfaceView
 import androidx.media3.common.C
@@ -10,6 +13,9 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import androidx.media3.common.text.Cue
+import androidx.media3.common.text.CueGroup
+import androidx.media3.common.AudioAttributes
 import androidx.media3.common.util.ExperimentalApi
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -17,12 +23,14 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.session.MediaSession
 import com.thotapalli.plex.core.playback.PlaybackFailure
 import com.thotapalli.plex.core.playback.PlaybackSource
 import com.thotapalli.plex.core.playback.PlaybackState
 import com.thotapalli.plex.core.playback.PlayerEngine
 import com.thotapalli.plex.core.playback.PlayerTrack
 import com.thotapalli.plex.core.playback.PlayerTracks
+import com.thotapalli.plex.core.playback.SubtitleStyle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -56,6 +64,42 @@ class ExoPlayerEngine(
 
     private val _renderedFirstFrame = MutableStateFlow(false)
     val renderedFirstFrame: StateFlow<Boolean> = _renderedFirstFrame.asStateFlow()
+
+    /**
+     * The subtitle appearance the viewer has chosen.
+     *
+     * Media3 attached to a bare SurfaceView renders no text cues itself, so a Compose cue
+     * layer above the surface is what will draw subtitles for direct play. That layer reads
+     * this flow for its size, colour and background box. See CLAUDE.md sections 8 and 12.
+     */
+    private val _subtitleStyle = MutableStateFlow(SubtitleStyle())
+    val subtitleStyle: StateFlow<SubtitleStyle> = _subtitleStyle.asStateFlow()
+
+    /**
+     * The cues Media3 is currently emitting for the selected text track.
+     *
+     * A bare SurfaceView has no place for Media3 to draw text, so the engine forwards every
+     * [CueGroup] from [Player.Listener.onCues] here and the Android surface overlays a Media3
+     * SubtitleView above the video to render them. This carries text cues and bitmap cues
+     * (PGS, VOBSUB) alike, and works the same for direct play and transcode since both paths
+     * feed the same player. See CLAUDE.md sections 8 and 12.
+     */
+    private val _cues = MutableStateFlow<List<Cue>>(emptyList())
+    val cues: StateFlow<List<Cue>> = _cues.asStateFlow()
+
+    /**
+     * Refresh-rate matching from CLAUDE.md section 9. Constructed once a surface is attached,
+     * because the window and the surface both come from that view. Null on a device where the
+     * hosting Activity cannot be resolved, in which case matching is skipped.
+     */
+    private var surfaceView: SurfaceView? = null
+    private var displayModeController: AndroidDisplayModeController? = null
+
+    /** The content rate for the current item, from [PlaybackSource.frameRate]. Null means no match. */
+    private var pendingFrameRate: Float? = null
+
+    /** Matching is attempted once per [load], after the first frame proves the surface is valid. */
+    private var rateMatchAttempted = false
 
     /**
      * Television devices only, detected rather than assumed.
@@ -99,8 +143,39 @@ class ExoPlayerEngine(
             .setSeekForwardIncrementMs(SEEK_FORWARD_MS)
             // Reduces playback loop wake-ups. Experimental, added in Media3 1.10.
             .experimentalSetDynamicSchedulingEnabled(true)
+            // Background / screen-locked playback (request #2): hand audio focus to the system so
+            // a call or another app pauses us cleanly and we resume after, and pause instead of
+            // blaring when headphones are unplugged. USAGE_MEDIA / CONTENT_TYPE_MOVIE describes
+            // video-with-audio to the audio policy.
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                    .build(),
+                /* handleAudioFocus = */ true,
+            )
+            .setHandleAudioBecomingNoisy(true)
             .build()
-            .also { it.addListener(listener) }
+            .also {
+                it.addListener(listener)
+                // Hold a CPU + network wakelock while playing so audio keeps flowing with the
+                // screen off; released automatically when playback stops. See CLAUDE.md section 8.
+                it.setWakeMode(C.WAKE_MODE_NETWORK)
+            }
+    }
+
+    private var mediaSession: MediaSession? = null
+
+    /**
+     * Builds (once) a MediaSession bound to this player and publishes it to [activeSession]. It backs
+     * the lock-screen / notification transport controls and lets the foreground playback service
+     * keep the process alive while the screen is off (request #2, CLAUDE.md section 8). The
+     * app-module service reads [activeSession] rather than holding an engine reference. Called from
+     * [load], on the main thread, since MediaSession must be built there.
+     */
+    private fun ensureMediaSession() {
+        if (mediaSession != null) return
+        mediaSession = MediaSession.Builder(context, player).build().also { activeSession = it }
     }
 
     private val listener = object : Player.Listener {
@@ -125,6 +200,8 @@ class ExoPlayerEngine(
 
         override fun onRenderedFirstFrame() {
             _renderedFirstFrame.value = true
+            // The surface is guaranteed valid now, which is what Surface.setFrameRate needs.
+            maybeMatchDisplayRate()
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -133,6 +210,13 @@ class ExoPlayerEngine(
 
         override fun onTracksChanged(tracks: Tracks) {
             _tracks.value = tracks.toPlayerTracks()
+        }
+
+        // Media3 delivers decoded cues here. On a bare SurfaceView it has nowhere to render
+        // them, so they are pushed to the overlay SubtitleView instead. Empty when the text
+        // track is off or between cues, which clears the last line. See CLAUDE.md section 8.
+        override fun onCues(cueGroup: CueGroup) {
+            _cues.value = cueGroup.cues
         }
     }
 
@@ -144,16 +228,42 @@ class ExoPlayerEngine(
      * See CLAUDE.md section 8.
      */
     fun attachSurface(surfaceView: SurfaceView) {
+        this.surfaceView = surfaceView
         player.setVideoSurfaceView(surfaceView)
+
+        // The refresh-rate controller needs the Activity for the window's preferred mode id and
+        // the surface for Surface.setFrameRate; both are reachable from the view's context.
+        if (displayModeController == null) {
+            surfaceView.context.findActivity()?.let { activity ->
+                displayModeController = AndroidDisplayModeController(activity) { this.surfaceView }
+            }
+        }
     }
 
     fun detachSurface() {
         player.clearVideoSurface()
+        surfaceView = null
     }
 
     override fun load(source: PlaybackSource, startAtMs: Long) {
         _renderedFirstFrame.value = false
+        _cues.value = emptyList()
         _state.value = PlaybackState.Buffering
+
+        // Re-evaluate the refresh rate for this item. Auto-play-next reuses this engine, so the
+        // next episode must match afresh rather than inherit the previous file's decision.
+        pendingFrameRate = source.frameRate
+        rateMatchAttempted = false
+
+        // The viewer's language preferences drive the initial track selection. A null preferred
+        // subtitle language leaves Media3 to its default; subtitles are off unless the viewer has
+        // asked for them on by default, in which case an undetermined-language text track counts.
+        trackSelector.parameters = trackSelector.buildUponParameters()
+            .setPreferredAudioLanguage(source.preferredAudioLanguage ?: "eng")
+            .setPreferredTextLanguage(source.preferredSubtitleLanguage)
+            .setSelectUndeterminedTextLanguage(source.subtitlesOnByDefault)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !source.subtitlesOnByDefault)
+            .build()
 
         val dataSourceFactory = DefaultHttpDataSource.Factory()
             .setDefaultRequestProperties(source.headers)
@@ -167,12 +277,21 @@ class ExoPlayerEngine(
         player.prepare()
         if (startAtMs > 0) player.seekTo(startAtMs)
 
+        // Publish a session so the foreground service can host it and lock-screen controls appear.
+        ensureMediaSession()
+
         startPositionUpdates()
         watchForFirstFrame()
     }
 
     override fun play() {
         player.playWhenReady = true
+        // Promote the process to a foreground media session so audio keeps playing with the screen
+        // off and lock-screen transport controls appear. Started here (not at load) so the player is
+        // already going when the service must post its notification. Resolved by intent action so
+        // this module needs no reference to the app's service class. See CLAUDE.md section 8 (#2).
+        ensureMediaSession()
+        runCatching { context.startForegroundService(playbackServiceIntent()) }
     }
 
     override fun pause() {
@@ -222,12 +341,61 @@ class ExoPlayerEngine(
             .build()
     }
 
+    /** 1.0 is normal; the overlay offers 0.75x–2x. See CLAUDE.md section 8. */
+    override fun setPlaybackSpeed(speed: Float) {
+        player.setPlaybackSpeed(speed)
+    }
+
+    /**
+     * Stores the subtitle appearance for the Compose cue layer to read. Media3 on a bare
+     * SurfaceView draws no text itself, so the style is applied where the cues are rendered
+     * rather than on the player. See CLAUDE.md sections 8 and 12.
+     */
+    override fun setSubtitleStyle(style: SubtitleStyle) {
+        _subtitleStyle.value = style
+    }
+
+    /** The MediaSessionService intent, resolved by its published action within this app. */
+    private fun playbackServiceIntent(): Intent =
+        Intent("androidx.media3.session.MediaSessionService").setPackage(context.packageName)
+
     override fun release() {
         positionJob?.cancel()
         positionJob = null
+        // Drop the foreground service with the player; nothing is playing to keep alive now.
+        runCatching { context.stopService(playbackServiceIntent()) }
+        // Put any refresh-rate change back before the player leaves, so a switched mode does not
+        // stick after playback. Guarded inside the controller. See CLAUDE.md section 9.
+        runCatching { displayModeController?.restore() }
+        // Tear the session down before the player it wraps, and clear the shared handle so the
+        // foreground service stops advertising a dead session. See CLAUDE.md section 8.
+        mediaSession?.let { session ->
+            if (activeSession === session) activeSession = null
+            runCatching { session.release() }
+        }
+        mediaSession = null
         player.removeListener(listener)
         player.release()
         _state.value = PlaybackState.Idle
+    }
+
+    /**
+     * Runs the section 9 sequence once per file, after the first frame.
+     *
+     * A non-null [pendingFrameRate] is the signal that matching is wanted: the controller in
+     * PlaybackController only supplies a frame rate when it should be matched. The switch can
+     * block and blanks the screen briefly, so it runs on the engine scope and the controller
+     * swallows every failure. Its own log line carries content rate and display rate before and
+     * after, as CLAUDE.md section 16 phase 5 step 3 asks for.
+     */
+    private fun maybeMatchDisplayRate() {
+        if (rateMatchAttempted) return
+        val fps = pendingFrameRate ?: return
+        val controller = displayModeController ?: return
+        rateMatchAttempted = true
+        scope.launch {
+            runCatching { controller.matchForContent(contentFrameRate = fps, enabled = true) }
+        }
     }
 
     private fun startPositionUpdates() {
@@ -255,11 +423,28 @@ class ExoPlayerEngine(
         }
     }
 
-    private companion object {
-        const val SEEK_BACK_MS = 10_000L
-        const val SEEK_FORWARD_MS = 30_000L
-        const val POSITION_POLL_MS = 250L
+    companion object {
+        private const val SEEK_BACK_MS = 10_000L
+        private const val SEEK_FORWARD_MS = 30_000L
+        private const val POSITION_POLL_MS = 250L
+
+        /**
+         * The MediaSession of the engine currently playing, or null when nothing is playing. The
+         * foreground [MediaSessionService] in the app modules reads this in onGetSession so it can
+         * host the session without holding a reference to the UI-scoped engine. Set when [load]
+         * builds the session and cleared on [release]. See CLAUDE.md section 8 (request #2).
+         */
+        @Volatile
+        var activeSession: MediaSession? = null
+            internal set
     }
+}
+
+/** Walks the context wrapper chain to the hosting Activity, or null if there is none. */
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 internal fun trackId(groupId: String, index: Int): String = "$groupId:$index"

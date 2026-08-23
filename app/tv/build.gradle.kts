@@ -81,7 +81,29 @@ android {
         // VERSION_NAME is sent as X-Plex-Version on every request. See CLAUDE.md section 5.
         buildConfig = true
     }
+
+    // See the matching note in app/mobile: the KMP-library plugin used by ui:shared / ui:design does
+    // not package their composeResources into consuming Android apps, so we copy the brand mark,
+    // splash frames and fonts into this app's assets at the exact runtime path and register it.
+    sourceSets.getByName("main").assets.srcDir(
+        layout.buildDirectory.dir("generated/composeResourcesAssets").get().asFile,
+    )
 }
+
+// Copies ui:shared and ui:design composeResources into this app's assets, laid out as the Compose
+// resource reader expects: composeResources/<packageOfResClass>/<category>/<file>.
+val copyComposeResources by tasks.registering(Copy::class) {
+    into(layout.buildDirectory.dir("generated/composeResourcesAssets"))
+    from(rootProject.file("ui/shared/src/commonMain/composeResources")) {
+        into("composeResources/com.thotapalli.plex.ui.shared.resources")
+    }
+    from(rootProject.file("ui/design/src/commonMain/composeResources")) {
+        into("composeResources/com.thotapalli.plex.ui.design.resources")
+    }
+}
+
+tasks.matching { it.name == "preBuild" || (it.name.startsWith("merge") && it.name.endsWith("Assets")) }
+    .configureEach { dependsOn(copyComposeResources) }
 
 kotlin {
     jvmToolchain(providers.gradleProperty("thotapalli.jdk").get().toInt())
@@ -95,6 +117,8 @@ dependencies {
     implementation(project(":core:playback"))
     implementation(project(":core:download"))
     implementation(project(":player:exo"))
+    // PlaybackService hosts the engine's MediaSession for background / lock-screen playback (#2).
+    implementation(libs.media3.session)
     implementation(libs.compose.runtime)
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)

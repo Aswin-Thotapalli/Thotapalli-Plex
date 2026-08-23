@@ -7,6 +7,7 @@ import com.thotapalli.plex.core.playback.PlaybackState
 import com.thotapalli.plex.core.playback.PlayerEngine
 import com.thotapalli.plex.core.playback.PlayerTrack
 import com.thotapalli.plex.core.playback.PlayerTracks
+import com.thotapalli.plex.core.playback.SubtitleStyle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -109,6 +110,22 @@ class MpvPlayerEngine(
         val startSeconds = (startAtMs / 1000.0).toString()
         lib.mpv_set_option_string(h, "start", startSeconds)
 
+        // Preferred track languages, applied to the initial selection mpv makes on load.
+        // These are per-file options set before loadfile so mpv picks the right tracks for
+        // this source; the overlay can still override with selectAudioTrack/selectSubtitleTrack.
+        source.preferredAudioLanguage?.let { lib.mpv_set_option_string(h, "alang", it) }
+        source.preferredSubtitleLanguage?.let { lib.mpv_set_option_string(h, "slang", it) }
+
+        // Subtitle default: with subtitlesOnByDefault, let mpv auto-select a track (honouring
+        // slang above) and make it visible; otherwise start with subtitles off entirely.
+        if (source.subtitlesOnByDefault) {
+            lib.mpv_set_option_string(h, "sid", "auto")
+            lib.mpv_set_option_string(h, "sub-visibility", "yes")
+        } else {
+            lib.mpv_set_option_string(h, "sid", "no")
+            lib.mpv_set_option_string(h, "sub-visibility", "no")
+        }
+
         command(h, "loadfile", source.uri, "replace")
     }
 
@@ -143,6 +160,31 @@ class MpvPlayerEngine(
 
     override fun selectSubtitleTrack(id: String?) {
         handle?.let { lib.mpv_set_property_string(it, "sid", id ?: "no") }
+    }
+
+    /** Sets mpv's `speed` property. Safe to call before load; no-ops until the handle exists. */
+    override fun setPlaybackSpeed(speed: Float) {
+        handle?.let { lib.mpv_set_property_string(it, "speed", speed.toDouble().toString()) }
+    }
+
+    /**
+     * Applies subtitle appearance by mapping [SubtitleStyle] onto mpv's sub options:
+     *   - sub-scale       scales the default size (scalePercent / 100).
+     *   - sub-color       the text colour, "#RRGGBB" from the low 24 bits of foregroundArgb.
+     *   - sub-back-color  a black box behind the text, "#AARRGGBB" with alpha from the opacity.
+     *
+     * No-ops until the handle is ready, so it is safe to call before load.
+     */
+    override fun setSubtitleStyle(style: SubtitleStyle) {
+        val h = handle ?: return
+
+        lib.mpv_set_property_string(h, "sub-scale", (style.scalePercent / 100.0).toString())
+
+        val rgb = style.foregroundArgb and 0xFFFFFFL
+        lib.mpv_set_property_string(h, "sub-color", "#%06X".format(rgb))
+
+        val alpha = (style.backgroundOpacityPercent.coerceIn(0, 100) * 255 / 100)
+        lib.mpv_set_property_string(h, "sub-back-color", "#%02X000000".format(alpha))
     }
 
     override fun release() {

@@ -105,6 +105,19 @@ fun PlayerScreen(
             scope = container.scope,
             nowMs = { origin.elapsedNow().inWholeMilliseconds },
             offlineTimeline = container.offlineTimeline,
+            // Apply the viewer's playback settings (§9 display-rate match; §14.9 preferred
+            // languages + subtitles-on default) to the engine's initial selection.
+            matchDisplayRate = container.settings.matchDisplayRate,
+            preferredAudioLanguage = container.settings.preferredAudioLanguage.ifBlank { null },
+            preferredSubtitleLanguage = container.settings.preferredSubtitleLanguage.ifBlank { null },
+            subtitlesOnByDefault = container.settings.subtitlesOnByDefault,
+            // Offline playback (#1) + the saved subtitle appearance (#14).
+            offlineResolver = container.offlineResolver,
+            initialSubtitleStyle = com.thotapalli.plex.core.playback.SubtitleStyle(
+                scalePercent = container.settings.subtitleScalePercent,
+                foregroundArgb = container.settings.subtitleForegroundArgb,
+                backgroundOpacityPercent = container.settings.subtitleBackgroundOpacityPercent,
+            ),
         )
         // The credit skip, the countdown and a natural end all route the next episode here.
         built.onPlayNextEpisode = { next -> target = PlayTarget(next, next.viewOffsetMs) }

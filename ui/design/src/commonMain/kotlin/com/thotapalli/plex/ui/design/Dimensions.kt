@@ -101,8 +101,8 @@ object Layout {
     /** A wide progress tile is 16:9. */
     const val WIDE_ASPECT_RATIO = 16f / 9f
 
-    val gridHorizontalGap: Dp = 12.dp
-    val gridVerticalGap: Dp = 20.dp
+    val gridHorizontalGap: Dp = 8.dp
+    val gridVerticalGap: Dp = 12.dp
 
     /** Every television screen carries a five percent overscan margin on all four edges. */
     const val TELEVISION_OVERSCAN_FRACTION = 0.05f

@@ -1,5 +1,6 @@
 package com.thotapalli.plex.ui.shared
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -17,16 +18,26 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.thotapalli.plex.core.model.Episode
+import com.thotapalli.plex.core.model.LibraryKind
 import com.thotapalli.plex.core.model.MediaCollection
 import com.thotapalli.plex.core.model.MediaItem
 import com.thotapalli.plex.core.model.Movie
@@ -34,6 +45,7 @@ import com.thotapalli.plex.core.model.Show
 import com.thotapalli.plex.core.model.progress
 import com.thotapalli.plex.core.model.watched
 import com.thotapalli.plex.ui.design.Elevation
+import com.thotapalli.plex.ui.design.GlassRole
 import com.thotapalli.plex.ui.design.Layout
 import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
@@ -47,8 +59,10 @@ private val PosterShape = RoundedCornerShape(12.dp)
  * A poster tile: 2:3 artwork rounded to 12dp with a soft drop shadow. By default a title and a
  * secondary line sit beneath it (the Library grid and Search rows use this), and a watched pill
  * marks finished titles. Passing [showCaption] `false` gives the art-only variant the Home rails
- * use, where the title lives in the item's own detail rather than under every tile. See
- * CLAUDE.md section 12.
+ * use, where the title lives in the item's own detail rather than under every tile. Passing
+ * [showOverflow] `true` lays a small ⋮ control over the bottom-right of the art (the compact
+ * Library grid uses this); it opens the same action menu the long-press gesture does, and is off
+ * by default so existing callers are unaffected. See CLAUDE.md section 12.
  */
 @Composable
 fun PosterTile(
@@ -59,6 +73,7 @@ fun PosterTile(
     actions: ItemActions? = null,
     isContinueWatching: Boolean = false,
     showCaption: Boolean = true,
+    showOverflow: Boolean = false,
 ) {
     val colours = PlexTheme.colours
 
@@ -106,6 +121,18 @@ fun PosterTile(
                 ProgressBar(
                     progress = item.progress,
                     modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(Spacing.xs),
+                )
+            }
+
+            // An optional ⋮ over the bottom-right corner, on a scrim disc so it reads over any
+            // still. Off by default; the compact Library grid turns it on.
+            if (showOverflow && actions != null) {
+                TileOverflowButton(
+                    item = item,
+                    actions = actions,
+                    isContinueWatching = isContinueWatching,
+                    onArt = true,
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(Spacing.xxs),
                 )
             }
 
@@ -206,7 +233,9 @@ fun CollectionTile(
 /**
  * The wide progress tile used by the Continue Watching rail: 16:9 artwork with a dark "Xm left"
  * badge in the top-right corner and a thin amber resume bar along the bottom edge of the art, then
- * the title and a compact subtitle ("Movie" or "S2 · E7") beneath the card. See CLAUDE.md
+ * the title and a compact subtitle ("Movie" or "S2 · E7") beneath the card. Passing [showOverflow]
+ * `true` adds a trailing ⋮ beside the title that opens the item's action menu (the compact Home
+ * rail uses this); it is off by default so existing callers are unaffected. See CLAUDE.md
  * section 14.
  */
 @Composable
@@ -217,6 +246,7 @@ fun WideProgressTile(
     modifier: Modifier = Modifier,
     actions: ItemActions? = null,
     isContinueWatching: Boolean = false,
+    showOverflow: Boolean = false,
 ) {
     val colours = PlexTheme.colours
 
@@ -270,25 +300,39 @@ fun WideProgressTile(
         }
 
         Spacer(Modifier.height(Spacing.xs))
-        PlexText(
-            text = primaryLine(item),
-            style = PlexTheme.type.label,
-            colour = colours.textPrimary,
-            maxLines = 1,
-        )
-        PlexText(
-            text = wideSubtitle(item),
-            style = PlexTheme.type.caption,
-            colour = colours.textSecondary,
-            maxLines = 1,
-        )
+        // Title and subtitle stack on the left; when asked, a trailing ⋮ rides beside them so the
+        // action menu is reachable with a plain tap, not only a long-press.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                PlexText(
+                    text = primaryLine(item),
+                    style = PlexTheme.type.label,
+                    colour = colours.textPrimary,
+                    maxLines = 1,
+                )
+                PlexText(
+                    text = wideSubtitle(item),
+                    style = PlexTheme.type.caption,
+                    colour = colours.textSecondary,
+                    maxLines = 1,
+                )
+            }
+            if (showOverflow && actions != null) {
+                TileOverflowButton(
+                    item = item,
+                    actions = actions,
+                    isContinueWatching = isContinueWatching,
+                    onArt = false,
+                )
+            }
+        }
     }
     }
 }
 
 /** A compact dark pill reading "Xm left", for the corner of a continue-watching tile. */
 @Composable
-private fun RemainingBadge(item: MediaItem, modifier: Modifier = Modifier) {
+internal fun RemainingBadge(item: MediaItem, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .background(Color(0xCC000000), Radius.pill)
@@ -309,6 +353,190 @@ private fun wideSubtitle(item: MediaItem): String = when (item) {
     is Movie -> "Movie"
     is Show -> "Series"
     else -> secondaryLine(item) ?: ""
+}
+
+/** A rounded square for a library chip's leading glyph, softer than a poster corner. */
+private val ChipMarkShape = RoundedCornerShape(12.dp)
+
+/**
+ * A compact library chip-card for the mobile Home "Libraries" rail: a small solid [GlassRole.CARD]
+ * about 132dp wide carrying a tinted rounded square with a per-kind glyph, the library name on one
+ * line, and an optional caption ([caption], e.g. a count or the library kind). Tapping the whole
+ * chip opens the library. See CLAUDE.md section 14.
+ */
+@Composable
+fun LibraryChipCard(
+    title: String,
+    kind: LibraryKind,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    caption: String? = null,
+) {
+    val colours = PlexTheme.colours
+    Column(
+        modifier = modifier
+            .width(132.dp)
+            .plexFocusable(shape = Radius.card, onClick = onClick, scaleOnFocus = false)
+            .material(GlassRole.CARD, Radius.card)
+            .padding(Spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(ChipMarkShape)
+                .background(colours.accent.copy(alpha = if (colours.isDark) 0.20f else 0.14f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            LibraryAutoIcon(name = title, kind = kind, tint = colours.accent, modifier = Modifier.size(22.dp))
+        }
+        PlexText(
+            text = title,
+            style = PlexTheme.type.label,
+            colour = colours.textPrimary,
+            maxLines = 1,
+        )
+        if (!caption.isNullOrBlank()) {
+            PlexText(
+                text = caption,
+                style = PlexTheme.type.caption,
+                colour = colours.textSecondary,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+/**
+ * A ⋮ overflow control that opens an item's action menu on a plain tap. The tiles are already
+ * wrapped in [ItemMenuHost] for the long-press / right-click gesture; this is the explicit,
+ * discoverable affordance the mobile mockups place on a tile. [onArt] `true` draws the dots white
+ * on a scrim disc so they read over artwork; `false` draws them quietly beside a caption.
+ *
+ * The menu mirrors [ItemMenuHost]'s: a watched toggle, an optional remove-from-Continue-Watching
+ * row, Download and Refresh, then a Delete that always confirms before it removes anything.
+ */
+@Composable
+internal fun TileOverflowButton(
+    item: MediaItem,
+    actions: ItemActions,
+    isContinueWatching: Boolean = false,
+    onArt: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    val colours = PlexTheme.colours
+    var expanded by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
+    val dotColour = if (onArt) Color.White else colours.textSecondary
+
+    Box(modifier) {
+        Box(
+            modifier = Modifier
+                .plexFocusable(shape = Radius.pill, onClick = { expanded = true }, scaleOnFocus = false)
+                .size(32.dp)
+                .then(
+                    if (onArt) {
+                        Modifier
+                            .background(colours.scrimHeavy, Radius.pill)
+                            .border(1.dp, colours.glassRim, Radius.pill)
+                    } else {
+                        Modifier
+                    },
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Canvas(Modifier.size(if (onArt) 16.dp else 18.dp)) {
+                val r = size.minDimension * 0.11f
+                val cx = size.width / 2f
+                val cy = size.height / 2f
+                val gap = size.height * 0.30f
+                drawCircle(dotColour, r, Offset(cx, cy - gap))
+                drawCircle(dotColour, r, Offset(cx, cy))
+                drawCircle(dotColour, r, Offset(cx, cy + gap))
+            }
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.material(GlassRole.SHEET, Radius.card),
+        ) {
+            if (item.watched) {
+                OverflowRow("Mark as Unwatched") { expanded = false; actions.onMarkUnwatched() }
+            } else {
+                OverflowRow("Mark as Watched") { expanded = false; actions.onMarkWatched() }
+            }
+            if (isContinueWatching && actions.onRemoveFromContinueWatching != null) {
+                val remove = actions.onRemoveFromContinueWatching
+                OverflowRow("Remove from Continue Watching") { expanded = false; remove() }
+            }
+            OverflowRow("Download") { expanded = false; actions.onDownload() }
+            OverflowRow("Refresh Metadata") { expanded = false; actions.onRefreshMetadata() }
+            HorizontalDivider(
+                color = colours.border,
+                modifier = Modifier.padding(vertical = Spacing.xxs),
+            )
+            OverflowRow("Delete", tone = colours.error) { expanded = false; confirmDelete = true }
+        }
+    }
+
+    if (confirmDelete) {
+        TileDeleteConfirm(
+            title = item.title,
+            onCancel = { confirmDelete = false },
+            onConfirm = { confirmDelete = false; actions.onDelete() },
+        )
+    }
+}
+
+@Composable
+private fun OverflowRow(label: String, tone: Color? = null, onClick: () -> Unit) {
+    val colours = PlexTheme.colours
+    DropdownMenuItem(
+        text = {
+            PlexText(
+                text = label,
+                style = PlexTheme.type.label,
+                colour = tone ?: colours.textPrimary,
+                maxLines = 1,
+            )
+        },
+        onClick = onClick,
+    )
+}
+
+/** The delete confirmation the tile ⋮ shows before removing media, matching the item menu's. */
+@Composable
+private fun TileDeleteConfirm(title: String, onCancel: () -> Unit, onConfirm: () -> Unit) {
+    val colours = PlexTheme.colours
+    AlertDialog(
+        onDismissRequest = onCancel,
+        modifier = Modifier.material(GlassRole.SHEET, Radius.card),
+        containerColor = Color.Transparent,
+        tonalElevation = 0.dp,
+        titleContentColor = colours.textPrimary,
+        textContentColor = colours.textSecondary,
+        shape = Radius.card,
+        title = { PlexText(text = "Delete “$title”?", style = PlexTheme.type.title) },
+        text = {
+            PlexText(
+                text = "This permanently removes the media from the server.",
+                colour = colours.textSecondary,
+            )
+        },
+        confirmButton = {
+            Box(
+                modifier = Modifier
+                    .plexFocusable(shape = Radius.pill, onClick = onConfirm)
+                    .clip(Radius.pill)
+                    .background(colours.error, Radius.pill)
+                    .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+            ) {
+                PlexText(text = "Delete", style = PlexTheme.type.label, colour = Color.White, maxLines = 1)
+            }
+        },
+        dismissButton = { SecondaryButton(label = "Cancel", onClick = onCancel) },
+    )
 }
 
 /**

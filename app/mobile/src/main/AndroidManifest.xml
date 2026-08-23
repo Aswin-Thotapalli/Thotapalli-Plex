@@ -4,6 +4,15 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!-- A backgrounded download keeps the process alive via a foreground service (CLAUDE.md
+         section 11). DATA_SYNC is the type for a network transfer. POST_NOTIFICATIONS is a runtime
+         permission on Android 13+; if the user denies it the service still runs, the ongoing
+         notification simply does not appear. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- One app for every form factor (like Netflix and Plex): phone, tablet and Android TV
          from a single package and a single Play listing. Leanback is optional so the app is
          offered on televisions, and the touchscreen is declared not required so a television —
@@ -28,6 +37,7 @@
             android:exported="true"
             android:label="Thotapalli Plex"
             android:launchMode="singleTask"
+            android:supportsPictureInPicture="true"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode|density"
             android:theme="@style/Theme.ThotapalliPlex">
 
@@ -39,6 +49,25 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Keeps a download running while the app is backgrounded. Not exported: only this app
+             starts it, via ContextCompat.startForegroundService. See DownloadService. -->
+        <service
+            android:name=".DownloadService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
+
+        <!-- Keeps audio playing with the screen off and draws the lock-screen / notification
+             transport controls. Exported with the MediaSessionService action so the platform media
+             framework can bind it. See PlaybackService and CLAUDE.md section 8 (request #2). -->
+        <service
+            android:name=".PlaybackService"
+            android:foregroundServiceType="mediaPlayback"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
 
     </application>
 

@@ -12,11 +12,15 @@ import com.thotapalli.plex.core.playback.MarkerController
 import com.thotapalli.plex.core.playback.PlaybackFallbackChain
 import com.thotapalli.plex.core.playback.PlaybackMode
 import com.thotapalli.plex.core.playback.PlaybackSource
+import com.thotapalli.plex.core.playback.PlaybackQuality
 import com.thotapalli.plex.core.playback.PlaybackState
 import com.thotapalli.plex.core.playback.PlayerEngine
+import com.thotapalli.plex.core.playback.PlayerTracks
+import com.thotapalli.plex.core.playback.SubtitleStyle
 import com.thotapalli.plex.core.playback.TimelineReporter
 import com.thotapalli.plex.core.playback.TimelineSink
 import com.thotapalli.plex.core.playback.TimelineState
+import com.thotapalli.plex.core.download.OfflineResolver
 import com.thotapalli.plex.core.download.OfflineTimelineQueue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -53,6 +57,20 @@ class PlaybackController(
     /** Only Android phone and tablet has a second engine to retry through. */
     hasSecondaryEngine: Boolean = false,
     private val onRequestSecondaryEngine: (() -> Unit)? = null,
+    /** "Match display rate to content" (§9). When false, we do not pass a frame rate to the engine. */
+    private val matchDisplayRate: Boolean = true,
+    /** The viewer's preferred audio/subtitle languages and subtitles-on default (§14.9), applied by
+     *  the engine to the initial track selection. */
+    private val preferredAudioLanguage: String? = null,
+    private val preferredSubtitleLanguage: String? = null,
+    private val subtitlesOnByDefault: Boolean = false,
+    /** The viewer's saved subtitle appearance (§14), applied to the engine after each load. */
+    private val initialSubtitleStyle: SubtitleStyle = SubtitleStyle(),
+    /**
+     * Resolves a completed download to a local file so playback works offline (§11). Null on a
+     * target with no download support, in which case everything streams from the server.
+     */
+    private val offlineResolver: OfflineResolver? = null,
 ) {
 
     private val _state = MutableStateFlow(PlayerScreenState())
@@ -71,6 +89,24 @@ class PlaybackController(
     private var lastInputAtMs: Long = 0
     private var tickJob: Job? = null
     private var chipJob: Job? = null
+    private var sleepTimerJob: Job? = null
+
+    /** The video bitrate cap for the chosen quality (§11). Null is "Original" / direct play. */
+    private var selectedMaxVideoBitrateKbps: Int? = null
+
+    /** True once a capped quality is chosen: every load then goes straight to transcode (§11). */
+    private var forceTranscode: Boolean = false
+
+    // Sticky per-series track choice (§12 parity). A manual audio or subtitle pick on one episode
+    // is remembered and re-applied to later episodes of the same show, so a binge keeps the
+    // viewer's language rather than snapping back to the default every episode. Held for the
+    // current show only; opening a different show clears it. [stickyApplied] gates the re-apply to
+    // once per load, since selecting a track re-emits the track list.
+    private var stickyShowKey: String? = null
+    private var stickyAudioLanguage: String? = null
+    private var stickySubtitleLanguage: String? = null
+    private var stickySubtitleOff: Boolean = false
+    private var stickyApplied: Boolean = false
 
     var onPlayNextEpisode: ((Episode) -> Unit)? = null
     var onPlayPreviousEpisode: ((Episode) -> Unit)? = null
@@ -92,6 +128,20 @@ class PlaybackController(
 
         fallback.reset()
         countdown.reset()
+        // Every item starts at Original quality; a capped choice is per-item (§11).
+        selectedMaxVideoBitrateKbps = null
+        forceTranscode = false
+
+        // A new show clears the remembered track choice; the same show (the next episode in a
+        // binge) keeps it so it can be re-applied once this item's tracks surface (§12 parity).
+        val showKey = (item as? Episode)?.showRatingKey
+        if (showKey != stickyShowKey) {
+            stickyShowKey = showKey
+            stickyAudioLanguage = null
+            stickySubtitleLanguage = null
+            stickySubtitleOff = false
+        }
+        stickyApplied = false
         reporter.startItem(item.ratingKey)
 
         markers = MarkerController(
@@ -112,6 +162,14 @@ class PlaybackController(
             trickplayUrlAt = { positionMs ->
                 partId?.takeIf { detail?.primaryPart != null }?.let { urls.trickplay(it, positionMs) }
             },
+            // Wave 2: reset speed, seed chapters, subtitle appearance, the quality ladder and
+            // a minimal Up Next queue for the new item.
+            playbackSpeed = 1f,
+            chapters = detail?.chapters ?: emptyList(),
+            subtitleStyle = initialSubtitleStyle,
+            qualities = QUALITY_LADDER,
+            currentQualityLabel = QUALITY_LADDER.first().label,
+            upNext = listOfNotNull(nextEpisode),
         )
 
         noteInput()
@@ -120,24 +178,62 @@ class PlaybackController(
         startTicking()
     }
 
-    private fun loadCurrentAttempt(startAtMs: Long) {
+    private suspend fun loadCurrentAttempt(startAtMs: Long) {
         val item = current ?: return
         val attempt = fallback.current()
+        // A fresh load (including a transcode fallback reload) surfaces a new track list, so allow
+        // the remembered per-series choice to be applied to it once more (§12 parity).
+        stickyApplied = false
 
-        val uri = when (attempt.mode) {
-            PlaybackMode.DIRECT -> directUri() ?: transcodeUri(item, startAtMs)
-            PlaybackMode.TRANSCODE -> transcodeUri(item, startAtMs)
+        // A completed local download plays from disk unconditionally, and needs no online
+        // decision. See CLAUDE.md section 11.
+        val localPath = if (attempt.mode == PlaybackMode.DIRECT && !forceTranscode) {
+            runCatching { offlineResolver?.localSource(item.ratingKey)?.path }.getOrNull()
+        } else {
+            null
+        }
+
+        val (uri, mode) = when {
+            localPath != null -> fileUri(localPath) to PlaybackMode.DIRECT
+
+            // A capped quality forces the server transcode (§11), as does a TRANSCODE attempt
+            // reached through the failure-driven fallback chain (§10).
+            forceTranscode || attempt.mode == PlaybackMode.TRANSCODE ->
+                transcodeUri(item, startAtMs) to PlaybackMode.TRANSCODE
+
+            else -> {
+                // Online DIRECT attempt. Ask the server first (§10 decision): a false answer
+                // transcodes up front instead of burning eight seconds on a doomed direct play.
+                // A thrown decision proceeds with direct, and the failure-driven fallback in
+                // handleFailure stays as the safety net either way.
+                val pid = partId
+                val allowed = if (pid != null) {
+                    runCatching { api.canDirectPlay(serverScope, item.ratingKey, pid) }.getOrDefault(true)
+                } else {
+                    true
+                }
+                val direct = if (allowed) directUri() else null
+                if (direct != null) direct to PlaybackMode.DIRECT
+                else transcodeUri(item, startAtMs) to PlaybackMode.TRANSCODE
+            }
         }
 
         engine.load(
             PlaybackSource(
                 uri = uri,
-                mode = attempt.mode,
+                mode = mode,
                 headers = identityHeaders,
-                frameRate = detail?.primaryPart?.frameRate,
+                frameRate = detail?.primaryPart?.frameRate?.takeIf { matchDisplayRate },
+                preferredAudioLanguage = preferredAudioLanguage,
+                preferredSubtitleLanguage = preferredSubtitleLanguage,
+                subtitlesOnByDefault = subtitlesOnByDefault,
             ),
             startAtMs,
         )
+        // A fresh load resets the engine, so re-apply the session's speed and subtitle
+        // appearance (they must survive a quality reload and a transcode fallback).
+        engine.setPlaybackSpeed(_state.value.playbackSpeed)
+        engine.setSubtitleStyle(_state.value.subtitleStyle)
         engine.play()
     }
 
@@ -148,6 +244,13 @@ class PlaybackController(
         return urls.partKey(part.fileKey)
     }
 
+    /** A local download's file path as a file:// URI, normalised so Windows drive paths parse. */
+    private fun fileUri(path: String): String {
+        if (path.startsWith("file:")) return path
+        val forward = path.replace('\\', '/')
+        return if (forward.startsWith("/")) "file://$forward" else "file:///$forward"
+    }
+
     private fun transcodeUri(item: MediaItem, startAtMs: Long): String =
         urls.withToken(
             "/video/:/transcode/universal/start.m3u8" +
@@ -155,6 +258,7 @@ class PlaybackController(
                 "&mediaIndex=0&partIndex=0&protocol=hls&fastSeek=1" +
                 "&offset=${startAtMs / 1000}" +
                 "&directPlay=0&directStream=1&subtitles=burn" +
+                (selectedMaxVideoBitrateKbps?.let { "&maxVideoBitrate=$it" } ?: "") +
                 "&X-Plex-Session-Identifier=$sessionIdentifier",
         )
 
@@ -183,7 +287,34 @@ class PlaybackController(
         scope.launch {
             engine.tracks.collect { tracks ->
                 _state.update { it.copy(audioTracks = tracks.audio, subtitleTracks = tracks.subtitle) }
+                applyStickyTracks(tracks)
             }
+        }
+    }
+
+    /**
+     * Re-applies the remembered per-series track choice once this item's tracks have surfaced
+     * (§12 parity). Runs at most once per load — [stickyApplied] guards it, because selecting a
+     * track makes the engine re-emit the track list. A remembered choice already matching the
+     * engine's default selection is a no-op (the `!selected` filter), so this only acts when the
+     * default differs from what the viewer chose on an earlier episode.
+     */
+    private fun applyStickyTracks(tracks: PlayerTracks) {
+        if (stickyApplied) return
+        if (tracks.audio.isEmpty() && tracks.subtitle.isEmpty()) return
+        stickyApplied = true
+
+        stickyAudioLanguage?.let { lang ->
+            tracks.audio.firstOrNull { it.language == lang && !it.selected }
+                ?.let { engine.selectAudioTrack(it.id) }
+        }
+        when {
+            stickySubtitleOff -> {
+                if (tracks.subtitle.any { it.selected }) engine.selectSubtitleTrack(null)
+            }
+            stickySubtitleLanguage != null ->
+                tracks.subtitle.firstOrNull { it.language == stickySubtitleLanguage && !it.selected }
+                    ?.let { engine.selectSubtitleTrack(it.id) }
         }
     }
 
@@ -296,6 +427,20 @@ class PlaybackController(
         _state.update { it.copy(controlsVisible = true) }
     }
 
+    /**
+     * A single tap on the picture toggles the controls: reveal them if hidden, dismiss them if
+     * shown. It never pauses — pausing is the transport button alone. Hiding backdates the last-input
+     * time so the tick's idle test keeps them hidden until the next real input.
+     */
+    fun toggleControls() {
+        if (_state.value.controlsVisible) {
+            lastInputAtMs = nowMs() - CONTROLS_TIMEOUT_MS
+            _state.update { it.copy(controlsVisible = false) }
+        } else {
+            noteInput()
+        }
+    }
+
     fun actions(): PlayerActions = PlayerActions(
         onPlayPause = {
             noteInput()
@@ -313,6 +458,7 @@ class PlaybackController(
             }
         },
         onUserInput = { noteInput() },
+        onToggleControls = { toggleControls() },
         onSeekBack = { noteInput(); seekBy(SEEK_BACK_MS) },
         onSeekForward = { noteInput(); seekBy(SEEK_FORWARD_MS) },
         // The double-tap gestures seek a fixed ten seconds each way, independent of the
@@ -361,14 +507,95 @@ class PlaybackController(
         },
         onSelectAudioTrack = { id ->
             id?.let(engine::selectAudioTrack)
+            // Remember the chosen language so the next episode of this show keeps it (§12 parity).
+            id?.let { chosen ->
+                stickyAudioLanguage = _state.value.audioTracks.firstOrNull { it.id == chosen }?.language
+            }
             _state.update { it.copy(openSheet = null) }
         },
         onSelectSubtitleTrack = { id ->
             engine.selectSubtitleTrack(id)
+            if (id == null) {
+                stickySubtitleOff = true
+                stickySubtitleLanguage = null
+            } else {
+                stickySubtitleOff = false
+                stickySubtitleLanguage =
+                    _state.value.subtitleTracks.firstOrNull { it.id == id }?.language
+            }
             _state.update { it.copy(openSheet = null) }
         },
         onDismissSheet = { _state.update { it.copy(openSheet = null) } },
+
+        // --- Wave 2 ------------------------------------------------------------------------
+        onSetSpeed = { s ->
+            noteInput()
+            engine.setPlaybackSpeed(s)
+            _state.update { it.copy(playbackSpeed = s) }
+        },
+        onSeekToPosition = { ms ->
+            noteInput()
+            engine.seekTo(ms)
+            reportSeek(ms)
+        },
+        onSetSleepTimer = { ms -> setSleepTimer(ms) },
+        onSetSubtitleStyle = { st ->
+            engine.setSubtitleStyle(st)
+            _state.update { it.copy(subtitleStyle = st) }
+        },
+        onSelectQuality = { q -> selectQuality(q) },
+        onPlayUpNext = { item ->
+            noteInput()
+            (item as? Episode)?.let { onPlayNextEpisode?.invoke(it) }
+        },
     )
+
+    /** Arms or cancels the sleep timer (§18): counts down each second, then pauses at zero. */
+    private fun setSleepTimer(durationMs: Long?) {
+        noteInput()
+        sleepTimerJob?.cancel()
+        if (durationMs == null || durationMs <= 0) {
+            _state.update { it.copy(sleepTimerRemainingMs = null) }
+            return
+        }
+        _state.update { it.copy(sleepTimerRemainingMs = durationMs) }
+        sleepTimerJob = scope.launch {
+            var remaining = durationMs
+            while (isActive && remaining > 0) {
+                delay(1_000)
+                remaining -= 1_000
+                _state.update { it.copy(sleepTimerRemainingMs = remaining.coerceAtLeast(0)) }
+            }
+            if (isActive) {
+                engine.pause()
+                current?.let { item ->
+                    runCatching {
+                        reporter.onImmediate(
+                            item.ratingKey,
+                            TimelineState.PAUSED,
+                            _state.value.positionMs,
+                            _state.value.durationMs,
+                        )
+                    }
+                }
+                _state.update { it.copy(sleepTimerRemainingMs = null) }
+            }
+        }
+    }
+
+    /**
+     * Switches streaming quality (§11) and reloads at the current position. Original allows a
+     * fresh direct attempt; a capped quality forces a transcode at that video bitrate.
+     */
+    private fun selectQuality(quality: PlaybackQuality) {
+        noteInput()
+        selectedMaxVideoBitrateKbps = quality.maxVideoBitrateKbps
+        forceTranscode = quality.maxVideoBitrateKbps != null
+        _state.update { it.copy(currentQualityLabel = quality.label) }
+        if (quality.maxVideoBitrateKbps == null) fallback.reset()
+        val position = _state.value.positionMs
+        scope.launch { loadCurrentAttempt(position) }
+    }
 
     private fun seekBy(deltaMs: Long) {
         val target = (_state.value.positionMs + deltaMs)
@@ -399,6 +626,7 @@ class PlaybackController(
     suspend fun stopAndRelease() {
         tickJob?.cancel()
         chipJob?.cancel()
+        sleepTimerJob?.cancel()
 
         current?.let { item ->
             withTimeoutOrNull(TimelineReporter.STOP_TIMEOUT_MS) {
@@ -466,6 +694,22 @@ class PlaybackController(
     }
 
     private companion object {
+        /**
+         * The streaming-quality choices offered per video in the overlay (§11).
+         *
+         * There are only two, and by design there is no tier above Original: the file on the server
+         * is the whole of the information that exists for a title, so a playback path can send it
+         * untouched (direct play) or the server can transcode it *down* to fit a constrained
+         * connection — it can never manufacture detail the source never held. So "Original" is the
+         * ceiling, and "Data Saver" is a capped transcode for tight data. See CLAUDE.md section 10.
+         */
+        val QUALITY_LADDER = listOf(
+            // Direct play, full fidelity — the source file straight from the server.
+            PlaybackQuality("Original", null),
+            // A firm cap (~2 Mbps, 720p) that stays watchable while cutting data use hard.
+            PlaybackQuality("Data Saver", 2_000),
+        )
+
         const val TICK_MS = 500L
         const val CONTROLS_TIMEOUT_MS = 3_000L
         const val TRANSCODE_CHIP_MS = 4_000L

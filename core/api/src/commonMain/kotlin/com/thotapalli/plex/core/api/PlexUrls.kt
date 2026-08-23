@@ -43,6 +43,42 @@ class PlexUrls(
     fun partKey(key: String): String =
         "$base$key?X-Plex-Token=${accessToken.encodeURLParameter()}"
 
+    /**
+     * The universal transcode HLS stream, the silent fallback when direct play fails.
+     * See CLAUDE.md section 10.
+     *
+     * With no [maxVideoBitrateKbps] the server is asked to remux where it can
+     * (`directStream=1`), which preserves the original video untouched — the current default
+     * behaviour. Passing a cap turns remux off (`directStream=0`) so the server actually
+     * transcodes the video down to the ceiling, and pins `videoQuality=100` so the only thing
+     * constraining quality is the bitrate cap. This is what a constrained remote connection
+     * uses. See CLAUDE.md section 11.
+     */
+    fun transcodeStream(
+        ratingKey: String,
+        startAtMs: Long,
+        sessionIdentifier: String,
+        maxVideoBitrateKbps: Int? = null,
+    ): String {
+        val capped = maxVideoBitrateKbps != null
+        val path = buildString {
+            append("/video/:/transcode/universal/start.m3u8")
+            append("?path=%2Flibrary%2Fmetadata%2F").append(ratingKey)
+            append("&mediaIndex=0&partIndex=0&protocol=hls&fastSeek=1")
+            append("&offset=").append(startAtMs / 1000)
+            append("&directPlay=0")
+            // Remux stays on only when no cap is asked for; a cap forces a real transcode.
+            append("&directStream=").append(if (capped) 0 else 1)
+            append("&subtitles=burn")
+            if (capped) {
+                append("&maxVideoBitrate=").append(maxVideoBitrateKbps)
+                append("&videoQuality=100")
+            }
+            append("&X-Plex-Session-Identifier=").append(sessionIdentifier)
+        }
+        return withToken(path)
+    }
+
     /** A trickplay thumbnail for the seek preview. */
     fun trickplay(partId: String, offsetMs: Long): String =
         "$base/library/parts/$partId/indexes/sd/$offsetMs" +

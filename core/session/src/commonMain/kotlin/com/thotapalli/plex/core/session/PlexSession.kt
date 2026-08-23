@@ -22,6 +22,10 @@ class PlexSession(
 
     fun accountToken(): String? = tokens.accountToken()
 
+    /** The signed-in account's display name, stored at sign-in. The fallback for the profile name
+     *  when there is no Plex Home user (a single non-Home account never populates [homeUsers]). */
+    fun signedInUsername(): String? = tokens.signedInUsername()
+
     fun signOut() = tokens.signOut()
 
     /**

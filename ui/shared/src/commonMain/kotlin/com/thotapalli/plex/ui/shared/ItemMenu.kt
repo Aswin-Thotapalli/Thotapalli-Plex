@@ -1,9 +1,12 @@
 package com.thotapalli.plex.ui.shared
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -13,13 +16,16 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.thotapalli.plex.core.model.MediaItem
 import com.thotapalli.plex.core.model.watched
@@ -100,6 +106,50 @@ fun ItemOverflowButton(
     var expanded by remember { mutableStateOf(false) }
     Box(modifier) {
         SecondaryButton(label = "More", onClick = { expanded = true })
+        ItemActionsMenu(
+            item = item,
+            actions = actions,
+            isContinueWatching = isContinueWatching,
+            expanded = expanded,
+            onDismiss = { expanded = false },
+        )
+    }
+}
+
+/**
+ * A small circular "⋮" overflow control that opens the same [ItemActionsMenu], for a poster tile
+ * that shows the menu entry point on its face rather than hiding it behind a long-press. Carries the
+ * [GlassRole.CHIP] material so the glyph stays legible dropped onto the brightest poster, and anchors
+ * the dropdown to itself. Its own click consumes the tap, so pressing it opens the menu while a tap
+ * anywhere else on the tile still reaches the tile's own click.
+ */
+@Composable
+fun ItemOverflowIconButton(
+    item: MediaItem,
+    actions: ItemActions,
+    modifier: Modifier = Modifier,
+    isContinueWatching: Boolean = false,
+    size: Dp = 30.dp,
+) {
+    val colours = PlexTheme.colours
+    var expanded by remember { mutableStateOf(false) }
+    Box(modifier) {
+        Box(
+            modifier = Modifier
+                .plexFocusable(shape = CircleShape, onClick = { expanded = true })
+                .size(size)
+                .material(GlassRole.CHIP, shape = CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            // The three vertical dots, drawn to take the button's content tint like the other glyphs.
+            Canvas(Modifier.size(size * 0.5f)) {
+                val cx = this.size.width / 2f
+                val r = this.size.minDimension * 0.09f
+                listOf(0.18f, 0.5f, 0.82f).forEach { fy ->
+                    drawCircle(colours.textPrimary, r, Offset(cx, this.size.height * fy))
+                }
+            }
+        }
         ItemActionsMenu(
             item = item,
             actions = actions,

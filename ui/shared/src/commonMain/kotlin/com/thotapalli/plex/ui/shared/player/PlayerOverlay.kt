@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -25,12 +27,15 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.border
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -52,6 +57,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.thotapalli.plex.core.model.Chapter
 import com.thotapalli.plex.core.playback.PlaybackState
 import com.thotapalli.plex.core.playback.PlayerTrack
 import com.thotapalli.plex.ui.design.GlassRole
@@ -71,6 +77,7 @@ import com.thotapalli.plex.ui.shared.PlexIcon
 import com.thotapalli.plex.ui.shared.PlexIconKind
 import com.thotapalli.plex.ui.shared.formatPosition
 import com.thotapalli.plex.ui.shared.plexFocusable
+import kotlin.math.abs
 
 /**
  * The player overlay from CLAUDE.md section 12, dressed in the liquid-glass language.
@@ -116,6 +123,17 @@ fun PlayerOverlay(
         else -> false
     }
 
+    // Once the picture has ever played, later buffering is a mid-stream re-buffer (a seek, a network
+    // hiccup) with the last frame still on the surface — so we must NOT paint over it. Only the very
+    // first spin-up (before any frame) gets the opaque dark cover; after that a seek shows a spinner
+    // over the frozen frame rather than going black. This is the fix for "the screen goes blank when
+    // I fast-forward / rewind."
+    var hasStarted by remember { mutableStateOf(false) }
+    LaunchedEffect(state.playbackState) {
+        if (state.playbackState is PlaybackState.Playing) hasStarted = true
+    }
+    val coverOpaque = loading && !hasStarted
+
     // A brief "10s" nudge shown after a double-tap seek: -1 on the left, +1 on the right, 0 none.
     var seekHint by remember { mutableIntStateOf(0) }
     LaunchedEffect(seekHint) {
@@ -124,6 +142,14 @@ fun PlayerOverlay(
             seekHint = 0
         }
     }
+
+    // The device brightness/volume knobs, and which of the overlay's own sheets (speed, quality,
+    // chapters, sleep, subtitle appearance, up next) is open. These sheets are self-managed here
+    // rather than through the controller's audio/subtitle openSheet, so they need no plumbing
+    // outside the overlay. See CLAUDE.md section 12 and section 18.
+    val hardware = rememberPlayerHardware()
+    var brightness by remember { mutableFloatStateOf(0.5f) }
+    var sheet by remember { mutableStateOf<OverlaySheet?>(null) }
 
     // A centre flash of the play or pause icon on every tap, so the toggle is unmistakable even
     // when the controls are hidden. The counter fires the effect on each tap; the icon reflects
@@ -148,11 +174,9 @@ fun PlayerOverlay(
                 .fillMaxSize()
                 .pointerInput(Unit) {
                     detectTapGestures(
-                        onPress = { actions.onUserInput() },
-                        onTap = {
-                            actions.onPlayPause()
-                            playPauseFlash.intValue += 1
-                        },
+                        // A single tap toggles the controls — it must never pause. Pause is the
+                        // transport button alone. See CLAUDE.md section 12.
+                        onTap = { actions.onToggleControls() },
                         onDoubleTap = { offset ->
                             if (offset.x < size.width / 2f) {
                                 actions.onSeekBack()
@@ -163,7 +187,50 @@ fun PlayerOverlay(
                             }
                         },
                     )
-                },
+                }
+                // Vertical-drag brightness and volume, on touch platforms only. A drag on the left
+                // half rides screen brightness; a drag on the right half nudges the media volume.
+                // This is a distinct gesture detector — it reacts only to vertical drags and
+                // consumes only those, so the single-tap (toggle controls) and double-tap (seek)
+                // above are untouched. Armed only when the platform exposes brightness, so the
+                // pointer-driven desktop never grabs a vertical drag. See CLAUDE.md section 18.
+                .then(
+                    if (hardware.supportsBrightness) {
+                        Modifier.pointerInput(Unit) {
+                            var onLeftHalf = false
+                            var volumeAccum = 0f
+                            detectVerticalDragGestures(
+                                onDragStart = { offset ->
+                                    onLeftHalf = offset.x < size.width / 2f
+                                    volumeAccum = 0f
+                                },
+                                onVerticalDrag = { change, dragAmount ->
+                                    change.consume()
+                                    if (onLeftHalf) {
+                                        // Dragging up (negative dragAmount) brightens.
+                                        val next = (brightness - dragAmount / size.height)
+                                            .coerceIn(0f, 1f)
+                                        brightness = next
+                                        hardware.setBrightness(next)
+                                    } else {
+                                        // Accumulate travel and emit a step each threshold, so a
+                                        // drag walks the volume up or down smoothly.
+                                        volumeAccum -= dragAmount
+                                        val step = size.height / 15f
+                                        while (volumeAccum >= step) {
+                                            hardware.nudgeVolume(up = true); volumeAccum -= step
+                                        }
+                                        while (volumeAccum <= -step) {
+                                            hardware.nudgeVolume(up = false); volumeAccum += step
+                                        }
+                                    }
+                                },
+                            )
+                        }
+                    } else {
+                        Modifier
+                    },
+                ),
         )
 
         AnimatedVisibility(
@@ -172,7 +239,11 @@ fun PlayerOverlay(
             exit = fadeOut(Motion.playerFade()),
         ) {
             Box(
-                Modifier.fillMaxSize().background(colours.background),
+                // Opaque dark cover only before the first frame; a mid-stream re-buffer keeps the
+                // frozen frame visible behind a plain spinner.
+                Modifier.fillMaxSize().then(
+                    if (coverOpaque) Modifier.background(colours.background) else Modifier,
+                ),
                 contentAlignment = Alignment.Center,
             ) {
                 LoadingIndicator(
@@ -265,6 +336,7 @@ fun PlayerOverlay(
                         SeekBar(
                             positionMs = state.displayPositionMs,
                             durationMs = state.durationMs,
+                            chapters = state.chapters,
                             trickplayUrlAt = state.trickplayUrlAt,
                             onScrubStart = actions.onScrubStart,
                             onScrub = actions.onScrub,
@@ -278,9 +350,35 @@ fun PlayerOverlay(
                         )
                     }
 
-                    TransportBar(state = state, actions = actions)
+                    TransportBar(
+                        state = state,
+                        actions = actions,
+                        onOpenSheet = { sheet = it },
+                    )
                 }
             }
+        }
+
+        // The large centre play/pause button, Netflix/Plex style. It shows whenever the controls
+        // are up (and only once the picture is past its opaque first-frame cover), and it reflects
+        // the transport state: a pause glyph while playing, a play glyph while paused or ended.
+        //
+        // Z-ORDER: this block is declared AFTER the gesture bed (the first child of the root Box),
+        // so it paints above it, and it carries its own clickable interaction source. A clickable
+        // consumes the pointer down, so a tap that lands on this button is spent here and never
+        // reaches the toggle-controls gesture underneath — it is the ONLY tap target that pauses.
+        // A tap anywhere else on the picture falls through to the gesture bed and merely toggles
+        // the controls, which then carries this button with them through the shared fade timer.
+        AnimatedVisibility(
+            visible = controlsShown && !coverOpaque,
+            enter = fadeIn(Motion.playerFade()),
+            exit = fadeOut(Motion.playerFade()),
+            modifier = Modifier.align(Alignment.Center),
+        ) {
+            CenterPlayPauseButton(
+                isPlaying = state.isPlaying,
+                onClick = actions.onPlayPause,
+            )
         }
 
         // The skip button shows only while the intro marker is active. An amber glass pill.
@@ -349,7 +447,241 @@ fun PlayerOverlay(
         // The double-tap seek nudge, on the side that was tapped.
         SeekHint(visible = seekHint < 0, label = "« 10", modifier = Modifier.align(Alignment.CenterStart))
         SeekHint(visible = seekHint > 0, label = "10 »", modifier = Modifier.align(Alignment.CenterEnd))
+
+        // The overlay's own sheets — speed, quality, chapters, sleep, subtitle appearance and up
+        // next — over a dark scrim, in the same glass-sheet idiom as the audio/subtitle picker.
+        OverlaySheetHost(
+            state = state,
+            actions = actions,
+            sheet = sheet,
+            onNavigate = { sheet = it },
+            onDismiss = { sheet = null },
+        )
     }
+}
+
+/** Which of the overlay's own glass sheets is open. See [OverlaySheetHost]. */
+private enum class OverlaySheet { MORE, SPEED, QUALITY, CHAPTERS, SLEEP, SUBTITLES, UP_NEXT }
+
+/**
+ * Renders the open overlay sheet, if any. [OverlaySheet.MORE] is the overflow menu that gathers the
+ * less-common controls — playback speed (#12), streaming quality (#11), chapters (#15), the sleep
+ * timer (#18) and subtitle appearance (#14) — each of which opens its own leaf sheet through
+ * [onNavigate]. Up next (#19) is reached straight from the transport row. Selecting an option fires
+ * the matching action and closes the stack through [onDismiss].
+ */
+@Composable
+private fun OverlaySheetHost(
+    state: PlayerScreenState,
+    actions: PlayerActions,
+    sheet: OverlaySheet?,
+    onNavigate: (OverlaySheet) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    when (sheet) {
+        null -> Unit
+
+        OverlaySheet.MORE -> OverlaySheetScaffold("More", onDismiss) {
+            NavRow("Playback speed", formatSpeed(state.playbackSpeed)) { onNavigate(OverlaySheet.SPEED) }
+            if (state.qualities.isNotEmpty()) {
+                NavRow("Quality", state.currentQualityLabel) { onNavigate(OverlaySheet.QUALITY) }
+            }
+            if (state.chapters.isNotEmpty()) {
+                NavRow("Chapters", null) { onNavigate(OverlaySheet.CHAPTERS) }
+            }
+            NavRow("Sleep timer", sleepLabel(state.sleepTimerRemainingMs)) { onNavigate(OverlaySheet.SLEEP) }
+            if (state.subtitleTracks.isNotEmpty()) {
+                NavRow("Subtitle appearance", null) { onNavigate(OverlaySheet.SUBTITLES) }
+            }
+        }
+
+        OverlaySheet.SPEED -> OverlaySheetScaffold("Playback speed", onDismiss) {
+            PLAYBACK_SPEEDS.forEach { speed ->
+                TrackRow(formatSpeed(speed), selected = abs(state.playbackSpeed - speed) < 0.001f) {
+                    actions.onSetSpeed(speed); onDismiss()
+                }
+            }
+        }
+
+        OverlaySheet.QUALITY -> OverlaySheetScaffold("Quality", onDismiss) {
+            state.qualities.forEach { quality ->
+                TrackRow(quality.label, selected = quality.label == state.currentQualityLabel) {
+                    actions.onSelectQuality(quality); onDismiss()
+                }
+            }
+        }
+
+        OverlaySheet.CHAPTERS -> OverlaySheetScaffold("Chapters", onDismiss) {
+            state.chapters.forEach { chapter ->
+                val name = chapter.title?.takeIf { it.isNotBlank() } ?: "Chapter ${chapter.index}"
+                val active = state.displayPositionMs in chapter.startMs until chapter.endMs
+                TrackRow("$name  ·  ${formatPosition(chapter.startMs)}", selected = active) {
+                    actions.onSeekToPosition(chapter.startMs); onDismiss()
+                }
+            }
+        }
+
+        OverlaySheet.SLEEP -> OverlaySheetScaffold("Sleep timer", onDismiss) {
+            TrackRow("Off", selected = state.sleepTimerRemainingMs == null) {
+                actions.onSetSleepTimer(null); onDismiss()
+            }
+            listOf(15, 30, 45, 60).forEach { minutes ->
+                TrackRow("$minutes minutes", selected = false) {
+                    actions.onSetSleepTimer(minutes * 60_000L); onDismiss()
+                }
+            }
+            TrackRow("End of episode", selected = false) {
+                val remaining = (state.durationMs - state.positionMs).coerceAtLeast(0L)
+                actions.onSetSleepTimer(remaining); onDismiss()
+            }
+        }
+
+        OverlaySheet.SUBTITLES -> SubtitleAppearanceSheet(state, actions, onDismiss)
+
+        OverlaySheet.UP_NEXT -> OverlaySheetScaffold("Up next", onDismiss) {
+            state.upNext.forEach { item ->
+                TrackRow(item.title, selected = false) {
+                    actions.onPlayUpNext(item); onDismiss()
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The subtitle appearance sheet (#14): text size, colour and a background box, each edited live by
+ * copying the current [SubtitleStyle] and firing [PlayerActions.onSetSubtitleStyle]. The selected
+ * option in each group carries the one warm accent, matching every other selection in the client.
+ */
+@Composable
+private fun SubtitleAppearanceSheet(
+    state: PlayerScreenState,
+    actions: PlayerActions,
+    onDismiss: () -> Unit,
+) {
+    val colours = PlayerColours
+    val style = state.subtitleStyle
+
+    OverlaySheetScaffold("Subtitle appearance", onDismiss) {
+        PlexText("Size", style = PlexTheme.type.caption, colour = colours.textSecondary)
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            listOf("A-" to 75, "A" to 100, "A+" to 150).forEach { (label, percent) ->
+                GlassTextButton(
+                    label,
+                    onClick = { actions.onSetSubtitleStyle(style.copy(scalePercent = percent)) },
+                    accent = style.scalePercent == percent,
+                )
+            }
+        }
+
+        Spacer(Modifier.height(Spacing.xxs))
+        PlexText("Colour", style = PlexTheme.type.caption, colour = colours.textSecondary)
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            listOf("White" to 0xFFFFFFFFL, "Yellow" to 0xFFFFEB3BL).forEach { (label, argb) ->
+                GlassTextButton(
+                    label,
+                    onClick = { actions.onSetSubtitleStyle(style.copy(foregroundArgb = argb)) },
+                    accent = style.foregroundArgb == argb,
+                )
+            }
+        }
+
+        Spacer(Modifier.height(Spacing.xxs))
+        PlexText("Background", style = PlexTheme.type.caption, colour = colours.textSecondary)
+        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+            GlassTextButton(
+                "Off",
+                onClick = { actions.onSetSubtitleStyle(style.copy(backgroundOpacityPercent = 0)) },
+                accent = style.backgroundOpacityPercent == 0,
+            )
+            GlassTextButton(
+                "On",
+                onClick = { actions.onSetSubtitleStyle(style.copy(backgroundOpacityPercent = 60)) },
+                accent = style.backgroundOpacityPercent > 0,
+            )
+        }
+    }
+}
+
+/**
+ * The shared scaffold for an overlay sheet: a dark scrim that dismisses on a background tap, and a
+ * bottom glass panel carrying a title and the sheet's rows. Height is capped and the panel scrolls,
+ * so a long chapter or up-next list stays reachable. Mirrors [TrackSheet]. Sixteen radius, per
+ * CLAUDE.md section 12.
+ */
+@Composable
+private fun OverlaySheetScaffold(
+    title: String,
+    onDismiss: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val colours = PlayerColours
+
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(colours.scrim)
+            .plexFocusable(shape = Radius.sheet, onClick = onDismiss, scaleOnFocus = false),
+        contentAlignment = Alignment.BottomCenter,
+    ) {
+        val cap = maxHeight * 0.85f
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = cap)
+                .material(GlassRole.SHEET, shape = Radius.sheet)
+                .padding(Spacing.lg)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+        ) {
+            PlexText(title, style = PlexTheme.type.title, colour = colours.textPrimary)
+            content()
+        }
+    }
+}
+
+/** A navigating row in the overflow menu: a label, an optional current value, opening a leaf sheet. */
+@Composable
+private fun NavRow(label: String, value: String?, onClick: () -> Unit) {
+    val colours = PlayerColours
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .plexFocusable(shape = Radius.card, onClick = onClick, scaleOnFocus = false)
+            .padding(Spacing.sm),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PlexText(label, colour = colours.textPrimary)
+        Spacer(Modifier.weight(1f))
+        if (value != null) {
+            PlexText(value, colour = colours.textSecondary)
+        }
+    }
+}
+
+/** The offered playback rates (#12). One is the source rate; the rest speed up or slow down. */
+private val PLAYBACK_SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
+
+/** "1×", "1.25×", "0.5×" — the rate without trailing zeros. */
+private fun formatSpeed(speed: Float): String {
+    val text = if (speed % 1f == 0f) {
+        speed.toInt().toString()
+    } else {
+        speed.toString().trimEnd('0').trimEnd('.')
+    }
+    return "$text×"
+}
+
+/** The sleep timer's summary value: "Off" or the remaining time as m:ss. */
+private fun sleepLabel(remainingMs: Long?): String =
+    if (remainingMs == null) "Off" else formatSleepClock(remainingMs)
+
+/** The remaining sleep time as m:ss, for the "Zzz" indicator and the overflow summary. */
+private fun formatSleepClock(ms: Long): String {
+    val totalSeconds = (ms / 1000).coerceAtLeast(0)
+    val minutes = totalSeconds / 60
+    val seconds = totalSeconds % 60
+    return "$minutes:${seconds.toString().padStart(2, '0')}"
 }
 
 @Composable
@@ -381,7 +713,11 @@ private fun SeekHint(visible: Boolean, label: String, modifier: Modifier = Modif
  * exists. See the theme engine in ui/design/Material.kt.
  */
 @Composable
-private fun TransportBar(state: PlayerScreenState, actions: PlayerActions) {
+private fun TransportBar(
+    state: PlayerScreenState,
+    actions: PlayerActions,
+    onOpenSheet: (OverlaySheet) -> Unit,
+) {
     val isTv = PlexTheme.sizeClass.isTelevision
 
     Row(
@@ -414,18 +750,45 @@ private fun TransportBar(state: PlayerScreenState, actions: PlayerActions) {
 
         Spacer(Modifier.weight(1f))
 
+        // The armed sleep timer, counting down. Non-interactive; a quiet glass chip. See #18.
+        state.sleepTimerRemainingMs?.let { SleepIndicator(it) }
+
         if (state.audioTracks.size > 1) {
             GlassTextButton("Audio", actions.onOpenAudioTracks)
         }
         if (state.subtitleTracks.isNotEmpty()) {
             GlassTextButton("Subtitles", actions.onOpenSubtitleTracks)
         }
+        // Up next, straight from the transport row when there is a queue (#19).
+        if (state.upNext.isNotEmpty()) {
+            GlassTextButton("Up Next", onClick = { onOpenSheet(OverlaySheet.UP_NEXT) })
+        }
+        // The overflow: speed, quality, chapters, sleep and subtitle appearance, so the row stays
+        // uncrowded. See CLAUDE.md section 12.
+        GlassTextButton("More", onClick = { onOpenSheet(OverlaySheet.MORE) })
         if (state.showFullScreenToggle) {
             GlassIconButton(
                 kind = if (state.isFullScreen) PlexIconKind.FULLSCREEN_EXIT else PlexIconKind.FULLSCREEN,
                 onClick = actions.onToggleFullScreen,
             )
         }
+    }
+}
+
+/** The "Zzz m:ss" indicator shown while the sleep timer is armed. A quiet glass chip. See #18. */
+@Composable
+private fun SleepIndicator(remainingMs: Long) {
+    val colours = PlayerColours
+    Box(
+        Modifier
+            .material(GlassRole.CHIP, shape = Radius.pill)
+            .padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
+    ) {
+        PlexText(
+            "Zzz ${formatSleepClock(remainingMs)}",
+            style = PlexTheme.type.caption,
+            colour = colours.textSecondary,
+        )
     }
 }
 
@@ -437,6 +800,7 @@ private fun TransportBar(state: PlayerScreenState, actions: PlayerActions) {
 private fun SeekBar(
     positionMs: Long,
     durationMs: Long,
+    chapters: List<Chapter>,
     trickplayUrlAt: (Long) -> String?,
     onScrubStart: () -> Unit,
     onScrub: (Long) -> Unit,
@@ -514,6 +878,26 @@ private fun SeekBar(
                         .fillMaxWidth(fraction)
                         .background(colours.accent, Radius.pill),
                 )
+            }
+
+            // Chapter marks: a thin notch on the track at each chapter start (#15). Drawn over both
+            // the border track and the amber fill so they read at any position; the ends are skipped
+            // since a mark on the very edge is invisible under the handle.
+            if (chapters.isNotEmpty() && durationMs > 0) {
+                val tickColour = colours.textPrimary.copy(alpha = 0.55f)
+                Canvas(Modifier.fillMaxWidth().height(4.dp)) {
+                    val tickWidth = 2.dp.toPx()
+                    chapters.forEach { chapter ->
+                        val f = (chapter.startMs.toFloat() / durationMs).coerceIn(0f, 1f)
+                        if (f > 0.004f && f < 0.996f) {
+                            drawRect(
+                                color = tickColour,
+                                topLeft = Offset(f * size.width - tickWidth / 2f, 0f),
+                                size = Size(tickWidth, size.height),
+                            )
+                        }
+                    }
+                }
             }
 
             // The glass handle, riding the track at the current position.
@@ -610,6 +994,65 @@ private fun GlassTextButton(
             style = PlexTheme.type.label,
             colour = if (accent) colours.background else colours.textPrimary,
             maxLines = 1,
+        )
+    }
+}
+
+/**
+ * The large, centred play/pause control — the primary touch target on the picture, in the accent-
+ * filled circular treatment of the transport play/pause button, scaled up for a comfortable tap
+ * (64.dp, 72.dp on television). It owns its own interaction source in the same idiom as
+ * [GlassControlButton]: a press springs the bubble, and a television focus or a pointer hover raises
+ * the amber ring and grows it, so a remote, a keyboard and a mouse each get the "this is the thing
+ * under me" cue. On television it is focusable too, though the transport bar stays the primary
+ * control there. It reflects the transport state — a pause glyph while playing, a play glyph while
+ * paused or ended — and its [Modifier.clickable] consumes the tap so pausing never leaks to the
+ * toggle-controls gesture bed beneath it.
+ */
+@Composable
+private fun CenterPlayPauseButton(
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+) {
+    val colours = PlayerColours
+    val isTv = PlexTheme.sizeClass.isTelevision
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val focused by interaction.collectIsFocusedAsState()
+    val hovered by interaction.collectIsHoveredAsState()
+    val highlighted = focused || hovered
+
+    val focusScale by animateFloatAsState(
+        targetValue = when {
+            focused -> Layout.TELEVISION_FOCUS_SCALE
+            hovered -> 1f + (Layout.TELEVISION_FOCUS_SCALE - 1f) * 0.5f
+            else -> 1f
+        },
+        animationSpec = Motion.spring(),
+        label = "center-play-pause-focus",
+    )
+
+    val diameter = if (isTv) 72.dp else 64.dp
+    Box(
+        modifier = Modifier
+            .scale(focusScale)
+            .pressBubble(pressed)
+            .size(diameter)
+            .border(
+                width = if (highlighted) Layout.focusRingWidth else 0.dp,
+                color = if (highlighted) colours.focusRing else Color.Transparent,
+                shape = Radius.pill,
+            )
+            // The one warm accent as a solid fill, matching the transport play/pause; the dark
+            // ground token tints the glyph so it reads on the amber. No hand-picked tint numbers.
+            .background(colours.accent, Radius.pill)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        PlexIcon(
+            kind = if (isPlaying) PlexIconKind.PAUSE else PlexIconKind.PLAY,
+            tint = colours.background,
+            size = if (isTv) 40.dp else 34.dp,
         )
     }
 }

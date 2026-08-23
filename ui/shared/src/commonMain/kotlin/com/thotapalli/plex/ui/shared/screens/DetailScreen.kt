@@ -16,12 +16,17 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -32,9 +37,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.thotapalli.plex.core.model.Episode
 import com.thotapalli.plex.core.model.MediaItem
+import com.thotapalli.plex.core.model.MediaPart
 import com.thotapalli.plex.core.model.Movie
 import com.thotapalli.plex.core.model.Season
 import com.thotapalli.plex.core.model.Show
+import com.thotapalli.plex.core.model.VideoStream
 import com.thotapalli.plex.core.model.partiallyWatched
 import com.thotapalli.plex.core.model.watched
 import com.thotapalli.plex.ui.design.GlassRole
@@ -62,6 +69,7 @@ import com.thotapalli.plex.ui.shared.material
 import com.thotapalli.plex.ui.shared.input.rememberFirstFocus
 import com.thotapalli.plex.ui.shared.motion.staggeredEntrance
 import com.thotapalli.plex.ui.shared.plexFocusable
+import kotlin.math.roundToInt
 
 /**
  * Movie detail and show detail, which share a cinematic header and differ only below it.
@@ -83,6 +91,7 @@ fun DetailScreen(
     onToggleWatched: (MediaItem) -> Unit,
     onSeasonSelected: (Season) -> Unit,
     onSelectEpisode: (Episode) -> Unit,
+    onSetContainerWatched: (String, Boolean) -> Unit = { _, _ -> },
     actions: ItemActions? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -131,6 +140,7 @@ fun DetailScreen(
                 onToggleWatched = onToggleWatched,
                 onSeasonSelected = onSeasonSelected,
                 onSelectEpisode = onSelectEpisode,
+                onSetContainerWatched = onSetContainerWatched,
                 actions = actions,
             )
         } else {
@@ -146,6 +156,7 @@ fun DetailScreen(
                 onToggleWatched = onToggleWatched,
                 onSeasonSelected = onSeasonSelected,
                 onSelectEpisode = onSelectEpisode,
+                onSetContainerWatched = onSetContainerWatched,
                 actions = actions,
             )
         }
@@ -167,6 +178,7 @@ private fun SingleColumnDetail(
     onToggleWatched: (MediaItem) -> Unit,
     onSeasonSelected: (Season) -> Unit,
     onSelectEpisode: (Episode) -> Unit,
+    onSetContainerWatched: (String, Boolean) -> Unit,
     actions: ItemActions?,
 ) {
     val item = state.item
@@ -208,9 +220,9 @@ private fun SingleColumnDetail(
             }
         }
 
-        // Audio and subtitle tracks, listed for reference on a quiet glass panel. See §14.
-        val part = state.detail?.primaryPart
-        if (part != null && (part.audioStreams.isNotEmpty() || part.subtitleStreams.isNotEmpty())) {
+        // Media / version info and the audio and subtitle track reference, on a quiet glass
+        // panel below the summary. See CLAUDE.md section 14 items 4 and 5.
+        if (state.detail?.primaryPart != null) {
             item {
                 GlassPanel(
                     modifier = Modifier
@@ -219,12 +231,15 @@ private fun SingleColumnDetail(
                         .padding(top = Spacing.md)
                         .staggeredEntrance(index = 1),
                 ) {
-                    AudioSubtitleReference(state)
+                    MediaInfoSection(state)
                 }
             }
         }
 
-        if (item is Show) {
+        // Episode navigation shows for a show and for an episode-opened detail alike (§14.5); a
+        // movie has no episodes and skips it. The state is populated from the parent show in both
+        // episodic cases by AppViewModel.openDetail.
+        if (item is Show || item is Episode) {
             item {
                 Column(
                     modifier = Modifier
@@ -232,8 +247,7 @@ private fun SingleColumnDetail(
                         .padding(horizontal = contentPadding)
                         .padding(top = Spacing.md),
                 ) {
-                    SectionHeader("Episodes")
-                    SeasonSelector(state, onSeasonSelected)
+                    EpisodeNav(state, onSeasonSelected, onSetContainerWatched)
                 }
             }
 
@@ -287,6 +301,7 @@ private fun TwoPaneDetail(
     onToggleWatched: (MediaItem) -> Unit,
     onSeasonSelected: (Season) -> Unit,
     onSelectEpisode: (Episode) -> Unit,
+    onSetContainerWatched: (String, Boolean) -> Unit,
     actions: ItemActions?,
 ) {
     val item = state.item
@@ -329,17 +344,16 @@ private fun TwoPaneDetail(
                     }
                 }
 
-                val part = state.detail?.primaryPart
-                if (part != null && (part.audioStreams.isNotEmpty() || part.subtitleStreams.isNotEmpty())) {
+                if (state.detail?.primaryPart != null) {
                     GlassPanel(modifier = Modifier.fillMaxWidth().staggeredEntrance(index = 1)) {
-                        AudioSubtitleReference(state)
+                        MediaInfoSection(state)
                     }
                 }
             }
 
-            // Right pane: the episode list for a show, the overview for a movie, on one tall
-            // frosted panel filling the remainder.
-            if (item is Show) {
+            // Right pane: the episode list for episodic content (a show, or an episode-opened
+            // detail), the overview for a movie, on one tall frosted panel filling the remainder.
+            if (item is Show || item is Episode) {
                 // The episode pane sits directly on the GROUND; the header and season chips float
                 // over it and every episode row is its own CARD, matching the single-column layout.
                 Column(
@@ -349,8 +363,7 @@ private fun TwoPaneDetail(
                         .padding(top = Spacing.md, bottom = Spacing.xxl),
                     verticalArrangement = Arrangement.spacedBy(Spacing.xs),
                 ) {
-                    SectionHeader("Episodes")
-                    SeasonSelector(state, onSeasonSelected)
+                    EpisodeNav(state, onSeasonSelected, onSetContainerWatched)
                     LazyColumn(
                         modifier = Modifier.fillMaxWidth().weight(1f),
                         verticalArrangement = Arrangement.spacedBy(Spacing.xs),
@@ -408,11 +421,18 @@ private fun HeroCaption(item: MediaItem, modifier: Modifier = Modifier) {
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(Spacing.xs),
     ) {
-        PlexText(item.title, style = PlexTheme.type.display, maxLines = 3)
+        // Light text on the backdrop's dark caption scrim, so it reads over any still in either
+        // theme (the hero foot is always dark; the page below returns to the theme ground).
+        PlexText(
+            item.title,
+            style = PlexTheme.type.display,
+            colour = Color.White,
+            maxLines = 2,
+        )
         PlexText(
             text = metadataLine(item),
             style = PlexTheme.type.label,
-            colour = PlexTheme.colours.textSecondary,
+            colour = Color.White.copy(alpha = 0.78f),
         )
     }
 }
@@ -449,14 +469,18 @@ private fun DetailActions(
     firstFocus: FocusRequester? = null,
 ) {
     val item = state.item
-    // A show plays its next unwatched episode; if every episode is watched it plays the
-    // first of the shown season rather than the show itself, which has no file to play and
-    // would otherwise stall at 0:00. A movie has no episodes, so it stays the item.
-    // See CLAUDE.md section 14 item 5.
-    val playTarget: MediaItem = state.nextUnwatched
-        ?: state.episodesInSelectedSeason.firstOrNull()
-        ?: state.episodes.firstOrNull()
-        ?: item
+    // An episode-opened detail plays the episode the viewer is looking at — the one they opened,
+    // or another they have since selected in the list — rather than the show's next unwatched.
+    // A show plays its next unwatched episode; if every episode is watched it plays the first of
+    // the shown season rather than the show itself, which has no file to play and would otherwise
+    // stall at 0:00. A movie has no episodes, so it stays the item. See CLAUDE.md section 14 item 5.
+    val playTarget: MediaItem = when {
+        item is Episode -> state.selectedEpisode ?: item
+        else -> state.nextUnwatched
+            ?: state.episodesInSelectedSeason.firstOrNull()
+            ?: state.episodes.firstOrNull()
+            ?: item
+    }
     val resumeFrom = playTarget.viewOffsetMs
     val resumable = playTarget.partiallyWatched
 
@@ -499,12 +523,129 @@ private fun DetailActions(
 }
 
 /**
- * The audio and subtitle track listing, shown for reference. See CLAUDE.md section 14.
+ * Media / version reference for a title: the video summary and quiet badges, an optional version
+ * picker when the title has more than one file, and the audio and subtitle track listing. All of
+ * it is understated reference material, not a headline. See CLAUDE.md section 14 items 4 and 5,
+ * and the section 6 domain model (MediaPart / VideoStream / AudioStream / SubtitleStream).
+ *
+ * The detail state exposes the full parts list on `detail.parts`, so the version picker below is a
+ * real chip row over every version. It changes which version's info is shown here.
+ *
+ * TODO multi-version picker: making the Play action use the picked version needs the chosen part
+ *  carried through — `onPlay` is `(MediaItem, Long)` today and playback resolves
+ *  `detail.primaryPart` downstream, so the selection cannot steer Play from inside this screen
+ *  alone. It needs a selected-part on DetailState (or an onPlay overload) to close that loop.
+ */
+@Composable
+private fun MediaInfoSection(state: DetailState, modifier: Modifier = Modifier) {
+    val parts = state.detail?.parts.orEmpty()
+    if (parts.isEmpty()) return
+
+    // The chosen version, reset when the screen moves to a different item.
+    var selected by remember(state.item.ratingKey) { mutableStateOf(0) }
+    val index = selected.coerceIn(0, parts.lastIndex)
+    val part = parts[index]
+
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        if (parts.size > 1) {
+            SectionHeader("Versions")
+            VersionPicker(parts = parts, selectedIndex = index, onSelect = { selected = it })
+        }
+        MediaSummary(part)
+        AudioSubtitleReference(part)
+    }
+}
+
+/**
+ * The video summary: resolution and HDR as small frosted [GlassRole.CHIP] badges, then codec,
+ * bit depth, frame rate, container and file size as one quiet caption line, e.g.
+ * "HEVC  •  10-bit  •  23.976 fps  •  MKV  •  24.3 GB".
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun MediaSummary(part: MediaPart) {
+    val video = part.videoStreams.firstOrNull()
+    val badges = buildList {
+        video?.let { resolutionLabel(it)?.let(::add) }
+        if (video?.hdr == true) add("HDR")
+    }
+    val line = listOfNotNull(
+        video?.codec?.uppercase(),
+        video?.bitDepth?.takeIf { it >= 10 }?.let { "$it-bit" },
+        frameRateLabel(video?.frameRate),
+        part.container.takeIf { it.isNotBlank() }?.uppercase(),
+        formatBytes(part.sizeBytes).takeIf { part.sizeBytes > 0 },
+    ).joinToString("  •  ")
+
+    if (badges.isEmpty() && line.isBlank()) return
+
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+        SectionHeader("Media")
+        if (badges.isNotEmpty()) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+                verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+            ) {
+                badges.forEach { MediaBadge(it) }
+            }
+        }
+        if (line.isNotBlank()) {
+            PlexText(
+                text = line,
+                style = PlexTheme.type.caption,
+                colour = PlexTheme.colours.textSecondary,
+            )
+        }
+    }
+}
+
+/** One small frosted badge, in the same CHIP material as the season pills. */
+@Composable
+private fun MediaBadge(text: String) {
+    Box(
+        modifier = Modifier
+            .material(GlassRole.CHIP, shape = Radius.pill)
+            .padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
+    ) {
+        PlexText(
+            text = text,
+            style = PlexTheme.type.caption,
+            colour = PlexTheme.colours.textPrimary,
+            maxLines = 1,
+        )
+    }
+}
+
+/**
+ * The version picker: a scrolling row of the same segmented glass pills the season selector uses,
+ * one per [MediaPart]. Selecting a version switches which version's info is shown above.
+ */
+@Composable
+private fun VersionPicker(
+    parts: List<MediaPart>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit,
+) {
+    LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+        modifier = Modifier.padding(vertical = Spacing.xxs),
+    ) {
+        itemsIndexed(parts, key = { i, p -> p.partId.ifBlank { i.toString() } }) { i, part ->
+            SeasonPill(
+                label = versionLabel(part, i),
+                selected = i == selectedIndex,
+                onClick = { onSelect(i) },
+            )
+        }
+    }
+}
+
+/**
+ * The audio and subtitle track listing for one part, shown for reference. See CLAUDE.md section 14.
  * Rendered inside a quiet glass panel by both layouts.
  */
 @Composable
-private fun AudioSubtitleReference(state: DetailState, modifier: Modifier = Modifier) {
-    val part = state.detail?.primaryPart ?: return
+private fun AudioSubtitleReference(part: MediaPart, modifier: Modifier = Modifier) {
     if (part.audioStreams.isEmpty() && part.subtitleStreams.isEmpty()) return
 
     Column(modifier) {
@@ -515,7 +656,7 @@ private fun AudioSubtitleReference(state: DetailState, modifier: Modifier = Modi
                     text = listOfNotNull(
                         stream.title ?: stream.language,
                         stream.codec.uppercase(),
-                        "${stream.channels}ch".takeIf { stream.channels > 0 },
+                        channelLayout(stream.channels),
                     ).joinToString("  "),
                     style = PlexTheme.type.caption,
                     colour = PlexTheme.colours.textSecondary,
@@ -540,24 +681,254 @@ private fun AudioSubtitleReference(state: DetailState, modifier: Modifier = Modi
     }
 }
 
+/** A version's label: its resolution and size where known, else a plain ordinal. */
+private fun versionLabel(part: MediaPart, index: Int): String {
+    val resolution = part.videoStreams.firstOrNull()?.let { resolutionLabel(it) }
+    val size = formatBytes(part.sizeBytes).takeIf { part.sizeBytes > 0 }
+    return listOfNotNull(resolution, size).joinToString("  ").ifBlank { "Version ${index + 1}" }
+}
+
+/** A human resolution tier from the stream dimensions, e.g. 4K / 1080p / 720p. */
+private fun resolutionLabel(video: VideoStream): String? {
+    val w = video.width
+    val h = video.height
+    if (w <= 0 && h <= 0) return null
+    return when {
+        h >= 2000 || w >= 3800 -> "4K"
+        h >= 1400 || w >= 2500 -> "1440p"
+        h >= 1000 || w >= 1900 -> "1080p"
+        h >= 700 || w >= 1200 -> "720p"
+        h >= 460 || w >= 700 -> "480p"
+        else -> "SD"
+    }
+}
+
+/** A speaker layout from the channel count, e.g. 2 -> "2.0", 6 -> "5.1", 8 -> "7.1". */
+private fun channelLayout(channels: Int): String? = when {
+    channels <= 0 -> null
+    channels == 1 -> "Mono"
+    channels == 2 -> "2.0"
+    else -> "${channels - 1}.1"
+}
+
+/** A trimmed frame-rate label, e.g. 23.976 -> "23.976 fps", 30.0 -> "30 fps". */
+private fun frameRateLabel(fps: Float?): String? {
+    if (fps == null || fps <= 0f) return null
+    val milli = (fps * 1000).roundToInt()
+    if (milli % 1000 == 0) return "${milli / 1000} fps"
+    val text = "${milli / 1000}." + (milli % 1000).toString().padStart(3, '0')
+    return "${text.trimEnd('0').trimEnd('.')} fps"
+}
+
 /**
- * The season selector: a scrolling row of glass segmented pills. The chosen season lights amber
- * like every other selection in the app; the rest are quiet frosted glass.
+ * The episode-navigation cluster: the "Episodes" header carrying the show's total unwatched count
+ * (§13 quality-of-life), the season selector, and the per-season / per-show mark-watched controls
+ * (§12 high-value parity). Emitted into the caller's column, so the single-column and two-pane
+ * layouts share one implementation.
+ */
+@Composable
+private fun EpisodeNav(
+    state: DetailState,
+    onSeasonSelected: (Season) -> Unit,
+    onSetContainerWatched: (String, Boolean) -> Unit,
+) {
+    val showUnwatched = showUnwatchedCount(state)
+    SectionHeader(
+        "Episodes",
+        trailing = if (showUnwatched > 0) {
+            { UnwatchedBadge(showUnwatched) }
+        } else {
+            null
+        },
+    )
+    SeasonSelector(state, onSeasonSelected)
+    ContainerWatchedControls(state, onSetContainerWatched)
+}
+
+/**
+ * The per-season and per-show "Mark watched / Mark unwatched" controls (§12 high-value parity).
+ * Each targets a container ratingKey — the currently selected season, or the show — that
+ * [onSetContainerWatched] scrobbles in one call. The label reads "unwatched" and passes `false`
+ * when the container already appears fully watched, and "watched" / `true` otherwise. Both are
+ * [SecondaryButton]s, so they are [plexFocusable] and in the television focus order beside the
+ * primary detail actions. The season control is skipped when no season is selected.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ContainerWatchedControls(
+    state: DetailState,
+    onSetContainerWatched: (String, Boolean) -> Unit,
+) {
+    // For a Show the container is the show itself; for an episode-opened detail it is the parent
+    // show carried on the episode. See CLAUDE.md section 6.
+    val showKey = when (val item = state.item) {
+        is Episode -> item.showRatingKey
+        else -> item.ratingKey
+    }
+    val season = state.selectedSeason
+
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+        modifier = Modifier.padding(vertical = Spacing.xs),
+    ) {
+        if (season != null) {
+            val watched = seasonFullyWatched(state, season)
+            SecondaryButton(
+                label = if (watched) "Mark season unwatched" else "Mark season watched",
+                onClick = { onSetContainerWatched(season.ratingKey, !watched) },
+                leadingIcon = if (watched) PlexIconKind.CHECK else null,
+            )
+        }
+        val showWatched = showFullyWatched(state)
+        SecondaryButton(
+            label = if (showWatched) "Mark show unwatched" else "Mark show watched",
+            onClick = { onSetContainerWatched(showKey, !showWatched) },
+            leadingIcon = if (showWatched) PlexIconKind.CHECK else null,
+        )
+    }
+}
+
+/** Episodes in the given season the server has never recorded a completed view for. */
+private fun seasonUnwatchedCount(state: DetailState, season: Season): Int =
+    state.episodes.count { it.seasonRatingKey == season.ratingKey && it.viewCount == 0 }
+
+/** Every episode the show carries that has never been watched. */
+private fun showUnwatchedCount(state: DetailState): Int =
+    state.episodes.count { it.viewCount == 0 }
+
+/**
+ * A season reads as fully watched when the server has marked the container itself viewed, or when
+ * every loaded episode for it has a completed view. Falls back to the season's own leaf counts when
+ * no episodes are loaded for it.
+ */
+private fun seasonFullyWatched(state: DetailState, season: Season): Boolean {
+    if (season.viewCount > 0) return true
+    val eps = state.episodes.filter { it.seasonRatingKey == season.ratingKey }
+    if (eps.isNotEmpty()) return eps.all { it.viewCount > 0 }
+    return season.leafCount > 0 && season.viewedLeafCount >= season.leafCount
+}
+
+/**
+ * The show reads as fully watched when its own leaf counts are complete, or when every loaded
+ * episode has a completed view. A Show's own `viewCount` stays zero even when finished — Plex
+ * tracks viewed leaves — so the episode scan is the reliable signal.
+ */
+private fun showFullyWatched(state: DetailState): Boolean {
+    val show = state.item as? Show
+    if (show != null && show.leafCount > 0 && show.viewedLeafCount >= show.leafCount) return true
+    return state.episodes.isNotEmpty() && state.episodes.all { it.viewCount > 0 }
+}
+
+/** The show-level unwatched count, a frosted CHIP pill in the "Episodes" header. */
+@Composable
+private fun UnwatchedBadge(count: Int) {
+    Box(
+        modifier = Modifier
+            .material(GlassRole.CHIP, shape = Radius.pill)
+            .padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
+    ) {
+        PlexText(
+            text = "$count unwatched",
+            style = PlexTheme.type.caption,
+            colour = PlexTheme.colours.textPrimary,
+            maxLines = 1,
+        )
+    }
+}
+
+/** A compact per-season unwatched count, a frosted CHIP pill on the season selector. */
+@Composable
+private fun SeasonCountBadge(count: Int) {
+    Box(
+        modifier = Modifier
+            .material(GlassRole.CHIP, shape = Radius.pill)
+            .padding(horizontal = Spacing.xs, vertical = Spacing.xxs),
+    ) {
+        PlexText(
+            text = count.toString(),
+            style = PlexTheme.type.caption,
+            colour = PlexTheme.colours.textPrimary,
+            maxLines = 1,
+        )
+    }
+}
+
+/**
+ * The season selector: a frosted glass anchor pill showing the current season that opens a
+ * [DropdownMenu] of every season, like the Plex app. Picking one switches the visible episode
+ * list via [onSeasonSelected]. The anchor is [plexFocusable] so a remote lands on it, and the
+ * whole control is drawn from the design system (CHIP/SHEET material, PlexText, Radius, Spacing).
+ * See CLAUDE.md section 14 item 5.
  */
 @Composable
 private fun SeasonSelector(state: DetailState, onSeasonSelected: (Season) -> Unit) {
-    if (state.seasons.isEmpty()) return
+    val seasons = state.seasons
+    if (seasons.isEmpty()) return
 
-    LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
-        modifier = Modifier.padding(vertical = Spacing.xs),
-    ) {
-        items(state.seasons, key = { it.ratingKey }) { season ->
-            SeasonPill(
-                label = season.title,
-                selected = season.ratingKey == state.selectedSeason?.ratingKey,
-                onClick = { onSeasonSelected(season) },
+    val colours = PlexTheme.colours
+    val selected = state.selectedSeason ?: seasons.first()
+    var expanded by remember(state.item.ratingKey) { mutableStateOf(false) }
+
+    Box(Modifier.padding(vertical = Spacing.xs)) {
+        // The anchor: a quiet frosted pill carrying the current season, opening the menu on click.
+        Row(
+            modifier = Modifier
+                .plexFocusable(shape = Radius.pill, onClick = { expanded = true })
+                .material(GlassRole.CHIP, shape = Radius.pill)
+                .padding(horizontal = Spacing.md, vertical = Spacing.xs),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            PlexText(
+                text = selected.title,
+                style = PlexTheme.type.label,
+                colour = colours.textPrimary,
+                maxLines = 1,
             )
+            // The selected season's unwatched count, hidden once the season is fully watched.
+            val selectedUnwatched = seasonUnwatchedCount(state, selected)
+            if (selectedUnwatched > 0) {
+                SeasonCountBadge(selectedUnwatched)
+            }
+            // A small chevron cue that this opens a menu rather than being a plain pill.
+            PlexText(
+                text = "▾",
+                style = PlexTheme.type.label,
+                colour = colours.textSecondary,
+                maxLines = 1,
+            )
+        }
+
+        // Every season, listed. The current one takes the amber accent every selection wears.
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+            modifier = Modifier.material(GlassRole.SHEET, Radius.glassSmall),
+        ) {
+            seasons.forEach { season ->
+                val isSelected = season.ratingKey == state.selectedSeason?.ratingKey
+                val unwatched = seasonUnwatchedCount(state, season)
+                DropdownMenuItem(
+                    text = {
+                        PlexText(
+                            text = season.title,
+                            style = PlexTheme.type.label,
+                            colour = if (isSelected) colours.accent else colours.textPrimary,
+                            maxLines = 1,
+                        )
+                    },
+                    trailingIcon = if (unwatched > 0) {
+                        { SeasonCountBadge(unwatched) }
+                    } else {
+                        null
+                    },
+                    onClick = {
+                        expanded = false
+                        onSeasonSelected(season)
+                    },
+                )
+            }
         }
     }
 }

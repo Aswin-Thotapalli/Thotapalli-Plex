@@ -14,6 +14,10 @@ jna = "5.17.0"
 okio = "3.9.1"
 haze = "1.6.10"
 backdrop = "2.0.0"
+# QR code painter for the television sign-in screen. A TV cannot open a browser, so the
+# app.plex.tv/auth URL is rendered as a QR the user scans on a phone. Compose Multiplatform
+# (Android + JVM desktop). CLAUDE.md section 14 item 1.
+qrose = "1.0.1"
 
 # Beyond CLAUDE.md section 4. Everything below was required to build what section 16 asks for
 # and was verified resolvable against Maven Central or Google Maven on 18 August 2026.
@@ -62,6 +66,7 @@ jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
 okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
 haze = { module = "dev.chrisbanes.haze:haze", version.ref = "haze" }
 kyant-backdrop = { module = "io.github.kyant0:backdrop", version.ref = "backdrop" }
+qrose = { module = "io.github.alexzhirkevich:qrose", version.ref = "qrose" }
 
 # --- Compose Multiplatform, declared directly ---------------------------------------------
 # The plugin's compose.runtime / compose.foundation / compose.material3 / compose.ui accessors
@@ -96,6 +101,9 @@ androidx-browser = { module = "androidx.browser:browser", version.ref = "android
 # Television focus and surface treatments. CLAUDE.md section 13.
 androidx-tv-material = { module = "androidx.tv:tv-material", version.ref = "androidxTv" }
 media3-common = { module = "androidx.media3:media3-common", version.ref = "media3" }
+# MediaSession + MediaSessionService: lock-screen / notification transport controls and the
+# foreground session that keeps audio playing when the screen is off. See CLAUDE.md section 8.
+media3-session = { module = "androidx.media3:media3-session", version.ref = "media3" }
 
 # --- SQLDelight and test -------------------------------------------------------------------
 sqldelight-runtime = { module = "app.cash.sqldelight:runtime", version.ref = "sqldelight" }

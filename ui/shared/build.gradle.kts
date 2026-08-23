@@ -33,6 +33,8 @@ kotlin {
             implementation(libs.coroutines.core)
             implementation(project(":ui:design"))
             implementation(libs.haze)
+            // QR code painter for the television sign-in screen. CLAUDE.md section 14 item 1.
+            implementation(libs.qrose)
             implementation(project(":core:model"))
             implementation(project(":core:data"))
             implementation(project(":core:playback"))
@@ -40,6 +42,9 @@ kotlin {
             implementation(project(":core:download"))
             implementation(libs.coil.compose)
             implementation(libs.coil.network)
+            // okio.Path, for the Coil disk-cache directory in ImageLoaderSetup. Coil pulls okio in
+            // transitively, but the directory is named directly here, so it is declared explicitly.
+            implementation(libs.okio)
         }
 
         androidMain.dependencies {
@@ -49,6 +54,11 @@ kotlin {
             // constructing ExoPlayerEngine.
             implementation(project(":player:exo"))
             implementation(libs.media3.common)
+            // media3-ui supplies SubtitleView and CaptionStyleCompat, used by the Android
+            // VideoSurface to render Media3's cues above the bare SurfaceView. player:exo keeps
+            // it as an implementation dependency, so it is not transitive and is declared here
+            // where the SubtitleView is constructed. See CLAUDE.md sections 8 and 12.
+            implementation(libs.media3.ui)
             implementation(libs.kyant.backdrop)
         }
 

@@ -31,6 +31,13 @@ interface PlayerEngine {
 
     fun selectAudioTrack(id: String)
     fun selectSubtitleTrack(id: String?)
+
+    /** Set playback rate. 1.0 is normal; the overlay offers 0.75×–2×. See CLAUDE.md section 8. */
+    fun setPlaybackSpeed(speed: Float)
+
+    /** Apply subtitle appearance (size / colour / background). */
+    fun setSubtitleStyle(style: SubtitleStyle)
+
     fun release()
 }
 
@@ -40,6 +47,33 @@ data class PlaybackSource(
     val headers: Map<String, String>,
     /** Drives the refresh rate match in CLAUDE.md section 9. Null means no mode change. */
     val frameRate: Float?,
+    /** The viewer's preferred audio language (ISO code), applied to the initial track selection. */
+    val preferredAudioLanguage: String? = null,
+    /** The viewer's preferred subtitle language (ISO code), applied when subtitles are shown. */
+    val preferredSubtitleLanguage: String? = null,
+    /** Whether to enable a subtitle track by default (in the preferred language when present). */
+    val subtitlesOnByDefault: Boolean = false,
+)
+
+/**
+ * Subtitle appearance, applied by the engine. [scalePercent] scales the default size (50–200);
+ * [foregroundArgb] is the text colour as 0xAARRGGBB; [backgroundOpacityPercent] is the opacity of a
+ * black box behind the text (0 = none). See CLAUDE.md section 12.
+ */
+data class SubtitleStyle(
+    val scalePercent: Int = 100,
+    val foregroundArgb: Long = 0xFFFFFFFFL,
+    val backgroundOpacityPercent: Int = 0,
+)
+
+/**
+ * A selectable streaming quality. [maxVideoBitrateKbps] null means "original / maximum" (direct
+ * play); a value caps the transcode's video bitrate for a constrained (remote) connection. See
+ * CLAUDE.md section 10.
+ */
+data class PlaybackQuality(
+    val label: String,
+    val maxVideoBitrateKbps: Int?,
 )
 
 enum class PlaybackMode {
