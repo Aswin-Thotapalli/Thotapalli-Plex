@@ -6,8 +6,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -85,7 +87,13 @@ fun SignInScreen(
         ) {
             AppLogo(size = 112.dp)
 
-            PlexText("Thotapalli Plex", style = PlexTheme.type.display)
+            // Two-tone wordmark with a controlled, tight gap — the display font's own space glyph
+            // rendered a large gap between the words at this size. "Plex" carries the accent.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                PlexText("Thotapalli", style = PlexTheme.type.display, colour = PlexTheme.colours.textPrimary)
+                Spacer(Modifier.width(Spacing.xs))
+                PlexText("Plex", style = PlexTheme.type.display, colour = PlexTheme.colours.accent)
+            }
 
             when (state) {
                 null, is SignInState.Failed, SignInState.TimedOut -> {

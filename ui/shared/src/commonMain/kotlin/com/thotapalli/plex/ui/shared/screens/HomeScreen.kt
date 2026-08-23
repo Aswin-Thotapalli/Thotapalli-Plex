@@ -590,7 +590,7 @@ private val TvWideWidth = 248.dp
 private val TvPosterWidth = 124.dp
 
 /** The immersive hero occupies this share of the viewport before the rails begin beneath it. */
-private const val TV_HERO_HEIGHT_FRACTION = 0.55f
+private const val TV_HERO_HEIGHT_FRACTION = 0.44f
 
 /**
  * The television Home, built for a ten-foot immersive read rather than the tablet's contained hero

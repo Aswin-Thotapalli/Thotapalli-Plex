@@ -1,6 +1,7 @@
 package com.thotapalli.plex.ui.shared
 
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -28,6 +29,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -52,9 +54,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.SolidColor
@@ -476,9 +481,8 @@ private fun ReadyContent(
                         bodyWithBack(Modifier)
                     }
                 }
-                TelevisionShell(
+                TvShell(
                     current = destination,
-                    accountName = state.accountName,
                     onSelect = onWideSelect,
                     onOpenProfile = { onDestinationChange(Destination.SETTINGS) },
                     content = tvContent,
@@ -616,229 +620,131 @@ private fun ScanStatusOverlay(
     }
 }
 
-/** The collapsed icon-rail width — a narrow strip of just the destination glyphs. */
-private val TvRailCollapsedWidth = 80.dp
-
-/** The width the rail animates open to on focus — glyph plus label, the accent pill on selection. */
-private val TvRailExpandedWidth = 260.dp
+// ---- Netflix-style television shell (ground-up 10-foot navigation) ----------------------------
 
 /**
- * The television navigation shell (CLAUDE.md section 13). A proper 10-foot layout rather than the
- * tablet sidebar blown up: the content fills the whole screen, left-padded clear of a collapsed icon
- * rail ([TvNavRail]) that floats over it. Entering a screen leaves focus on the content — the rail
- * never grabs first focus — so a D-pad Left from the leftmost content column reaches the rail (it lies
- * to the left in the same [BoxWithConstraints]), and selecting a rail item or a D-pad Right returns to
- * the content. Compose's spatial focus search wires that movement from the geometry; there are no dead
- * ends because content and rail are always both present and focusable.
+ * The television shell: content is edge-to-edge and owns the whole screen; a top navigation bar
+ * stays hidden during browse and fades in only when focus reaches it — a D-pad UP from the top
+ * content row. No reserved side panel, so the picture is truly full-bleed. First focus lands on the
+ * content, not the nav, so the bar appears on demand. See CLAUDE.md section 13.
  */
 @Composable
-private fun TelevisionShell(
+private fun TvShell(
     current: Destination,
-    accountName: String?,
     onSelect: (Destination) -> Unit,
     onOpenProfile: () -> Unit,
     content: @Composable () -> Unit,
 ) {
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        // The rail sits inside the five-percent overscan margin; the vertical overscan tops and tails
-        // its column. See CLAUDE.md section 13.
-        val overscanStart = maxWidth * Layout.TELEVISION_OVERSCAN_FRACTION
-        val overscanVertical = maxHeight * Layout.TELEVISION_OVERSCAN_FRACTION
-
-        // The screen body fills everything, pushed clear of the collapsed rail (overscan + strip) so no
-        // card ever sits beneath it. The rail's expansion overlays this content and never reflows it —
-        // the padding is fixed at the collapsed width. The content screens add their own overscan
-        // inside this region, and the home hero may bleed within it.
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(start = overscanStart + TvRailCollapsedWidth),
-        ) {
-            content()
-        }
-
-        TvNavRail(
+    // A Column, not an overlay: the nav sits above the content in the focus flow so D-pad UP reaches
+    // it and D-pad DOWN returns to the content with no dead-end (an overlay breaks 2D focus search
+    // between the bar and the content below). The nav is quiet until focused; the content fills the
+    // rest and draws its own full-bleed backdrop.
+    Column(Modifier.fillMaxSize().material(GlassRole.GROUND)) {
+        TvTopNav(
             current = current,
-            accountName = accountName,
             onSelect = onSelect,
             onOpenProfile = onOpenProfile,
-            overscanStart = overscanStart,
-            overscanVertical = overscanVertical,
-            modifier = Modifier.align(Alignment.CenterStart),
         )
+        Box(Modifier.fillMaxWidth().weight(1f)) { content() }
     }
 }
 
 /**
- * The collapsing left icon rail — the Netflix/Plex 10-foot pattern. Collapsed it is a narrow
- * [TvRailCollapsedWidth] strip of just the destination glyphs (Home, Search, Downloads, Library,
- * Settings) crowned by the brand mark and footed by the profile avatar, the selected glyph tinted
- * accent. When focus enters the rail it animates open to a [TvRailExpandedWidth] labelled drawer —
- * glyph and label, the amber accent pill on the selected row — and collapses back to icons when focus
- * leaves. Focus is tracked with [onFocusChanged] over the whole [focusGroup] container, and the
- * opaque [GlassRole.CHROME] panel doubles as the scrim the expanded drawer needs to stay legible over
- * whatever content lies beneath. See CLAUDE.md sections 12 and 13.
+ * The top navigation bar. Hidden (alpha 0) while browsing so the content is unobstructed, it fades
+ * to a solid scrimmed bar the moment focus enters it (D-pad UP). Alpha does not affect focusability,
+ * so it is always reachable even while invisible. The destinations read left to right with the brand
+ * at the far left and the profile at the far right, the selected one carrying the amber accent.
  */
 @Composable
-private fun TvNavRail(
+private fun TvTopNav(
     current: Destination,
-    accountName: String?,
     onSelect: (Destination) -> Unit,
     onOpenProfile: () -> Unit,
-    overscanStart: Dp,
-    overscanVertical: Dp,
     modifier: Modifier = Modifier,
 ) {
-    var railFocused by remember { mutableStateOf(false) }
-    val width by animateDpAsState(
-        targetValue = if (railFocused) TvRailExpandedWidth else TvRailCollapsedWidth,
+    val colours = PlexTheme.colours
+    var focused by remember { mutableStateOf(false) }
+    val reveal by animateFloatAsState(
+        targetValue = if (focused) 1f else 0f,
         animationSpec = Motion.spring(),
-        label = "tv-rail-width",
+        label = "tv-nav-reveal",
     )
-
-    Column(
+    val destinations = listOf(
+        Destination.HOME, Destination.SEARCH, Destination.LIBRARY,
+        Destination.DOWNLOADS, Destination.SETTINGS,
+    )
+    Row(
         modifier = modifier
-            .fillMaxHeight()
-            // A single onFocusChanged over the whole rail opens it on the way in and closes it on the
-            // way out, no matter which row holds focus.
-            .onFocusChanged { railFocused = it.hasFocus }
-            .padding(start = overscanStart, top = overscanVertical, bottom = overscanVertical)
-            .width(width)
-            // A solid CHROME panel: opaque enough that the expanded labels read over any content it
-            // overlays, so no separate scrim is needed.
-            .material(GlassRole.CHROME, Radius.card)
-            .padding(vertical = Spacing.md, horizontal = Spacing.sm),
-        verticalArrangement = Arrangement.spacedBy(Spacing.xs),
-        horizontalAlignment = Alignment.Start,
+            .fillMaxWidth()
+            .onFocusChanged { focused = it.hasFocus }
+            .drawBehind {
+                drawRect(
+                    Brush.verticalGradient(
+                        0f to Color.Black.copy(alpha = 0.75f * reveal),
+                        1f to Color.Transparent,
+                    ),
+                )
+            }
+            .padding(horizontal = Spacing.xl, vertical = Spacing.sm)
+            // Quiet during browse, fully lit when focused — a subtle persistent bar, never a dead
+            // panel. Kept partly visible (not fully hidden) so it stays discoverable and the focus
+            // flow is a clean Column up/down.
+            .alpha(0.5f + 0.5f * reveal),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
     ) {
-        // The brand crowns the rail: the mark alone when collapsed, mark plus wordmark when open.
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .padding(horizontal = Spacing.xs),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-        ) {
-            AppLogo(size = 40.dp)
-            if (railFocused) {
-                val brandStyle = PlexTheme.type.title.copy(fontSize = 24.sp)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    PlexText(
-                        text = "Thotapalli ",
-                        style = brandStyle,
-                        colour = PlexTheme.colours.textPrimary,
-                        maxLines = 1,
-                    )
-                    PlexText(
-                        text = "Plex",
-                        style = brandStyle,
-                        colour = PlexTheme.colours.accent,
-                        maxLines = 1,
-                    )
-                }
-            }
+        AppLogo(size = 30.dp)
+        Spacer(Modifier.width(Spacing.lg))
+        destinations.forEach { d ->
+            TvNavChip(destination = d, selected = d == current, onClick = { onSelect(d) })
         }
-
-        Spacer(Modifier.height(Spacing.md))
-
-        // The five destinations, in fixed order, each a big focusable row: glyph always, label only
-        // once expanded, the accent pill on the selected row.
-        Destination.entries.forEach { entry ->
-            TvRailItem(
-                destination = entry,
-                selected = entry == current,
-                expanded = railFocused,
-                onClick = { onSelect(entry) },
-            )
-        }
-
         Spacer(Modifier.weight(1f))
-
-        // The account, pinned to the foot: the avatar disc alone when collapsed, with the name beside
-        // it when open. Tapping it opens Settings.
-        Row(
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 56.dp)
-                .plexFocusable(shape = Radius.card, onClick = onOpenProfile, scaleOnFocus = false)
-                .clip(Radius.card)
-                .padding(horizontal = Spacing.xs, vertical = Spacing.xs),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                .plexFocusable(shape = CircleShape, onClick = onOpenProfile)
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(colours.accent),
+            contentAlignment = Alignment.Center,
         ) {
-            ProfileDisc(name = accountName, showOnlineDot = true)
-            if (railFocused) {
-                Column(Modifier.weight(1f)) {
-                    PlexText(
-                        text = "Welcome back,",
-                        style = PlexTheme.type.caption,
-                        colour = PlexTheme.colours.textSecondary,
-                        maxLines = 1,
-                    )
-                    PlexText(
-                        text = accountName?.takeIf { it.isNotBlank() } ?: "Account",
-                        style = PlexTheme.type.label,
-                        colour = PlexTheme.colours.textPrimary,
-                        maxLines = 1,
-                    )
-                }
-            }
+            PlexText(text = "A", style = PlexTheme.type.label, colour = Color.Black, maxLines = 1)
         }
     }
 }
 
-/**
- * One destination in the television icon rail: a big [plexFocusable] row (accent focus ring and the
- * 1.08 focus grow) carrying the destination glyph, and — once the rail is [expanded] — its label. The
- * selected row tints its glyph amber and, when expanded, wears the amber accent pill and an amber
- * label. The Library destination draws the three-line books glyph the icon set does not carry. See
- * CLAUDE.md sections 12 and 13.
- */
+/** One destination in the television top nav: a focusable icon+label pill, accent when selected. */
 @Composable
-private fun TvRailItem(
+private fun TvNavChip(
     destination: Destination,
     selected: Boolean,
-    expanded: Boolean,
     onClick: () -> Unit,
 ) {
     val colours = PlexTheme.colours
-    val rowShape = Radius.card
-    val iconTint = if (selected) colours.accent else colours.textSecondary
-    val labelTint = if (selected) colours.accent else colours.textPrimary
+    val tint = if (selected) colours.accent else colours.textPrimary
     Row(
         modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 56.dp)
-            .plexFocusable(shape = rowShape, onClick = onClick)
-            .clip(rowShape)
+            .plexFocusable(shape = Radius.pill, onClick = onClick)
+            .clip(Radius.pill)
             .background(
-                if (selected) colours.accent.copy(alpha = 0.14f) else Color.Transparent,
-                rowShape,
+                if (selected) colours.accent.copy(alpha = 0.16f) else Color.Transparent,
+                Radius.pill,
             )
-            .padding(horizontal = Spacing.sm),
+            .padding(horizontal = Spacing.md, vertical = Spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
     ) {
         if (destination == Destination.LIBRARY) {
-            LibrariesGlyph(iconTint)
+            LibrariesGlyph(tint)
         } else {
-            PlexIcon(kind = destination.icon, tint = iconTint, size = 28.dp)
+            PlexIcon(kind = destination.icon, tint = tint, size = 22.dp)
         }
-        if (expanded) {
-            PlexText(
-                text = destination.label,
-                style = PlexTheme.type.body,
-                colour = labelTint,
-                maxLines = 1,
-            )
-        }
+        PlexText(text = destination.label, style = PlexTheme.type.label, colour = tint, maxLines = 1)
     }
 }
 
 /**
  * The persistent left sidebar for medium and expanded (desktop and tablet). Television instead uses
- * the collapsing [TvNavRail] shell. A solid full-height panel (the
+ * the top-nav [TvShell]. A solid full-height panel (the
  * [GlassRole.CHROME] material): the brand mark and wordmark at the top, then one unified list of the
  * five top-level destinations — Home, Search, Downloads, Library, Settings — as pill rows, the
  * selected one carrying the amber accent pill. Libraries are no longer listed here; the Library tab
