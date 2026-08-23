@@ -489,9 +489,15 @@ private fun ReadyContent(
                 )
             }
 
-            // Medium (desktop) and expanded (tablet) keep the existing persistent left sidebar
-            // unchanged: it gives the D-pad and pointer a natural first column with the libraries one
-            // hop away.
+            // A movie/show detail takes the WHOLE screen on tablet and desktop — the sidebar hides so
+            // the backdrop bleeds full-width and the episode list gets the room, exactly like Plex.
+            // The detail carries its own back control. See CLAUDE.md sections 13 and 14.
+            sizeClass != SizeClass.COMPACT && state.detail != null -> {
+                bodyWithBack(Modifier.fillMaxSize())
+            }
+
+            // Medium (desktop) and expanded (tablet) otherwise keep the persistent left sidebar: it
+            // gives the D-pad and pointer a natural first column with the libraries one hop away.
             else -> Row(Modifier.fillMaxSize()) {
                 NavigationRail(
                     current = destination,

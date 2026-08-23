@@ -15,7 +15,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -633,6 +636,16 @@ private fun TvHome(
     val featured = focusedItem ?: fallbackFeatured
 
     val resumeFocus = rememberFirstFocus()
+    val listState = rememberLazyListState()
+    // The backdrop reads at full strength on the billboard, then recedes toward near-black as the
+    // rows scroll up over it, so the hero art never overpowers the poster rails. (#2)
+    val scrolledIntoRows by remember {
+        derivedStateOf { listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 120 }
+    }
+    val backdropDim by animateFloatAsState(
+        targetValue = if (scrolledIntoRows) 0.82f else 0f,
+        label = "tv-backdrop-dim",
+    )
 
     BoxWithConstraints(
         modifier = modifier
@@ -686,7 +699,12 @@ private fun TvHome(
             )
         }
 
+        // A scroll-driven dark veil over the backdrop, so once the viewer scrolls into the rows the
+        // hero image recedes and the posters own the screen (#2).
+        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = backdropDim)))
+
         LazyColumn(
+            state = listState,
             // The scrolling content is the Haze source the frosted navigation samples.
             modifier = Modifier.fillMaxSize().glassSource(),
             contentPadding = PaddingValues(bottom = overscanV + Spacing.xxl),

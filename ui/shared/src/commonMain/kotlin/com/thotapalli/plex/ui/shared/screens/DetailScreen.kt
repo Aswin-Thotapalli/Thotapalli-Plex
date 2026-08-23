@@ -49,6 +49,7 @@ import com.thotapalli.plex.ui.design.GlassRole
 import com.thotapalli.plex.ui.design.Layout
 import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
+import com.thotapalli.plex.ui.design.SizeClass
 import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
 import com.thotapalli.plex.ui.design.backgroundBrush
@@ -121,10 +122,13 @@ fun DetailScreen(
         // remaining sliver and effectively unscrollable. Capping it at ~44% of the height keeps the
         // panes tall enough to read and scroll. The single-column layout scrolls as one, so its hero
         // can stay a comfortable fixed height. See CLAUDE.md sections 13 and 14.
-        val heroHeight = if (sizeClass.twoPaneDetail) {
+        // Only television keeps the split two-pane hero. Tablet/desktop now scroll as one Plex-style
+        // column (with the sidebar hidden, they get the full width), which reads far better than the
+        // cramped two-pane. The single column scrolls, so a comfortable fixed hero is right.
+        val heroHeight = if (sizeClass == SizeClass.TELEVISION) {
             (maxHeight * 0.44f).coerceIn(220.dp, 460.dp)
         } else {
-            320.dp
+            (maxHeight * 0.5f).coerceIn(300.dp, 440.dp)
         }
         // The whole screen takes on the colour of the content's own artwork, and that wash is the
         // glass source: every frosted panel below samples and blurs it.
@@ -138,7 +142,7 @@ fun DetailScreen(
         // The full-bleed backdrop is drawn above it and covers it at the top.
         Box(Modifier.fillMaxSize().material(GlassRole.GROUND))
 
-        if (sizeClass.twoPaneDetail) {
+        if (sizeClass == SizeClass.TELEVISION) {
             TwoPaneDetail(
                 server = server,
                 state = state,
