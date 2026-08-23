@@ -1,7 +1,9 @@
 package com.thotapalli.plex.ui.shared.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -14,11 +16,15 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.foundation.rememberScrollState
@@ -30,6 +36,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -61,7 +68,9 @@ import com.thotapalli.plex.ui.shared.ambient.AmbientBackground
 import com.thotapalli.plex.ui.shared.DetailState
 import com.thotapalli.plex.ui.shared.EpisodeRow
 import com.thotapalli.plex.ui.shared.ItemActions
+import com.thotapalli.plex.ui.shared.Artwork
 import com.thotapalli.plex.ui.shared.ItemOverflowButton
+import com.thotapalli.plex.ui.shared.PlexIcon
 import com.thotapalli.plex.ui.shared.PlexIconKind
 import com.thotapalli.plex.ui.shared.PrimaryButton
 import com.thotapalli.plex.ui.shared.SecondaryButton
@@ -262,7 +271,7 @@ private fun SingleColumnDetail(
                         .padding(horizontal = contentPadding)
                         .padding(top = Spacing.md),
                 ) {
-                    EpisodeNav(state, onSeasonSelected, onSetContainerWatched)
+                    EpisodeNav(server, state, onSeasonSelected, onSetContainerWatched)
                 }
             }
 
@@ -378,7 +387,7 @@ private fun TwoPaneDetail(
                         .padding(top = Spacing.md, bottom = Spacing.xxl),
                     verticalArrangement = Arrangement.spacedBy(Spacing.xs),
                 ) {
-                    EpisodeNav(state, onSeasonSelected, onSetContainerWatched)
+                    EpisodeNav(server, state, onSeasonSelected, onSetContainerWatched)
                     LazyColumn(
                         modifier = Modifier.fillMaxWidth().weight(1f),
                         verticalArrangement = Arrangement.spacedBy(Spacing.xs),
@@ -743,21 +752,131 @@ private fun frameRateLabel(fps: Float?): String? {
  */
 @Composable
 private fun EpisodeNav(
+    server: ActiveServer,
     state: DetailState,
     onSeasonSelected: (Season) -> Unit,
     onSetContainerWatched: (String, Boolean) -> Unit,
 ) {
+    // A horizontal rail of season poster cards, Plex-style, when the show has more than one season.
+    // Picking a card switches the episode list below; the selected card wears the accent ring.
+    if (state.seasons.size > 1) {
+        SectionHeader("${state.seasons.size} Seasons")
+        SeasonRail(server, state, onSeasonSelected)
+    }
+
     val showUnwatched = showUnwatchedCount(state)
+    // The episode header names the selected season (Plex shows "7 Episodes"; we lead with the season
+    // so the rail selection reads through), with the show's unwatched count trailing.
     SectionHeader(
-        "Episodes",
+        state.selectedSeason?.title ?: "Episodes",
         trailing = if (showUnwatched > 0) {
             { UnwatchedBadge(showUnwatched) }
         } else {
             null
         },
     )
-    SeasonSelector(state, onSeasonSelected)
     ContainerWatchedControls(state, onSetContainerWatched)
+}
+
+/**
+ * The Plex "Seasons" strip: a horizontal rail of season poster cards, the selected one carrying the
+ * amber ring, each showing its artwork, a watched tick or unwatched count, its title and episode
+ * count. Tapping a card selects that season, updating the episode list beneath. See CLAUDE.md §14.
+ */
+@Composable
+private fun SeasonRail(
+    server: ActiveServer,
+    state: DetailState,
+    onSeasonSelected: (Season) -> Unit,
+) {
+    val selectedKey = state.selectedSeason?.ratingKey
+    LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+        contentPadding = PaddingValues(vertical = Spacing.xs),
+    ) {
+        items(state.seasons, key = { it.ratingKey }) { season ->
+            SeasonCard(
+                title = season.title,
+                episodeCount = season.leafCount,
+                artworkUrl = server.urls.artwork(
+                    season.thumbPath,
+                    ArtworkSize.POSTER_WIDTH,
+                    ArtworkSize.POSTER_HEIGHT,
+                ),
+                watched = seasonFullyWatched(state, season),
+                unwatched = seasonUnwatchedCount(state, season),
+                selected = season.ratingKey == selectedKey,
+                onClick = { onSeasonSelected(season) },
+            )
+        }
+    }
+}
+
+/** One season poster card in the [SeasonRail]. */
+@Composable
+private fun SeasonCard(
+    title: String,
+    episodeCount: Int,
+    artworkUrl: String?,
+    watched: Boolean,
+    unwatched: Int,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val colours = PlexTheme.colours
+    val shape = RoundedCornerShape(10.dp)
+    Column(
+        modifier = Modifier
+            .width(128.dp)
+            .plexFocusable(shape = shape, onClick = onClick),
+        verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(2f / 3f)
+                .clip(shape)
+                .then(
+                    if (selected) Modifier.border(2.dp, colours.accent, shape) else Modifier,
+                ),
+        ) {
+            Artwork(
+                url = artworkUrl,
+                contentDescription = title,
+                fallbackTitle = title,
+                modifier = Modifier.fillMaxSize(),
+            )
+            if (watched) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(Spacing.xxs)
+                        .size(22.dp)
+                        .clip(RoundedCornerShape(percent = 50))
+                        .background(colours.accent),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    PlexIcon(kind = PlexIconKind.CHECK, tint = Color.Black, size = 14.dp)
+                }
+            } else if (unwatched > 0) {
+                Box(Modifier.align(Alignment.TopEnd).padding(Spacing.xxs)) {
+                    SeasonCountBadge(unwatched)
+                }
+            }
+        }
+        PlexText(
+            text = title,
+            style = PlexTheme.type.label,
+            colour = if (selected) colours.accent else colours.textPrimary,
+            maxLines = 1,
+        )
+        PlexText(
+            text = "$episodeCount episodes",
+            style = PlexTheme.type.caption,
+            colour = colours.textSecondary,
+            maxLines = 1,
+        )
+    }
 }
 
 /**
