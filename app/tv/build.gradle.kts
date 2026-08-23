@@ -50,9 +50,10 @@ android {
         applicationId = "com.thotapalli.plex"
         minSdk = providers.gradleProperty("thotapalli.minSdk").get().toInt()
         targetSdk = providers.gradleProperty("thotapalli.targetSdk").get().toInt()
-        // Auto-incrementing versionCode: SECONDS since 2026-01-01, matched to the phone module.
-        // See app/mobile for the rationale (strictly increasing, ~20M+, always clears Play).
-        versionCode = (System.currentTimeMillis() / 1000L - 1_767_225_600L).toInt()
+        // Auto-incrementing versionCode: raw UNIX epoch seconds, matched to the phone module.
+        // See app/mobile for the rationale (above the existing epoch-seconds bundle on the track,
+        // strictly increasing, fits a signed Int, under Play's 2.1B ceiling until ~2036).
+        versionCode = (System.currentTimeMillis() / 1000L).toInt()
         versionName = providers.gradleProperty("thotapalli.versionName").get()
     }
 

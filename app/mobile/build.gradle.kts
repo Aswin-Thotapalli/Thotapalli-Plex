@@ -51,11 +51,12 @@ android {
         applicationId = "com.thotapalli.plex"
         minSdk = providers.gradleProperty("thotapalli.minSdk").get().toInt()
         targetSdk = providers.gradleProperty("thotapalli.targetSdk").get().toInt()
-        // Auto-incrementing versionCode: SECONDS since 2026-01-01. Every build is strictly higher
-        // than the last (second resolution → no two builds ever collide), and the value (~20M+) is
-        // far above any code previously uploaded, so a fresh AAB always clears Play's "existing
-        // users can't upgrade" check. Stays well under Play's 2.1B ceiling for ~60 years.
-        versionCode = (System.currentTimeMillis() / 1000L - 1_767_225_600L).toInt()
+        // Auto-incrementing versionCode: raw UNIX epoch seconds (~1.79 billion now). Chosen because
+        // a bundle already on the Play track was uploaded with an epoch-seconds code (1787232493);
+        // an anchored/smaller scheme is BELOW it and Play rejects the upgrade. Raw epoch is always
+        // above it, strictly increases every second, fits a signed Int, and stays under Play's
+        // 2,100,000,000 ceiling until ~2036.
+        versionCode = (System.currentTimeMillis() / 1000L).toInt()
         versionName = providers.gradleProperty("thotapalli.versionName").get()
     }
 
