@@ -37,16 +37,20 @@ enum class SizeClass {
     val posterMinWidth: Dp
         get() = when (this) {
             COMPACT -> 150.dp
-            MEDIUM -> 168.dp
-            EXPANDED -> 196.dp
-            TELEVISION -> 200.dp
+            // Larger minimums than before so each poster is bigger (fewer, larger columns) on
+            // tablet, desktop and TV. See CLAUDE.md section 13 (requests #4/#6/#7).
+            MEDIUM -> 184.dp
+            EXPANDED -> 220.dp
+            TELEVISION -> 220.dp
         }
 
     val screenPadding: Dp
         get() = when (this) {
             COMPACT -> Spacing.md
-            MEDIUM -> Spacing.lg
-            EXPANDED -> Spacing.xl
+            // Tighter screen edges on tablet/desktop so posters get more of the width (#6/#7).
+            MEDIUM -> Spacing.md
+            EXPANDED -> Spacing.lg
+            // Television keeps the wider inset for the 5% overscan margin (§13).
             TELEVISION -> Spacing.xl
         }
 

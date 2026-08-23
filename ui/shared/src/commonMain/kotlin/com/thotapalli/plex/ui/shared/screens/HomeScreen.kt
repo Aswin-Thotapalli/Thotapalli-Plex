@@ -95,6 +95,8 @@ fun HomeScreen(
     onLibraryClick: (Library) -> Unit,
     onPlay: (MediaItem, Long) -> Unit,
     itemActions: (MediaItem) -> ItemActions,
+    /** Opens the full library list (the Library tab / chooser), for the mobile "Libraries → View all". */
+    onOpenLibrariesList: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     if (PlexTheme.sizeClass == SizeClass.TELEVISION) {
@@ -122,6 +124,7 @@ fun HomeScreen(
             onLibraryClick = onLibraryClick,
             onPlay = onPlay,
             itemActions = itemActions,
+            onOpenLibrariesList = onOpenLibrariesList,
             modifier = modifier,
         )
     } else {
@@ -341,6 +344,7 @@ private fun CompactHome(
     onLibraryClick: (Library) -> Unit,
     onPlay: (MediaItem, Long) -> Unit,
     itemActions: (MediaItem) -> ItemActions,
+    onOpenLibrariesList: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val pad = Spacing.md
@@ -399,10 +403,9 @@ private fun CompactHome(
                         CompactHeader(
                             title = "Libraries",
                             glyph = { tint -> LibrariesGlyph(tint = tint, modifier = Modifier.size(18.dp)) },
-                            // No single "all libraries" screen exists, so "View all" opens the first
-                            // library rather than sitting as a dead affordance. The block below only
-                            // renders when libraries is non-empty, so there is always a first.
-                            onViewAll = { libraries.firstOrNull()?.let(onLibraryClick) },
+                            // "View all" opens the full library list (the Library tab), not the
+                            // first library's contents.
+                            onViewAll = onOpenLibrariesList,
                             modifier = Modifier.padding(horizontal = pad),
                         )
                         LazyRow(

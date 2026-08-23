@@ -459,14 +459,15 @@ private fun CompactLibrary(
             columns = GridCells.Fixed(3),
             state = gridState,
             modifier = Modifier.fillMaxSize().glassSource(),
+            // Minimal edges and gaps so the three posters are as large as possible (#4).
             contentPadding = PaddingValues(
-                start = Spacing.xs,
-                end = Spacing.xs,
-                top = Spacing.xs,
+                start = Spacing.xxs,
+                end = Spacing.xxs,
+                top = Spacing.xxs,
                 bottom = 96.dp,
             ),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
-            verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.xxs),
+            verticalArrangement = Arrangement.spacedBy(Spacing.xs),
         ) {
             if (showCollections) {
                 items(state.collections.size, key = { state.collections[it].ratingKey }) { index ->

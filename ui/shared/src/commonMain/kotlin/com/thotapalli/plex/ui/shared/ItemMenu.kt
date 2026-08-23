@@ -71,17 +71,21 @@ fun ItemMenuHost(
     actions: ItemActions?,
     isContinueWatching: Boolean = false,
     modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
+    content: @Composable (openMenu: () -> Unit) -> Unit,
 ) {
     if (actions == null) {
-        Box(modifier) { content() }
+        Box(modifier) { content({}) }
         return
     }
 
     var expanded by remember { mutableStateOf(false) }
 
+    // The right-click layer stays on the parent (desktop's secondary button is not consumed by the
+    // content's click, so it reaches here). The long-press, however, must live on the very node
+    // that handles the tap — a child clickable swallows a parent's long-press in the main pointer
+    // pass — so it is handed to [content] as [openMenu] and wired into the tile's own clickable.
     Box(modifier = modifier.itemMenuGestures { expanded = true }) {
-        content()
+        content { expanded = true }
         ItemActionsMenu(
             item = item,
             actions = actions,
@@ -161,10 +165,10 @@ fun ItemOverflowIconButton(
 }
 
 /**
- * Right-click and long-press, layered above the content's own click. Right-click reacts only
- * to the secondary mouse button, so it never disturbs the primary tap; long-press is Compose's
- * own [detectTapGestures] long-press, which consumes the gesture when it fires so the content's
- * click is cancelled rather than fired alongside the menu.
+ * Desktop right-click, layered above the content's own click. It reacts only to the secondary
+ * mouse button, which a normal [clickable] does not consume, so it reaches this parent layer
+ * without disturbing the primary tap. Touch long-press is handled on the content's own clickable
+ * instead (see [ItemMenuHost]), because a parent long-press is swallowed by the child's click.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 private fun Modifier.itemMenuGestures(onOpen: () -> Unit): Modifier = this
@@ -178,9 +182,6 @@ private fun Modifier.itemMenuGestures(onOpen: () -> Unit): Modifier = this
                 }
             }
         }
-    }
-    .pointerInput(Unit) {
-        detectTapGestures(onLongPress = { onOpen() })
     }
 
 /**

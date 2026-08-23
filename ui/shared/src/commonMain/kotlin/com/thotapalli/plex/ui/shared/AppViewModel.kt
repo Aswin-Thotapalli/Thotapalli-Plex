@@ -257,7 +257,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             var scanning = emptySet<String>()
             while (isActive) {
                 val activities = container.serverApi.activities(server.scope)
-                _state.update { it.copy(scanActivities = activities) }
+                publishScanActivities(activities)
 
                 val current = activities.mapNotNull { it.librarySectionId }.toSet()
                 val finished = scanning - current
@@ -646,10 +646,61 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         }
 
     /** Scan one library for newly added files. */
-    fun scanLibrary(library: Library) =
+    fun scanLibrary(library: Library) {
+        // Show progress the instant the scan is requested, for ANY library. The server only reports
+        // an activity while a scan is in flight, and a small library (few files) can finish between
+        // 1.5s polls — so a poll-only indicator only ever caught the long TV-show scans. An
+        // optimistic entry bridges that: it shows immediately and until either the real server
+        // activity takes over or a short grace elapses (a scan too fast to be polled). See §5, #3.
+        optimisticScanCycles[library.key] = OPTIMISTIC_SCAN_CYCLES
+        _state.update {
+            it.copy(
+                scanActivities = it.scanActivities.filterNot { a -> a.librarySectionId == library.key } +
+                    syntheticScan(library.key),
+            )
+        }
         serverAction("Scanning “${library.title}”…", "Couldn't start the scan") { s ->
             container.serverApi.scanLibrary(s.scope, library.key)
         }
+    }
+
+    /**
+     * Optimistic scan entries, keyed by library section id, each with the number of remaining poll
+     * cycles before it is assumed finished. Bridges the gap between tapping Scan and the server
+     * reporting the activity, and covers a scan too fast to ever be polled. See [scanLibrary], §5.
+     */
+    private val optimisticScanCycles = mutableMapOf<String, Int>()
+
+    private fun syntheticScan(key: String): ServerActivity {
+        val title = _state.value.libraries.firstOrNull { it.key == key }?.title ?: "Library"
+        return ServerActivity(
+            type = "library.optimistic",
+            title = "Scanning “$title”",
+            subtitle = "Starting…",
+            progress = 0f,
+            librarySectionId = key,
+        )
+    }
+
+    /**
+     * Merges the server's real scan activities with the optimistic ones and publishes the union as
+     * the single scan-indicator source. A real activity always wins over its optimistic placeholder;
+     * an optimistic entry drops when its grace runs out (the scan finished too fast to be polled).
+     */
+    private fun publishScanActivities(real: List<ServerActivity>) {
+        val realKeys = real.mapNotNull { it.librarySectionId }.toSet()
+        val next = optimisticScanCycles.mapNotNull { (key, cycles) ->
+            when {
+                key in realKeys -> null   // the real activity is showing now; drop the placeholder
+                cycles <= 1 -> null       // grace elapsed: treat a too-fast scan as finished
+                else -> key to (cycles - 1)
+            }
+        }.toMap()
+        optimisticScanCycles.clear()
+        optimisticScanCycles.putAll(next)
+        val synthetic = optimisticScanCycles.keys.map { syntheticScan(it) }
+        _state.update { it.copy(scanActivities = real + synthetic) }
+    }
 
     /** Permanently delete an item's media from the server. Irreversible; confirmed in the UI first. */
     fun deleteItem(item: MediaItem) {
@@ -1082,6 +1133,10 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
 
         /** How often the live scan-progress poll asks the server for its running jobs. */
         const val SCAN_POLL_INTERVAL_MS = 1500L
+
+        /** Poll cycles an optimistic scan entry survives without a real activity before it is
+         *  assumed finished (§5, #3). 8 × 1.5s ≈ 12s of "Scanning…" feedback for a fast scan. */
+        const val OPTIMISTIC_SCAN_CYCLES = 8
     }
 }
 

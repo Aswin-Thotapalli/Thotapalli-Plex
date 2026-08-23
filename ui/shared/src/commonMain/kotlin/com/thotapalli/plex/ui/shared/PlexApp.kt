@@ -291,8 +291,9 @@ private fun ReadyContent(
                 onScanLibrary = viewModel::scanLibrary,
                 onBack = viewModel::back,
                 itemActions = itemActions,
-                scanActivity = state.scanActivities
-                    .firstOrNull { it.librarySectionId == state.library.library?.key },
+                // The scan indicator is the single global overlay (below) now, shown on every screen;
+                // the in-library bar is dropped so a scan never renders twice at once. See §5, #3.
+                scanActivity = null,
                 modifier = bodyModifier.then(topSafe),
             )
 
@@ -349,6 +350,8 @@ private fun ReadyContent(
                 onLibraryClick = { library: Library -> viewModel.openLibrary(library) },
                 onPlay = onPlay,
                 itemActions = itemActions,
+                // "View all" on the Libraries row opens the library list (chooser), not a library.
+                onOpenLibrariesList = { onDestinationChange(Destination.LIBRARY) },
                 modifier = bodyModifier,
             )
         }
@@ -582,18 +585,30 @@ private fun ScanStatusOverlay(
                         modifier = Modifier.weight(1f),
                     )
                     Spacer(Modifier.width(Spacing.sm))
-                    PlexText(text = "$pct%", style = PlexTheme.type.label, colour = colours.accent, maxLines = 1)
+                    if (activity.progress > 0f) {
+                        PlexText(text = "$pct%", style = PlexTheme.type.label, colour = colours.accent, maxLines = 1)
+                    }
                 }
                 val step = activity.subtitle
                 if (!step.isNullOrBlank()) {
                     PlexText(text = step, style = PlexTheme.type.caption, colour = colours.textSecondary, maxLines = 1)
                 }
-                LinearProgressIndicator(
-                    progress = { activity.progress.coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth().height(3.dp).clip(Radius.pill),
-                    color = colours.accent,
-                    trackColor = colours.surface,
-                )
+                // A scan that has only just started (or an optimistic placeholder) reports no
+                // progress yet, so show an indeterminate sweep rather than a bar stuck at 0%.
+                if (activity.progress > 0f) {
+                    LinearProgressIndicator(
+                        progress = { activity.progress.coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth().height(3.dp).clip(Radius.pill),
+                        color = colours.accent,
+                        trackColor = colours.surface,
+                    )
+                } else {
+                    LinearProgressIndicator(
+                        modifier = Modifier.fillMaxWidth().height(3.dp).clip(Radius.pill),
+                        color = colours.accent,
+                        trackColor = colours.surface,
+                    )
+                }
             }
         }
     }

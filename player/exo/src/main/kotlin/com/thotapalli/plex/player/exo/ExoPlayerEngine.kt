@@ -18,6 +18,7 @@ import androidx.media3.common.text.CueGroup
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.util.ExperimentalApi
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
@@ -265,9 +266,15 @@ class ExoPlayerEngine(
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !source.subtitlesOnByDefault)
             .build()
 
-        val dataSourceFactory = DefaultHttpDataSource.Factory()
+        val httpFactory = DefaultHttpDataSource.Factory()
             .setDefaultRequestProperties(source.headers)
             .setAllowCrossProtocolRedirects(true)
+
+        // A downloaded item plays from a local file:// URI, while streaming uses http(s). Wrapping
+        // the HTTP factory in DefaultDataSource routes file/content/asset URIs to the right local
+        // source and everything else to HTTP, so one factory serves both. The HTTP factory alone
+        // cannot open a local file, which is what broke playing a download (§11, #1).
+        val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
 
         player.setMediaSource(
             DefaultMediaSourceFactory(context)

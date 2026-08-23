@@ -1,8 +1,10 @@
 package com.thotapalli.plex.ui.shared
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -37,11 +39,17 @@ import com.thotapalli.plex.ui.shared.motion.rememberHaptics
  * remote user gets, without disturbing the keyboard focus model. Signature is unchanged, so
  * every existing call site keeps working; the hover behaviour is entirely internal.
  */
+@OptIn(ExperimentalFoundationApi::class)
 fun Modifier.plexFocusable(
     shape: RoundedCornerShape,
     enabled: Boolean = true,
     scaleOnFocus: Boolean = true,
     onClick: (() -> Unit)? = null,
+    /** A long-press (touch) on the same node that handles the click, so a poster's press-and-hold
+     *  opens its menu. Folded into the click's own [combinedClickable] rather than a separate parent
+     *  gesture layer, which a child clickable would swallow (that was the "long press does nothing"
+     *  bug). See CLAUDE.md section 5. */
+    onLongClick: (() -> Unit)? = null,
 ): Modifier = composed {
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
@@ -84,8 +92,16 @@ fun Modifier.plexFocusable(
         )
         .hoverable(interactionSource = interactionSource, enabled = enabled)
         .then(
-            if (onClick != null) {
-                Modifier.clickable(
+            when {
+                onClick != null && onLongClick != null -> Modifier.combinedClickable(
+                    interactionSource = interactionSource,
+                    indication = null,
+                    enabled = enabled,
+                    onClick = { haptics.press(); onClick() },
+                    onLongClick = { haptics.press(); onLongClick() },
+                )
+
+                onClick != null -> Modifier.clickable(
                     interactionSource = interactionSource,
                     // The focus ring above is the whole indication. A Material ripple on
                     // top of poster artwork reads as a smudge.
@@ -93,8 +109,8 @@ fun Modifier.plexFocusable(
                     enabled = enabled,
                     onClick = { haptics.press(); onClick() },
                 )
-            } else {
-                Modifier.focusable(enabled = enabled, interactionSource = interactionSource)
+
+                else -> Modifier.focusable(enabled = enabled, interactionSource = interactionSource)
             },
         )
 }

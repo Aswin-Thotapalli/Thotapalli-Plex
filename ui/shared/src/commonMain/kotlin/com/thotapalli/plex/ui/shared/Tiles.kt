@@ -82,10 +82,15 @@ fun PosterTile(
         actions = actions,
         isContinueWatching = isContinueWatching,
         modifier = modifier,
-    ) {
+    ) { openMenu ->
     Column(
         modifier = Modifier
-            .plexFocusable(shape = PosterShape, onClick = onClick)
+            .plexFocusable(
+                shape = PosterShape,
+                onClick = onClick,
+                // Press-and-hold opens the action menu on touch (§5). Only when actions exist.
+                onLongClick = if (actions != null) openMenu else null,
+            )
             .padding(Spacing.xxs),
     ) {
         Box(
@@ -255,10 +260,14 @@ fun WideProgressTile(
         actions = actions,
         isContinueWatching = isContinueWatching,
         modifier = modifier,
-    ) {
+    ) { openMenu ->
     Column(
         modifier = Modifier
-            .plexFocusable(shape = Radius.card, onClick = onClick)
+            .plexFocusable(
+                shape = Radius.card,
+                onClick = onClick,
+                onLongClick = if (actions != null) openMenu else null,
+            )
             .padding(Spacing.xxs),
     ) {
         Box(
@@ -697,11 +706,16 @@ fun EpisodeRow(
     val play = onClick ?: onPlay
     val select = onClick ?: onSelect
 
-    ItemMenuHost(item = episode, actions = actions, modifier = modifier) {
+    ItemMenuHost(item = episode, actions = actions, modifier = modifier) { openMenu ->
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .plexFocusable(shape = Radius.card, onClick = select, scaleOnFocus = false)
+            .plexFocusable(
+                shape = Radius.card,
+                onClick = select,
+                scaleOnFocus = false,
+                onLongClick = if (actions != null) openMenu else null,
+            )
             .clip(Radius.card)
             .background(if (selected) colours.surfaceElevated else Color.Transparent)
             .padding(Spacing.xs),
