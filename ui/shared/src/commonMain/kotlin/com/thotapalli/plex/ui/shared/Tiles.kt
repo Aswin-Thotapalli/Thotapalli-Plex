@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,9 +40,15 @@ import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
 
+/** Poster tiles round to 12dp in the refreshed look — a hair softer than the shared 10dp token. */
+private val PosterShape = RoundedCornerShape(12.dp)
+
 /**
- * A poster tile: 2:3 artwork, title beneath, and a progress bar only when the item is part
- * way through. See CLAUDE.md section 12.
+ * A poster tile: 2:3 artwork rounded to 12dp with a soft drop shadow. By default a title and a
+ * secondary line sit beneath it (the Library grid and Search rows use this), and a watched pill
+ * marks finished titles. Passing [showCaption] `false` gives the art-only variant the Home rails
+ * use, where the title lives in the item's own detail rather than under every tile. See
+ * CLAUDE.md section 12.
  */
 @Composable
 fun PosterTile(
@@ -51,6 +58,7 @@ fun PosterTile(
     modifier: Modifier = Modifier,
     actions: ItemActions? = null,
     isContinueWatching: Boolean = false,
+    showCaption: Boolean = true,
 ) {
     val colours = PlexTheme.colours
 
@@ -62,22 +70,22 @@ fun PosterTile(
     ) {
     Column(
         modifier = Modifier
-            .plexFocusable(shape = Radius.poster, onClick = onClick)
+            .plexFocusable(shape = PosterShape, onClick = onClick)
             .padding(Spacing.xxs),
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(Layout.POSTER_ASPECT_RATIO)
-                // A soft drop shadow lifts the poster off the near-black ground so the wall
-                // of tiles reads as physical cards rather than a flat collage.
+                // A soft drop shadow lifts the poster off the ground so the wall of tiles reads
+                // as physical cards rather than a flat collage.
                 .shadow(
                     elevation = Elevation.tile,
-                    shape = Radius.poster,
+                    shape = PosterShape,
                     ambientColor = colours.elevationShadow,
                     spotColor = colours.elevationShadow,
                 )
-                .clip(Radius.poster),
+                .clip(PosterShape),
         ) {
             Artwork(
                 url = artworkUrl,
@@ -102,23 +110,25 @@ fun PosterTile(
             }
 
             // A hairline lit lip around the card, drawn last so it sits above the artwork and
-            // gives the poster a crisp edge against the near-black ground.
-            Box(Modifier.fillMaxSize().border(1.dp, colours.glassRim, Radius.poster))
+            // gives the poster a crisp edge against the ground.
+            Box(Modifier.fillMaxSize().border(1.dp, colours.border, PosterShape))
         }
 
-        Spacer(Modifier.height(Spacing.xs))
+        if (showCaption) {
+            Spacer(Modifier.height(Spacing.xs))
 
-        // The title always occupies two lines and the subtitle always one, whether or not the
-        // text fills them. Every tile's caption block is therefore the same height, so a wrapped
-        // two-line title can never shove the row beneath it out of alignment.
-        PlexText(text = item.title, style = PlexTheme.type.label, minLines = 2, maxLines = 2)
-        PlexText(
-            text = secondaryLine(item) ?: " ",
-            style = PlexTheme.type.caption,
-            colour = colours.textSecondary,
-            minLines = 1,
-            maxLines = 1,
-        )
+            // The title always occupies two lines and the subtitle always one, whether or not the
+            // text fills them. Every tile's caption block is therefore the same height, so a wrapped
+            // two-line title can never shove the row beneath it out of alignment.
+            PlexText(text = item.title, style = PlexTheme.type.label, minLines = 2, maxLines = 2)
+            PlexText(
+                text = secondaryLine(item) ?: " ",
+                style = PlexTheme.type.caption,
+                colour = colours.textSecondary,
+                minLines = 1,
+                maxLines = 1,
+            )
+        }
     }
     }
 }
@@ -194,8 +204,10 @@ fun CollectionTile(
 }
 
 /**
- * The wide progress tile used by the Continue Watching row: 16:9 artwork, a scrim, the
- * title over it and the resume position beneath. See CLAUDE.md section 14.
+ * The wide progress tile used by the Continue Watching rail: 16:9 artwork with a dark "Xm left"
+ * badge in the top-right corner and a thin amber resume bar along the bottom edge of the art, then
+ * the title and a compact subtitle ("Movie" or "S2 · E7") beneath the card. See CLAUDE.md
+ * section 14.
  */
 @Composable
 fun WideProgressTile(
@@ -238,61 +250,65 @@ fun WideProgressTile(
                 modifier = Modifier.fillMaxSize(),
             )
 
-            // A stronger, multi-stop bottom scrim so the title and its metadata sit on a
-            // legible bed of shadow over any artwork, the way a streaming rail treats its
-            // featured tiles. Always dark tones here, since the text over it is always light.
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            0.30f to Color.Transparent,
-                            0.68f to Color(0x99000000),
-                            1f to Color(0xF2000000),
-                        ),
-                    ),
+            // A dark pill in the top-right corner naming how much is left, the way a streaming
+            // rail badges an in-progress tile. Always dark tones, since its text is always light.
+            RemainingBadge(
+                item = item,
+                modifier = Modifier.align(Alignment.TopEnd).padding(Spacing.xs),
             )
 
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(start = Spacing.sm, end = Spacing.sm, bottom = Spacing.sm, top = Spacing.sm)
-                    .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                PlexText(
-                    text = primaryLine(item),
-                    style = PlexTheme.type.label,
-                    colour = Color(0xFFF2F3F5),
-                    maxLines = 1,
-                )
-                secondaryLine(item)?.let {
-                    PlexText(
-                        text = it,
-                        style = PlexTheme.type.caption,
-                        colour = Color(0xFFC8CDD6),
-                        maxLines = 1,
-                    )
-                }
-                Spacer(Modifier.height(Spacing.xxs))
+            // The resume bar rides the very bottom edge of the art, full width, no side inset,
+            // so it reads as a scrubber the title picks up from.
+            if (item.progress > 0f) {
                 ProgressBar(
                     progress = item.progress,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
                 )
             }
 
-            Box(Modifier.fillMaxSize().border(1.dp, colours.glassRim, Radius.card))
+            Box(Modifier.fillMaxSize().border(1.dp, colours.border, Radius.card))
         }
 
         Spacer(Modifier.height(Spacing.xs))
         PlexText(
-            text = remainingLabel(item),
+            text = primaryLine(item),
+            style = PlexTheme.type.label,
+            colour = colours.textPrimary,
+            maxLines = 1,
+        )
+        PlexText(
+            text = wideSubtitle(item),
             style = PlexTheme.type.caption,
             colour = colours.textSecondary,
             maxLines = 1,
         )
     }
     }
+}
+
+/** A compact dark pill reading "Xm left", for the corner of a continue-watching tile. */
+@Composable
+private fun RemainingBadge(item: MediaItem, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .background(Color(0xCC000000), Radius.pill)
+            .padding(horizontal = Spacing.xs, vertical = 2.dp),
+    ) {
+        PlexText(
+            text = remainingLabel(item),
+            style = PlexTheme.type.caption,
+            colour = Color(0xFFF2F3F5),
+            maxLines = 1,
+        )
+    }
+}
+
+/** The line under a continue-watching tile: "Movie", "Series", or an episode's "S2 · E7". */
+private fun wideSubtitle(item: MediaItem): String = when (item) {
+    is Episode -> "S${item.seasonIndex} · E${item.episodeIndex}"
+    is Movie -> "Movie"
+    is Show -> "Series"
+    else -> secondaryLine(item) ?: ""
 }
 
 /**
@@ -574,11 +590,16 @@ fun EpisodeRow(
     }
 }
 
-/** A section header. One accent rule, the title, and nothing else. */
+/**
+ * A section header: a bold title on the left and, optionally, a "View all ›" text button on the
+ * right. Pass [onViewAll] for the common rail case, or a custom [trailing] slot when a header needs
+ * something else on its right. See CLAUDE.md section 14.
+ */
 @Composable
 fun SectionHeader(
     title: String,
     modifier: Modifier = Modifier,
+    onViewAll: (() -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
 ) {
     Row(
@@ -586,17 +607,28 @@ fun SectionHeader(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier
-                    .width(3.dp)
-                    .height(18.dp)
-                    .background(PlexTheme.colours.accent, Radius.pill),
-            )
-            Spacer(Modifier.width(Spacing.xs))
-            PlexText(text = title, style = PlexTheme.type.title)
+        PlexText(text = title, style = PlexTheme.type.title, maxLines = 1)
+        when {
+            trailing != null -> trailing()
+            onViewAll != null -> ViewAllButton(onClick = onViewAll)
         }
-        trailing?.invoke()
+    }
+}
+
+/** The "View all ›" affordance that opens a rail's full library. Focusable like every control. */
+@Composable
+fun ViewAllButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .plexFocusable(shape = Radius.pill, onClick = onClick, scaleOnFocus = false)
+            .padding(horizontal = Spacing.xs, vertical = Spacing.xxs),
+    ) {
+        PlexText(
+            text = "View all ›",
+            style = PlexTheme.type.label,
+            colour = PlexTheme.colours.accent,
+            maxLines = 1,
+        )
     }
 }
 

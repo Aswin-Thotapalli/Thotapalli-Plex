@@ -1,6 +1,7 @@
 package com.thotapalli.plex.ui.shared
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -19,7 +20,6 @@ import com.thotapalli.plex.ui.design.GlassRole
 import com.thotapalli.plex.ui.design.Layout
 import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
-import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
 
 /**
@@ -80,11 +80,11 @@ fun TopBar(
  * A round, focusable icon button sized for the bar, and the floating back control.
  *
  * The back control has to survive being dropped onto the brightest still in a library, so it is
- * never a bare glyph. It is a small sheet of glass carrying the [GlassRole.CHIP] material — the
- * pill-shaped floating-control role whose calibrated tint keeps the glyph legible over bright
- * artwork. In [scrim] mode the glyph is white so a bright still cannot swallow it; in opaque mode
- * (a trailing action on a painted bar) it takes the primary text colour. The press bubble and focus
- * ring ride along through [plexFocusable].
+ * never a bare glyph. It is a solid circular button carrying the [GlassRole.CHIP] material — an
+ * opaque fill with a hairline border that keeps the glyph legible over any artwork. In [scrim] mode
+ * the glyph is white so a bright still cannot swallow it; in opaque mode (a trailing action on a
+ * painted bar) it takes the primary text colour. The press bubble and focus ring ride along through
+ * [plexFocusable].
  */
 @Composable
 fun TopBarIconButton(
@@ -102,11 +102,11 @@ fun TopBarIconButton(
 
     Box(
         modifier = modifier
-            .plexFocusable(shape = Radius.pill, onClick = onClick)
+            .plexFocusable(shape = CircleShape, onClick = onClick)
             .size(touch)
-            // The CHIP role owns the calibrated tint that keeps the glyph legible when this floats
-            // over bright artwork (the old scrim-heavy bed); scrim still drives the glyph colour.
-            .material(GlassRole.CHIP, shape = Radius.pill),
+            // The CHIP role paints a solid circular button — an opaque fill with a hairline border —
+            // that keeps the glyph legible over any artwork; scrim still drives the glyph colour.
+            .material(GlassRole.CHIP, shape = CircleShape),
         contentAlignment = Alignment.Center,
     ) {
         PlexIcon(

@@ -53,21 +53,22 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.thotapalli.plex.core.api.ServerActivity
 import com.thotapalli.plex.core.model.Library
+import com.thotapalli.plex.core.model.LibraryKind
 import com.thotapalli.plex.core.model.MediaItem
 import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
 import com.thotapalli.plex.ui.design.GlassRole
-import com.thotapalli.plex.ui.design.GlassScaffold
 import com.thotapalli.plex.ui.design.SizeClass
 import com.thotapalli.plex.ui.design.ThotapalliTheme
 import com.thotapalli.plex.ui.design.backgroundBrush
-import com.thotapalli.plex.ui.design.glassSource
 import com.thotapalli.plex.ui.shared.player.PlayerScreen
 import com.thotapalli.plex.ui.shared.screens.DetailScreen
 import com.thotapalli.plex.ui.shared.screens.DownloadsScreen
@@ -228,10 +229,9 @@ private fun ReadyContent(
         )
     }
 
-    // A drill-in is anything with somewhere to go back to below a top-level destination.
-    val canGoBack = state.detail != null ||
-        state.library?.openCollection != null ||
-        (state.library != null && destination == Destination.HOME)
+    // Detail carries the floating back control. The library grid now has its own back button in
+    // its header (which also closes an open collection), so it does not use the floating one.
+    val canGoBack = state.detail != null
 
     // The chrome screens (search, downloads, settings, a library grid) open with a title at the
     // very top, so they must clear the status bar and any camera cutout. Home and detail bleed a
@@ -262,6 +262,7 @@ private fun ReadyContent(
                 onUnwatchedOnlyChange = viewModel::setUnwatchedOnly,
                 onCloseCollection = viewModel::closeCollection,
                 onScanLibrary = viewModel::scanLibrary,
+                onBack = viewModel::back,
                 itemActions = itemActions,
                 scanProgress = state.scanActivities
                     .firstOrNull { it.librarySectionId == state.library?.library?.key }
@@ -347,25 +348,14 @@ private fun ReadyContent(
         onDestinationChange(Destination.HOME)
     }
 
-    // One backdrop host publishes the ambient haze state; the body marks itself the glass source
-    // and the navigation frosts it. Compact rides a bottom glass bar with a Libraries sheet; every
-    // wider class — medium, expanded and television alike — gets the persistent left glass rail so
-    // the D-pad has a natural first column and the libraries are always one hop away.
-    GlassScaffold(Modifier.fillMaxSize()) {
+    // The shell sits directly on the solid ground the root paints — no ambient backdrop, no glass
+    // frosting. Compact rides a solid bottom bar with a Libraries sheet; every wider class — medium,
+    // expanded and television alike — gets the persistent left sidebar so the D-pad has a natural
+    // first column and the libraries are always one hop away.
+    Box(Modifier.fillMaxSize()) {
         // Compact keeps its libraries in a sheet whose state is hoisted here, so the sheet overlays
         // the whole screen as a sibling of the nav rather than a child of the bar's column.
         var librariesSheetOpen by remember { mutableStateOf(false) }
-
-        // The shared liquid-glass backdrop: on Android this is Kyant's AGSL layer (real refraction),
-        // on desktop the Haze source. A full-bleed, darkened backdrop of the featured artwork is
-        // marked as that source, so the floating navigation samples real, colourful pixels — the
-        // liquid glass look. The body content is drawn opaque on top; only the nav reveals it.
-        val backdrop = rememberLiquidBackdrop()
-        AmbientBackdrop(
-            server = server,
-            item = state.continueWatching.firstOrNull() ?: state.detail?.item,
-            modifier = Modifier.fillMaxSize().glassSource().liquidBackdropSource(backdrop),
-        )
 
         when (sizeClass.navigation) {
             com.thotapalli.plex.ui.design.NavigationStyle.BOTTOM_BAR -> Column(Modifier.fillMaxSize()) {
@@ -374,7 +364,6 @@ private fun ReadyContent(
                     current = destination,
                     openLibraryKey = openLibraryKey,
                     librariesOpen = librariesSheetOpen,
-                    backdrop = backdrop,
                     onHome = onHome,
                     onSelect = onDestinationChange,
                     onOpenLibraries = { librariesSheetOpen = true },
@@ -388,13 +377,14 @@ private fun ReadyContent(
                     libraries = state.libraries,
                     scanActivities = state.scanActivities,
                     narrow = sizeClass == SizeClass.MEDIUM,
-                    backdrop = backdrop,
+                    accountName = state.homeUser?.title,
                     onHome = onHome,
                     onSelect = onDestinationChange,
                     onOpenLibrary = onOpenLibrary,
                     onScanLibrary = viewModel::scanLibrary,
                     onMoveLibrary = viewModel::moveLibrary,
                     onGrantLibraryAccess = viewModel::grantLibraryAccess,
+                    onOpenProfile = { onDestinationChange(Destination.SETTINGS) },
                 )
                 Box(Modifier.weight(1f)) { bodyWithBack(Modifier) }
             }
@@ -415,10 +405,11 @@ private fun ReadyContent(
 }
 
 /**
- * The persistent left glass rail for medium, expanded and television. A frosted full-height sheet:
- * the four top-level destinations, a divider, then every library the server exposes as a row with a
- * trailing overflow that scans it. The open library is marked in the amber accent. See CLAUDE.md
- * section 13.
+ * The persistent left sidebar for medium, expanded and television. A solid full-height panel (the
+ * [GlassRole.CHROME] material): the four top-level destinations as pill rows, a divider, a LIBRARIES
+ * caption, then every library the server exposes as a row with a trailing overflow that scans it or
+ * grants access. The open library is marked in the amber accent. A live scan read-out and a profile
+ * chip are pinned to the foot. See CLAUDE.md section 13.
  */
 @Composable
 private fun NavigationRail(
@@ -427,29 +418,24 @@ private fun NavigationRail(
     libraries: List<Library>,
     scanActivities: List<ServerActivity>,
     narrow: Boolean,
-    backdrop: LiquidBackdrop,
+    accountName: String?,
     onHome: () -> Unit,
     onSelect: (Destination) -> Unit,
     onOpenLibrary: (Library) -> Unit,
     onScanLibrary: (Library) -> Unit,
     onMoveLibrary: (from: Int, to: Int) -> Unit,
     onGrantLibraryAccess: (email: String, libraryKeys: List<String>) -> Unit,
+    onOpenProfile: () -> Unit,
 ) {
     val colours = PlexTheme.colours
 
     Column(
         modifier = Modifier
-            .width(if (narrow) 176.dp else 236.dp)
+            .width(if (narrow) 200.dp else 248.dp)
             .fillMaxHeight()
-            // The showcase chrome material: on Android Kyant refracts the featured backdrop through
-            // the rail (optical lens + Fresnel edge); on desktop the Haze frost. A rounded right edge
-            // makes it read as a floating pane (Kyant's lens also requires a corner-based shape). The
-            // CHROME role owns the calibrated tint that keeps labels legible over bright artwork.
-            .material(
-                GlassRole.CHROME,
-                RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
-                backdrop,
-            )
+            // A solid side panel: the CHROME material paints an opaque surface fill with a hairline
+            // border, flush to the left edge — the clean, modern look of the reference mockups.
+            .material(GlassRole.CHROME, RectangleShape)
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .padding(vertical = Spacing.md, horizontal = Spacing.sm),
         verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
@@ -470,8 +456,8 @@ private fun NavigationRail(
         )
 
         PlexText(
-            text = "Libraries",
-            style = PlexTheme.type.caption,
+            text = "LIBRARIES",
+            style = PlexTheme.type.caption.copy(letterSpacing = 1.5.sp),
             colour = colours.textSecondary,
             modifier = Modifier.padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
         )
@@ -501,9 +487,84 @@ private fun NavigationRail(
         if (scanActivities.isNotEmpty()) {
             ScanningSection(
                 activities = scanActivities,
-                modifier = Modifier.padding(top = Spacing.xs),
+                modifier = Modifier.padding(vertical = Spacing.xs),
             )
         }
+
+        // The signed-in account, pinned to the foot. Tapping it opens Settings.
+        ProfileChip(
+            name = accountName,
+            onClick = onOpenProfile,
+            modifier = Modifier.padding(top = Spacing.xs),
+        )
+    }
+}
+
+/**
+ * The account chip pinned to the foot of the sidebar: a circular avatar carrying the account's
+ * initial in the accent, the signed-in name and a subtitle, and a trailing chevron. Tapping it
+ * opens Settings. A subtle [GlassRole.CARD] surface so it reads as a distinct, tappable footer.
+ */
+@Composable
+private fun ProfileChip(
+    name: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colours = PlexTheme.colours
+    val display = name?.takeIf { it.isNotBlank() } ?: "Account"
+    val initial = display.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "A"
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .plexFocusable(shape = Radius.card, onClick = onClick, scaleOnFocus = false)
+            .material(GlassRole.CARD, Radius.card)
+            .padding(horizontal = Spacing.sm, vertical = Spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(Radius.pill)
+                .background(colours.accent.copy(alpha = 0.16f), Radius.pill),
+            contentAlignment = Alignment.Center,
+        ) {
+            PlexText(
+                text = initial,
+                style = PlexTheme.type.label,
+                colour = colours.accent,
+                maxLines = 1,
+            )
+        }
+        Column(Modifier.weight(1f)) {
+            PlexText(
+                text = display,
+                style = PlexTheme.type.label,
+                colour = colours.textPrimary,
+                maxLines = 1,
+            )
+            PlexText(
+                text = "Signed in",
+                style = PlexTheme.type.caption,
+                colour = colours.textSecondary,
+                maxLines = 1,
+            )
+        }
+        ChevronGlyph(tint = colours.textSecondary)
+    }
+}
+
+/** A small right-pointing chevron, drawn to match the hand-drawn icon set. */
+@Composable
+private fun ChevronGlyph(tint: Color) {
+    Canvas(Modifier.size(16.dp)) {
+        val w = size.width
+        val h = size.height
+        val sw = w * 0.12f
+        drawLine(tint, Offset(w * 0.40f, h * 0.28f), Offset(w * 0.64f, h * 0.5f), sw, StrokeCap.Round)
+        drawLine(tint, Offset(w * 0.64f, h * 0.5f), Offset(w * 0.40f, h * 0.72f), sw, StrokeCap.Round)
     }
 }
 
@@ -560,38 +621,10 @@ private fun ScanningSection(
 }
 
 /**
- * The full-bleed field the whole shell floats on and the single Haze source the navigation frosts.
- * The featured artwork under a heavy scrim, so the frosted nav carries the artwork's colour (real
- * liquid glass) while staying a dark, stable bed for the labels; a plain ground when nothing plays.
+ * A top-level destination in the sidebar: a leading icon and a label. Selected draws a rounded
+ * accent pill and tints both icon and label amber; unselected keeps the icon quiet (secondary) and
+ * the label at primary strength so every destination stays plainly legible.
  */
-@Composable
-private fun AmbientBackdrop(
-    server: ActiveServer,
-    item: MediaItem?,
-    modifier: Modifier = Modifier,
-) {
-    val colours = PlexTheme.colours
-    Box(modifier.background(PlexTheme.colours.backgroundBrush())) {
-        val art = item?.let {
-            server.urls.artwork(
-                it.artPath ?: it.thumbPath,
-                ArtworkSize.BACKDROP_WIDTH,
-                ArtworkSize.BACKDROP_HEIGHT,
-            )
-        }
-        if (art != null) {
-            Artwork(
-                url = art,
-                contentDescription = null,
-                fallbackTitle = "",
-                modifier = Modifier.fillMaxSize(),
-            )
-            Box(Modifier.fillMaxSize().background(colours.background.copy(alpha = 0.42f)))
-        }
-    }
-}
-
-/** A top-level destination in the rail: icon, label, and an accent pill when it is the one open. */
 @Composable
 private fun RailNavRow(
     icon: PlexIconKind,
@@ -600,24 +633,25 @@ private fun RailNavRow(
     onClick: () -> Unit,
 ) {
     val colours = PlexTheme.colours
-    // Unselected chrome reads at near-primary strength so every destination is plainly legible;
-    // the amber selected state is what stands out, not a fight to read the rest.
-    val tint = if (selected) colours.accent else colours.textPrimary.copy(alpha = 0.82f)
+    val rowShape = RoundedCornerShape(14.dp)
+    val iconTint = if (selected) colours.accent else colours.textSecondary
+    val labelTint = if (selected) colours.accent else colours.textPrimary
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .plexFocusable(shape = Radius.glassSmall, onClick = onClick, scaleOnFocus = false)
-            .clip(Radius.glassSmall)
+            .heightIn(min = 48.dp)
+            .plexFocusable(shape = rowShape, onClick = onClick, scaleOnFocus = false)
+            .clip(rowShape)
             .background(
-                if (selected) colours.accent.copy(alpha = 0.16f) else Color.Transparent,
-                Radius.glassSmall,
+                if (selected) colours.accent.copy(alpha = 0.14f) else Color.Transparent,
+                rowShape,
             )
-            .padding(horizontal = Spacing.sm, vertical = Spacing.sm),
+            .padding(horizontal = Spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
-        PlexIcon(kind = icon, tint = tint, size = 22.dp)
-        PlexText(text = label, style = PlexTheme.type.label, colour = tint, maxLines = 1)
+        PlexIcon(kind = icon, tint = iconTint, size = 24.dp)
+        PlexText(text = label, style = PlexTheme.type.label, colour = labelTint, maxLines = 1)
     }
 }
 
@@ -640,6 +674,7 @@ private fun LibraryNavRow(
     onGrantAccess: (email: String, libraryKeys: List<String>) -> Unit,
 ) {
     val colours = PlexTheme.colours
+    val rowShape = RoundedCornerShape(14.dp)
     val tint = if (selected) colours.accent else colours.textPrimary
     var menuOpen by remember { mutableStateOf(false) }
     var grantOpen by remember { mutableStateOf(false) }
@@ -647,23 +682,30 @@ private fun LibraryNavRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(Radius.glassSmall)
+            .clip(rowShape)
             .background(
-                if (selected) colours.accent.copy(alpha = 0.16f) else Color.Transparent,
-                Radius.glassSmall,
+                if (selected) colours.accent.copy(alpha = 0.14f) else Color.Transparent,
+                rowShape,
             ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PlexText(
-            text = library.title,
-            style = PlexTheme.type.label,
-            colour = tint,
-            maxLines = 1,
+        Row(
             modifier = Modifier
                 .weight(1f)
-                .plexFocusable(shape = Radius.glassSmall, onClick = onClick, scaleOnFocus = false)
+                .plexFocusable(shape = rowShape, onClick = onClick, scaleOnFocus = false)
                 .padding(start = Spacing.sm, top = Spacing.sm, bottom = Spacing.sm, end = Spacing.xs),
-        )
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+        ) {
+            LibraryKindGlyph(kind = library.kind, tint = tint)
+            PlexText(
+                text = library.title,
+                style = PlexTheme.type.label,
+                colour = tint,
+                maxLines = 1,
+                modifier = Modifier.weight(1f),
+            )
+        }
         ReorderButton(up = true, enabled = canMoveUp, onClick = onMoveUp)
         ReorderButton(up = false, enabled = canMoveDown, onClick = onMoveDown)
         Box {
@@ -862,7 +904,6 @@ private fun NavigationBottomBar(
     current: Destination,
     openLibraryKey: String?,
     librariesOpen: Boolean,
-    backdrop: LiquidBackdrop,
     onHome: () -> Unit,
     onSelect: (Destination) -> Unit,
     onOpenLibraries: () -> Unit,
@@ -870,13 +911,11 @@ private fun NavigationBottomBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            // Same chrome material as the rail: Kyant refraction on Android, Haze frost on desktop,
-            // translucent so the content beneath stays visible under the bar. Rounded top edge for a
-            // floating pane (and Kyant's lens needs a corner-based shape).
+            // The same solid chrome material as the sidebar, with a rounded top edge so the bar reads
+            // as a distinct panel lifting off the ground.
             .material(
                 GlassRole.CHROME,
-                RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                backdrop,
+                RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
             )
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .padding(vertical = Spacing.xs, horizontal = Spacing.sm),
@@ -1122,6 +1161,69 @@ private fun OverflowDots(tint: Color) {
         val r = size.minDimension * 0.09f
         listOf(0.26f, 0.5f, 0.74f).forEach { fy ->
             drawCircle(tint, r, Offset(cx, size.height * fy))
+        }
+    }
+}
+
+/**
+ * A small glyph marking a library's kind: a film frame for a movie library, a screen for a show
+ * library, a plain rounded tile otherwise. The icon set does not draw these, so they are hand-drawn
+ * to match its weight.
+ */
+@Composable
+private fun LibraryKindGlyph(kind: LibraryKind, tint: Color) {
+    Canvas(Modifier.size(18.dp)) {
+        val sw = size.width * 0.09f
+        when (kind) {
+            LibraryKind.MOVIE -> {
+                // A film frame: a rounded rectangle with a row of sprocket holes down each side.
+                val left = size.width * 0.2f
+                val right = size.width * 0.8f
+                val top = size.height * 0.18f
+                val bottom = size.height * 0.82f
+                drawRoundRect(
+                    color = tint,
+                    topLeft = Offset(left, top),
+                    size = androidx.compose.ui.geometry.Size(right - left, bottom - top),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(sw, sw),
+                    style = Stroke(width = sw),
+                )
+                val holeR = size.width * 0.05f
+                listOf(0.34f, 0.5f, 0.66f).forEach { fy ->
+                    drawCircle(tint, holeR, Offset(left + sw * 1.6f, size.height * fy))
+                    drawCircle(tint, holeR, Offset(right - sw * 1.6f, size.height * fy))
+                }
+            }
+            LibraryKind.SHOW -> {
+                // A screen: a rounded rectangle over a short stand.
+                val left = size.width * 0.16f
+                val right = size.width * 0.84f
+                val top = size.height * 0.24f
+                val bottom = size.height * 0.66f
+                drawRoundRect(
+                    color = tint,
+                    topLeft = Offset(left, top),
+                    size = androidx.compose.ui.geometry.Size(right - left, bottom - top),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(sw, sw),
+                    style = Stroke(width = sw),
+                )
+                drawLine(
+                    tint,
+                    Offset(size.width * 0.36f, size.height * 0.8f),
+                    Offset(size.width * 0.64f, size.height * 0.8f),
+                    sw,
+                    StrokeCap.Round,
+                )
+            }
+            LibraryKind.UNSUPPORTED -> {
+                drawRoundRect(
+                    color = tint,
+                    topLeft = Offset(size.width * 0.22f, size.height * 0.22f),
+                    size = androidx.compose.ui.geometry.Size(size.width * 0.56f, size.height * 0.56f),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(sw, sw),
+                    style = Stroke(width = sw),
+                )
+            }
         }
     }
 }

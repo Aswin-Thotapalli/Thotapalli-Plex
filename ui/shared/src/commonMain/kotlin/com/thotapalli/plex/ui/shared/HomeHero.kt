@@ -1,6 +1,7 @@
 package com.thotapalli.plex.ui.shared
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -23,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -31,6 +35,7 @@ import com.thotapalli.plex.core.model.MediaItem
 import com.thotapalli.plex.core.model.progress
 import com.thotapalli.plex.ui.shared.motion.kenBurns
 import com.thotapalli.plex.ui.shared.material.cinematicTexture
+import com.thotapalli.plex.ui.design.GlassRole
 import com.thotapalli.plex.ui.design.Motion
 import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
@@ -38,20 +43,24 @@ import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.SizeClass
 import com.thotapalli.plex.ui.design.Spacing
 
+/** The rounded card corner of the hero — softer than an ordinary card, per the reference mockup. */
+private val HeroShape = RoundedCornerShape(24.dp)
+
 /**
- * The featured hero at the top of Home: the single item most worth resuming, shown large.
+ * The featured hero at the top of Home: the single item most worth resuming, shown large in a big
+ * rounded card.
  *
  * A full-bleed backdrop breathing under a slow ken-burns pan and a faint film grain, wrapped in a
- * firm cinematic scrim so display-size text and two buttons read over any still. The title sits in
- * display type over a metadata line and the resume bar, and the two actions — a lit amber Play (or
- * Resume) and a glass Details — carry the app's own button idiom, each answering a press with the
- * same springy give as every control in the redesign.
+ * left-to-right scrim — dark at the left where the caption sits, clearing toward the right so the
+ * art reads. The title sits in display type over a metadata line and the resume bar, and the
+ * actions carry the app's own button idiom: a lit amber Resume, a glass Details, and an optional
+ * circular add control. Small carousel dots in the corner count the continue-watching queue, the
+ * first lit for this featured title.
  *
  * The whole caption block rises in on a snappy spring the first time the hero appears, so Home
- * arrives as motion rather than a hard cut. The card itself is not a click target; its two buttons
- * are the focusable elements, which keeps television navigation unambiguous. Nothing here is
- * discovery: it is only ever the top Continue Watching entry the caller hands it. See CLAUDE.md
- * section 14.
+ * arrives as motion rather than a hard cut. The card itself is not a click target; its buttons are
+ * the focusable elements, which keeps television navigation unambiguous. Nothing here is discovery:
+ * it is only ever the top Continue Watching entry the caller hands it. See CLAUDE.md section 14.
  */
 @Composable
 fun HomeHero(
@@ -61,6 +70,9 @@ fun HomeHero(
     onDetails: () -> Unit,
     modifier: Modifier = Modifier,
     viewportHeight: Dp? = null,
+    dotCount: Int = 0,
+    activeDot: Int = 0,
+    onAdd: (() -> Unit)? = null,
 ) {
     val colours = PlexTheme.colours
     val resuming = item.viewOffsetMs > 0L
@@ -71,11 +83,11 @@ fun HomeHero(
             .height(heroHeight(PlexTheme.sizeClass, viewportHeight))
             .shadow(
                 elevation = 16.dp,
-                shape = Radius.card,
+                shape = HeroShape,
                 ambientColor = colours.elevationShadow,
                 spotColor = colours.elevationShadow,
             )
-            .clip(Radius.card),
+            .clip(HeroShape),
     ) {
         Artwork(
             url = artworkUrl,
@@ -91,16 +103,27 @@ fun HomeHero(
         // A faint film grain and vignette so the backdrop reads as cinema rather than a photo.
         Box(Modifier.fillMaxSize().cinematicTexture())
 
-        // A cinematic bed: dark up from the bottom, so display-size white text and two buttons
-        // sit on a legible ground over any backdrop.
+        // A left-to-right bed: opaque-ish where the left-aligned caption sits, clearing toward the
+        // right so display-size white text stays legible over any still without dimming the art.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.horizontalGradient(
+                        0.0f to Color(0xE6000000),
+                        0.45f to Color(0x80000000),
+                        1.0f to Color.Transparent,
+                    ),
+                ),
+        )
+        // A shallow foot gradient so the caption's baseline never floats on a bright lower edge.
         Box(
             Modifier
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        0.20f to Color.Transparent,
-                        0.62f to Color(0x8C000000),
-                        1.0f to Color(0xF2000000),
+                        0.55f to Color.Transparent,
+                        1.0f to Color(0xB3000000),
                     ),
                 ),
         )
@@ -119,17 +142,29 @@ fun HomeHero(
                     resuming = resuming,
                     onPlay = onPlay,
                     onDetails = onDetails,
+                    onAdd = onAdd,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
+        }
+
+        // Carousel dots in the corner: one per continue-watching item, the featured one lit.
+        if (dotCount > 1) {
+            CarouselDots(
+                count = dotCount,
+                active = activeDot,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(Spacing.md),
+            )
         }
     }
 }
 
 /**
- * The title, metadata, resume bar and the two actions, riding in together on a snappy spring the
- * first time the hero mounts. Held as its own composable so the entrance drives a single graphics
- * layer over the whole block rather than animating each line.
+ * The title, metadata, resume bar and the actions, riding in together on a snappy spring the first
+ * time the hero mounts. Held as its own composable so the entrance drives a single graphics layer
+ * over the whole block rather than animating each line.
  */
 @Composable
 private fun HeroCaption(
@@ -137,6 +172,7 @@ private fun HeroCaption(
     resuming: Boolean,
     onPlay: () -> Unit,
     onDetails: () -> Unit,
+    onAdd: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     var appeared by remember { mutableStateOf(false) }
@@ -182,8 +218,11 @@ private fun HeroCaption(
 
         Spacer(Modifier.height(Spacing.sm))
 
-        // Two essential actions, given room to breathe so neither crowds the other.
-        Row(horizontalArrangement = Arrangement.spacedBy(Spacing.md)) {
+        // The essential actions, given room to breathe so none crowds the other.
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             PrimaryButton(
                 label = if (resuming) "Resume" else "Play",
                 leadingIcon = PlexIconKind.PLAY,
@@ -193,6 +232,49 @@ private fun HeroCaption(
                 label = "Details",
                 leadingIcon = PlexIconKind.INFO,
                 onClick = onDetails,
+            )
+            if (onAdd != null) AddButton(onClick = onAdd)
+        }
+    }
+}
+
+/** A small circular add control beside the hero's primary actions. */
+@Composable
+private fun AddButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val colours = PlexTheme.colours
+    val size = if (PlexTheme.sizeClass.isTelevision) 56.dp else 44.dp
+    Box(
+        modifier = modifier
+            .plexFocusable(shape = Radius.pill, onClick = onClick)
+            .size(size)
+            .material(GlassRole.SECONDARY, shape = Radius.pill),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(size * 0.42f)) {
+            val stroke = this.size.minDimension * 0.12f
+            val cx = this.size.width / 2f
+            val cy = this.size.height / 2f
+            drawLine(colours.textPrimary, androidx.compose.ui.geometry.Offset(cx, 0f), androidx.compose.ui.geometry.Offset(cx, this.size.height), stroke, StrokeCap.Round)
+            drawLine(colours.textPrimary, androidx.compose.ui.geometry.Offset(0f, cy), androidx.compose.ui.geometry.Offset(this.size.width, cy), stroke, StrokeCap.Round)
+        }
+    }
+}
+
+/** Static carousel dots: the active one is an amber pill, the rest quiet dots. */
+@Composable
+private fun CarouselDots(count: Int, active: Int, modifier: Modifier = Modifier) {
+    val colours = PlexTheme.colours
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xxs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        repeat(count) { i ->
+            val activeDot = i == active
+            Box(
+                (if (activeDot) Modifier.size(width = 18.dp, height = 6.dp) else Modifier.size(6.dp))
+                    .clip(Radius.pill)
+                    .background(if (activeDot) colours.accent else Color(0x80FFFFFF)),
             )
         }
     }
@@ -229,7 +311,7 @@ private fun heroHeight(sizeClass: SizeClass, viewportHeight: Dp?): Dp {
 }
 
 /** The hero may occupy at most this share of the viewport, leaving the rails below it in view. */
-private const val HERO_MAX_VIEWPORT_FRACTION = 0.6f
+private const val HERO_MAX_VIEWPORT_FRACTION = 0.55f
 
 /** On wide screens the resume bar need not run the whole width to read. */
 private fun heroProgressWidthFraction(sizeClass: SizeClass): Float =
