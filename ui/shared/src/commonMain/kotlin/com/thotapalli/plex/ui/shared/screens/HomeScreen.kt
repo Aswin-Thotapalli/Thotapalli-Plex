@@ -53,6 +53,7 @@ import com.thotapalli.plex.ui.design.glassSource
 import com.thotapalli.plex.ui.shared.ActiveServer
 import com.thotapalli.plex.ui.shared.Artwork
 import com.thotapalli.plex.ui.shared.ArtworkSize
+import com.thotapalli.plex.ui.shared.isDesktopPlatform
 import com.thotapalli.plex.ui.shared.HomeHero
 import com.thotapalli.plex.ui.shared.ItemActions
 import com.thotapalli.plex.ui.shared.LibraryChipCard
@@ -653,10 +654,10 @@ private fun TvHome(
                 ),
                 contentDescription = primaryLine(featured),
                 fallbackTitle = primaryLine(featured),
-                modifier = Modifier.fillMaxSize().kenBurns(),
+                modifier = Modifier.fillMaxSize().kenBurns(enabled = !isDesktopPlatform()),
                 alignment = Alignment.TopCenter,
             )
-            Box(Modifier.fillMaxSize().cinematicTexture())
+            Box(Modifier.fillMaxSize().cinematicTexture(animated = !isDesktopPlatform()))
             // Left bed: dark where the caption sits, clearing toward the right so the art reads.
             Box(
                 Modifier.fillMaxSize().background(

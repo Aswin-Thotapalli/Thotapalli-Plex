@@ -64,11 +64,11 @@ fun CinematicBackdrop(
             url = url,
             contentDescription = title,
             fallbackTitle = title,
-            modifier = Modifier.fillMaxSize().kenBurns().gyroParallax(),
+            modifier = Modifier.fillMaxSize().kenBurns(enabled = !isDesktopPlatform()).gyroParallax(),
         )
 
         // 2. Grain and vignette, for the cinema texture.
-        Box(Modifier.fillMaxSize().cinematicTexture())
+        Box(Modifier.fillMaxSize().cinematicTexture(animated = !isDesktopPlatform()))
 
         // 3. The vertical fade into the page. Clear across the top so the art reads at full
         // strength, then a firm ramp onto the background token so the image melts into the screen.

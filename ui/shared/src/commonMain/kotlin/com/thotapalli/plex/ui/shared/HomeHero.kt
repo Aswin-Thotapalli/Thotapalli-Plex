@@ -95,14 +95,14 @@ fun HomeHero(
             contentDescription = primaryLine(item),
             fallbackTitle = primaryLine(item),
             // A slow, endless pan and zoom so a still backdrop breathes like a title sequence.
-            modifier = Modifier.fillMaxSize().kenBurns(),
+            modifier = Modifier.fillMaxSize().kenBurns(enabled = !isDesktopPlatform()),
             // Bias the crop toward the top so a wide 16:9 backdrop keeps the subjects' faces
             // in frame rather than cropping their heads off at the top edge.
             alignment = Alignment.TopCenter,
         )
 
         // A faint film grain and vignette so the backdrop reads as cinema rather than a photo.
-        Box(Modifier.fillMaxSize().cinematicTexture())
+        Box(Modifier.fillMaxSize().cinematicTexture(animated = !isDesktopPlatform()))
 
         // A left-to-right bed: opaque-ish where the left-aligned caption sits, clearing toward the
         // right so display-size white text stays legible over any still without dimming the art.
