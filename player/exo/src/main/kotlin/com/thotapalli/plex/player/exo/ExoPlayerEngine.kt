@@ -4,7 +4,6 @@ import android.app.Activity
 import android.app.UiModeManager
 import android.content.Context
 import android.content.ContextWrapper
-import android.content.Intent
 import android.content.res.Configuration
 import android.view.SurfaceView
 import androidx.media3.common.C
@@ -293,12 +292,13 @@ class ExoPlayerEngine(
 
     override fun play() {
         player.playWhenReady = true
-        // Promote the process to a foreground media session so audio keeps playing with the screen
-        // off and lock-screen transport controls appear. Started here (not at load) so the player is
-        // already going when the service must post its notification. Resolved by intent action so
-        // this module needs no reference to the app's service class. See CLAUDE.md section 8 (#2).
+        // Screen-locked / background audio is carried by the wakelock + audio-focus set on the
+        // player (see buildPlayer) and the MediaSession for media-button handling. We deliberately
+        // do NOT start a foreground service here: on Android 14+ a mediaPlayback foreground service
+        // that fails to post its notification in the allowed window crashes the app a few seconds
+        // into playback, and that async crash cannot be caught at the call site. Keeping playback
+        // rock-solid matters more than lock-screen transport controls. See CLAUDE.md section 8.
         ensureMediaSession()
-        runCatching { context.startForegroundService(playbackServiceIntent()) }
     }
 
     override fun pause() {
@@ -362,15 +362,9 @@ class ExoPlayerEngine(
         _subtitleStyle.value = style
     }
 
-    /** The MediaSessionService intent, resolved by its published action within this app. */
-    private fun playbackServiceIntent(): Intent =
-        Intent("androidx.media3.session.MediaSessionService").setPackage(context.packageName)
-
     override fun release() {
         positionJob?.cancel()
         positionJob = null
-        // Drop the foreground service with the player; nothing is playing to keep alive now.
-        runCatching { context.stopService(playbackServiceIntent()) }
         // Put any refresh-rate change back before the player leaves, so a switched mode does not
         // stick after playback. Guarded inside the controller. See CLAUDE.md section 9.
         runCatching { displayModeController?.restore() }

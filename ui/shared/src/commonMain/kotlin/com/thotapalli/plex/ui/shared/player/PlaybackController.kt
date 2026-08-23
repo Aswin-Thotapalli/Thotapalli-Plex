@@ -9,6 +9,7 @@ import com.thotapalli.plex.core.model.MediaDetail
 import com.thotapalli.plex.core.model.MediaItem
 import com.thotapalli.plex.core.playback.AutoPlayCountdown
 import com.thotapalli.plex.core.playback.MarkerController
+import com.thotapalli.plex.core.playback.PlaybackFailure
 import com.thotapalli.plex.core.playback.PlaybackFallbackChain
 import com.thotapalli.plex.core.playback.PlaybackMode
 import com.thotapalli.plex.core.playback.PlaybackSource
@@ -325,7 +326,22 @@ class PlaybackController(
      * ends the chain and surfaces as an error instead.
      */
     private suspend fun handleFailure(failed: PlaybackState.Failed) {
-        val next = fallback.next(failed.reason) ?: return
+        val next = fallback.next(failed.reason)
+        if (next == null) {
+            // Nothing left to try — most often the server or the internet dropped mid-stream. Surface
+            // a clear message with a way out rather than freezing on a black frame or crashing (#1).
+            val message = when (failed.reason) {
+                PlaybackFailure.NETWORK ->
+                    "Connection lost. Check your network, or go back to watch a download offline."
+                PlaybackFailure.SOURCE_NOT_FOUND ->
+                    "Can't reach the server. Go back to watch a download offline."
+                else ->
+                    "Playback stopped. Go back to watch a download offline."
+            }
+            engine.pause()
+            _state.update { it.copy(errorMessage = message) }
+            return
+        }
 
         val position = _state.value.positionMs
 
@@ -336,6 +352,19 @@ class PlaybackController(
 
         loadCurrentAttempt(position)
         showTranscodingChip()
+    }
+
+    /**
+     * Retries a failed playback from the last position — called when the connection returns (so the
+     * viewer never restarts the app), and by the error surface's Retry control. A no-op unless we are
+     * actually in the failed state, so a reconnect during healthy playback does nothing. See §10 (#1).
+     */
+    fun retry() {
+        if (_state.value.errorMessage == null) return
+        val position = _state.value.positionMs
+        fallback.reset()
+        _state.update { it.copy(errorMessage = null) }
+        scope.launch { loadCurrentAttempt(position) }
     }
 
     private fun showTranscodingChip() {

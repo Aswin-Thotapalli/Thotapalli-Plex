@@ -32,6 +32,7 @@ import com.thotapalli.plex.ui.design.ThotapalliTheme
 import com.thotapalli.plex.ui.shared.AppContainer
 import com.thotapalli.plex.ui.shared.input.HeldSeek
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.time.TimeSource
@@ -75,6 +76,9 @@ fun PlayerScreen(
     onExit: () -> Unit,
     onToggleFullScreen: () -> Unit = {},
     isFullScreen: Boolean = false,
+    /** Emits when connectivity returns, so a failed stream retries from its last position without an
+     *  app restart (§10, #1). Null on targets that do not surface network changes. */
+    networkRegained: SharedFlow<Unit>? = null,
     modifier: Modifier = Modifier,
 ) {
     // The player owns the screen in landscape; leaving it hands orientation back to the system.
@@ -125,6 +129,14 @@ fun PlayerScreen(
         // next: the engine and surface are reused, so no teardown happens on an episode change.
         built.onPlayPreviousEpisode = { previous -> target = PlayTarget(previous, previous.viewOffsetMs) }
         controller = built
+    }
+
+    // When connectivity returns, retry a stream that had failed — so a dropped server or Wi-Fi
+    // recovers on its own from the last position, with no app restart (§10, #1). retry() is a no-op
+    // unless the controller is actually in the failed state.
+    LaunchedEffect(controller, networkRegained) {
+        val active = controller ?: return@LaunchedEffect
+        networkRegained?.collect { active.retry() }
     }
 
     // Start playback for the current target, and again whenever it changes. The engine and

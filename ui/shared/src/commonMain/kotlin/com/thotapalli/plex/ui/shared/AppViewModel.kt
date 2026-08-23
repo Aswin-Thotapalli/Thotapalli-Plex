@@ -33,7 +33,10 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -554,45 +557,51 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
      * call simply leaves the server as it was. See CLAUDE.md section 5.
      */
     fun toggleWatched(item: MediaItem) {
-        val server = _state.value.server ?: return
-        val nowWatched = !item.watched
-
-        _state.update { st ->
-            val d = st.detail
-            if (d != null && d.item.ratingKey == item.ratingKey) {
-                st.copy(detail = d.copy(item = d.item.markedWatched(nowWatched)))
-            } else {
-                st
-            }
-        }
-
-        viewModelScope.launch {
-            runCatching {
-                if (nowWatched) container.serverApi.scrobble(server.scope, item.ratingKey)
-                else container.serverApi.unscrobble(server.scope, item.ratingKey)
-            }
-            refreshHome(server)
-        }
+        setWatched(item, !item.watched)
     }
 
     /** Explicitly set watched or unwatched — the item menu offers both directly. */
     fun setWatched(item: MediaItem, watched: Boolean) {
         val server = _state.value.server ?: return
-        _state.update { st ->
-            val d = st.detail
-            if (d != null && d.item.ratingKey == item.ratingKey) {
-                st.copy(detail = d.copy(item = d.item.markedWatched(watched)))
-            } else {
-                st
-            }
-        }
+        // Reflect the change everywhere it is visible right now — the open detail, the open library
+        // grid, the Home rails and Continue Watching — not just the detail. Marking a poster watched
+        // from its long-press menu must flip that poster's badge immediately (#1), not only after a
+        // later reload. The server call reconciles the rest.
+        _state.update { it.reflectWatched(item.ratingKey, watched) }
         viewModelScope.launch {
             runCatching {
                 if (watched) container.serverApi.scrobble(server.scope, item.ratingKey)
                 else container.serverApi.unscrobble(server.scope, item.ratingKey)
             }
             refreshHome(server)
+            // Reload the open library so its grid matches the server (e.g. an "Unwatched only"
+            // filter drops the item), reconciling the optimistic change above.
+            _state.value.library?.let { loadLibraryContents(it.library, it.unwatchedOnly) }
         }
+    }
+
+    /**
+     * Applies a watched/unwatched change to every copy of [ratingKey] currently held in UI state,
+     * so the change shows instantly wherever that item appears. See [setWatched] (#1).
+     */
+    private fun AppState.reflectWatched(ratingKey: String, watched: Boolean): AppState {
+        fun MediaItem.maybe(): MediaItem = if (this.ratingKey == ratingKey) markedWatched(watched) else this
+        return copy(
+            // A newly watched item leaves Continue Watching; otherwise just update it in place.
+            continueWatching = if (watched) {
+                continueWatching.filterNot { it.ratingKey == ratingKey }
+            } else {
+                continueWatching.map { it.maybe() }
+            },
+            library = library?.let { lib -> lib.copy(items = lib.items.map { it.maybe() }) },
+            detail = detail?.let { d ->
+                d.copy(
+                    item = d.item.maybe(),
+                    episodes = d.episodes.map { it.maybe() as Episode },
+                    selectedEpisode = d.selectedEpisode?.let { it.maybe() as Episode },
+                )
+            },
+        )
     }
 
     /**
@@ -1101,10 +1110,25 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             runCatching { container.session.onNetworkChanged() }
             if (_state.value.phase == AppPhase.READY || _state.value.phase == AppPhase.ERROR) {
+                // Re-probe done; now repopulate whatever the viewer is looking at so a dropped-then-
+                // restored connection recovers on its own, with no app restart (per request). Home
+                // always reloads; the open library and detail reload too so their content returns.
                 loadHome()
+                _state.value.library?.let { loadLibraryContents(it.library, it.unwatchedOnly) }
+                _state.value.detail?.item?.let { openDetail(it) }
             }
+            // Signal any active player to retry from its last position if it had stalled/failed.
+            _networkRegained.tryEmit(Unit)
         }
     }
+
+    /**
+     * Fires when connectivity is (re)gained, so an active player showing a "connection lost" state
+     * can retry from where it stopped instead of the viewer restarting the app (per request). A
+     * replayless, conflated event — a late collector does not re-trigger an old reconnect.
+     */
+    private val _networkRegained = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val networkRegained: SharedFlow<Unit> = _networkRegained.asSharedFlow()
 
     private fun requireServer(): ActiveServer =
         checkNotNull(_state.value.server) { "no active server" }

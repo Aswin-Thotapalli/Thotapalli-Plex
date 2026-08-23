@@ -38,10 +38,12 @@ enum class SizeClass {
         get() = when (this) {
             COMPACT -> 150.dp
             // Larger minimums than before so each poster is bigger (fewer, larger columns) on
-            // tablet, desktop and TV. See CLAUDE.md section 13 (requests #4/#6/#7).
-            MEDIUM -> 184.dp
-            EXPANDED -> 220.dp
-            TELEVISION -> 220.dp
+            // tablet, desktop and TV. See CLAUDE.md section 13 (requests #3/#4/#6/#7).
+            MEDIUM -> 200.dp
+            EXPANDED -> 240.dp
+            // TV posters were oversized; smaller tiles mean more per row and a sharper, less
+            // blown-up grid on a 10-foot screen. See CLAUDE.md section 13 (TV refinement).
+            TELEVISION -> 176.dp
         }
 
     val screenPadding: Dp

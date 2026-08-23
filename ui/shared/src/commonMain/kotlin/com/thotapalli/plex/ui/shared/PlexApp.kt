@@ -175,6 +175,8 @@ fun PlexApp(
                         onExit = viewModel::closePlayer,
                         onToggleFullScreen = viewModel::toggleFullScreen,
                         isFullScreen = state.isFullScreen,
+                        // Retry a failed stream when the connection returns, no restart (§10, #1).
+                        networkRegained = viewModel.networkRegained,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }

@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -249,6 +250,42 @@ fun PlayerOverlay(
                 LoadingIndicator(
                     label = if (state.playbackState is PlaybackState.Buffering) "Buffering" else "Loading",
                 )
+            }
+        }
+
+        // A terminal playback failure — the server or the internet dropped and there is nothing left
+        // to try. Show a clear message over a dark cover with the one useful way out (go back, where
+        // downloads play offline), instead of a frozen frame or a crash. See CLAUDE.md section 10 (#1).
+        state.errorMessage?.let { message ->
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .background(colours.background.copy(alpha = 0.92f))
+                    .pointerInput(Unit) {},
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 420.dp)
+                        .padding(Spacing.xl),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(Spacing.md),
+                ) {
+                    PlexText(
+                        text = message,
+                        style = PlexTheme.type.title,
+                        colour = Color.White,
+                    )
+                    Box(
+                        modifier = Modifier
+                            .plexFocusable(shape = Radius.pill, onClick = { actions.onBack() })
+                            .clip(Radius.pill)
+                            .background(colours.accent, Radius.pill)
+                            .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+                    ) {
+                        PlexText(text = "Go back", style = PlexTheme.type.label, colour = Color.Black, maxLines = 1)
+                    }
+                }
             }
         }
 

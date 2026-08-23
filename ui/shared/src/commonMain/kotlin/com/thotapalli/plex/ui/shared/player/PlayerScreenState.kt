@@ -34,6 +34,11 @@ data class PlayerScreenState(
 
     val showTranscodingChip: Boolean = false,
 
+    /** Set when playback has failed with no recovery left (e.g. the server or internet dropped
+     *  mid-stream). The overlay shows this as a message with a way out, instead of a frozen frame
+     *  or a crash. Null while playback is healthy. See CLAUDE.md section 10 (#1). */
+    val errorMessage: String? = null,
+
     /** Windows only. See CLAUDE.md section 14 item 7. */
     val showFullScreenToggle: Boolean = false,
     val isFullScreen: Boolean = false,

@@ -90,8 +90,9 @@ fun PosterTile(
                 onClick = onClick,
                 // Press-and-hold opens the action menu on touch (§5). Only when actions exist.
                 onLongClick = if (actions != null) openMenu else null,
-            )
-            .padding(Spacing.xxs),
+            ),
+        // No inner padding: the poster fills its grid cell so the artwork is as large as possible;
+        // the grid's own arrangement gap is the only spacing between tiles (#3/#4).
     ) {
         Box(
             modifier = Modifier

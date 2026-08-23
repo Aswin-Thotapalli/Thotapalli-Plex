@@ -48,11 +48,14 @@ val CompactTypography = PlexTypography(
 
 /** Television. */
 val TelevisionTypography = PlexTypography(
-    display = TextStyle(fontSize = 48.sp, lineHeight = 54.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.025).em),
-    title = TextStyle(fontSize = 30.sp, lineHeight = 38.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.015).em),
-    body = TextStyle(fontSize = 22.sp, lineHeight = 32.sp, fontWeight = FontWeight.Normal, letterSpacing = (-0.002).em),
-    label = TextStyle(fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.005.em),
-    caption = TextStyle(fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.Normal, letterSpacing = 0.002.em),
+    // Trimmed back from an oversized scale (was 48/30/22/18/16, even larger than the §12 spec) —
+    // the 10-foot UI read as too big and heavy. Still clearly larger than the phone scale, but
+    // tighter and sharper. See CLAUDE.md section 12 (TV refinement request).
+    display = TextStyle(fontSize = 34.sp, lineHeight = 40.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.025).em),
+    title = TextStyle(fontSize = 24.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.015).em),
+    body = TextStyle(fontSize = 17.sp, lineHeight = 24.sp, fontWeight = FontWeight.Normal, letterSpacing = (-0.002).em),
+    label = TextStyle(fontSize = 15.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.005.em),
+    caption = TextStyle(fontSize = 13.sp, lineHeight = 18.sp, fontWeight = FontWeight.Normal, letterSpacing = 0.002.em),
 )
 
 /**
