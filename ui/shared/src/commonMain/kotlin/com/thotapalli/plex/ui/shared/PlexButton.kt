@@ -21,7 +21,6 @@ import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
-import com.thotapalli.plex.ui.design.liquidGlass
 
 /**
  * The two buttons the detail screens and the hero use.
@@ -86,11 +85,11 @@ fun SecondaryButton(
         contentColour = colours.textPrimary,
         onClick = onClick,
         enabled = enabled,
-        // A secondary action is a sheet of liquid glass: it frosts whatever it floats over (a
-        // cinematic backdrop, a solid surface) and carries the same specular, rim and cool glow as
-        // every other glass surface, so it reads as a control without competing with the lit
-        // primary beside it.
-        modifier = modifier.liquidGlass(shape = Radius.pill),
+        // A secondary action uses the SECONDARY material role: glass, but with a calibrated tint
+        // floor and inner scrim so its label stays legible over any backdrop (fixes the Details
+        // button washing out over a bright hero) while still reading as a control beside the lit
+        // primary.
+        modifier = modifier.material(com.thotapalli.plex.ui.design.GlassRole.SECONDARY, shape = Radius.pill),
     )
 }
 
