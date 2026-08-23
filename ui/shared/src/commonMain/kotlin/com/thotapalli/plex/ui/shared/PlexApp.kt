@@ -2,6 +2,7 @@ package com.thotapalli.plex.ui.shared
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -23,16 +25,23 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -42,9 +51,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.thotapalli.plex.core.api.ServerActivity
 import com.thotapalli.plex.core.model.Library
 import com.thotapalli.plex.core.model.MediaItem
 import com.thotapalli.plex.ui.design.PlexText
@@ -286,6 +297,10 @@ private fun ReadyContent(
                 onSignOut = viewModel::signOut,
                 themeMode = state.themeMode,
                 onThemeModeChange = viewModel::setThemeMode,
+                serverUpdate = state.serverUpdate,
+                serverUpdateApplying = state.serverUpdateApplying,
+                onCheckServerUpdate = viewModel::checkServerUpdate,
+                onApplyServerUpdate = viewModel::applyServerUpdate,
                 modifier = bodyModifier.then(topSafe),
             )
 
@@ -371,12 +386,15 @@ private fun ReadyContent(
                     current = destination,
                     openLibraryKey = openLibraryKey,
                     libraries = state.libraries,
+                    scanActivities = state.scanActivities,
                     narrow = sizeClass == SizeClass.MEDIUM,
                     backdrop = backdrop,
                     onHome = onHome,
                     onSelect = onDestinationChange,
                     onOpenLibrary = onOpenLibrary,
                     onScanLibrary = viewModel::scanLibrary,
+                    onMoveLibrary = viewModel::moveLibrary,
+                    onGrantLibraryAccess = viewModel::grantLibraryAccess,
                 )
                 Box(Modifier.weight(1f)) { bodyWithBack(Modifier) }
             }
@@ -386,9 +404,11 @@ private fun ReadyContent(
             LibrarySheet(
                 libraries = state.libraries,
                 openLibraryKey = openLibraryKey,
+                scanActivities = state.scanActivities,
                 onDismiss = { librariesSheetOpen = false },
                 onOpenLibrary = { library -> librariesSheetOpen = false; onOpenLibrary(library) },
                 onScanLibrary = viewModel::scanLibrary,
+                onGrantLibraryAccess = viewModel::grantLibraryAccess,
             )
         }
     }
@@ -405,12 +425,15 @@ private fun NavigationRail(
     current: Destination,
     openLibraryKey: String?,
     libraries: List<Library>,
+    scanActivities: List<ServerActivity>,
     narrow: Boolean,
     backdrop: LiquidBackdrop,
     onHome: () -> Unit,
     onSelect: (Destination) -> Unit,
     onOpenLibrary: (Library) -> Unit,
     onScanLibrary: (Library) -> Unit,
+    onMoveLibrary: (from: Int, to: Int) -> Unit,
+    onGrantLibraryAccess: (email: String, libraryKeys: List<String>) -> Unit,
 ) {
     val colours = PlexTheme.colours
 
@@ -457,12 +480,79 @@ private fun NavigationRail(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
         ) {
-            items(libraries, key = { it.key }) { library ->
+            itemsIndexed(libraries, key = { _, library -> library.key }) { index, library ->
                 LibraryNavRow(
                     library = library,
                     selected = openLibraryKey == library.key,
+                    canMoveUp = index > 0,
+                    canMoveDown = index < libraries.lastIndex,
+                    allLibraries = libraries,
                     onClick = { onOpenLibrary(library) },
                     onScan = { onScanLibrary(library) },
+                    onMoveUp = { onMoveLibrary(index, index - 1) },
+                    onMoveDown = { onMoveLibrary(index, index + 1) },
+                    onGrantAccess = onGrantLibraryAccess,
+                )
+            }
+        }
+
+        // The always-visible live scan read-out, pinned below the library list like Plex's own
+        // activity strip. Hidden when the server reports no running jobs. See CLAUDE.md section 5.
+        if (scanActivities.isNotEmpty()) {
+            ScanningSection(
+                activities = scanActivities,
+                modifier = Modifier.padding(top = Spacing.xs),
+            )
+        }
+    }
+}
+
+/**
+ * The live library-scan read-out: one row per running server job with its title, current step in
+ * caption and a slim amber progress bar, in a [GlassRole.CARD] container. Mirrors Plex's own
+ * always-on scan progress. See CLAUDE.md section 5.
+ */
+@Composable
+private fun ScanningSection(
+    activities: List<ServerActivity>,
+    modifier: Modifier = Modifier,
+) {
+    val colours = PlexTheme.colours
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .material(GlassRole.CARD, Radius.glassSmall)
+            .padding(Spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        PlexText(
+            text = "Scanning",
+            style = PlexTheme.type.caption,
+            colour = colours.textSecondary,
+            maxLines = 1,
+        )
+        activities.forEach { activity ->
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.xxs)) {
+                PlexText(
+                    text = activity.title,
+                    style = PlexTheme.type.label,
+                    colour = colours.textPrimary,
+                    maxLines = 1,
+                )
+                val subtitle = activity.subtitle
+                if (!subtitle.isNullOrBlank()) {
+                    PlexText(
+                        text = subtitle,
+                        style = PlexTheme.type.caption,
+                        colour = colours.textSecondary,
+                        maxLines = 1,
+                    )
+                }
+                LinearProgressIndicator(
+                    progress = { activity.progress.coerceIn(0f, 1f) },
+                    modifier = Modifier.fillMaxWidth().height(4.dp).clip(Radius.pill),
+                    color = colours.accent,
+                    trackColor = colours.surface,
                 )
             }
         }
@@ -531,17 +621,28 @@ private fun RailNavRow(
     }
 }
 
-/** A library row in the rail: the title selects it, the trailing overflow scans it. */
+/**
+ * A library row in the rail: the title selects it, the up/down controls reorder it (persisted by
+ * the view model, and D-pad/keyboard friendly for television), and the trailing overflow scans it
+ * or opens the grant-access dialog. See CLAUDE.md section 5 and 13.
+ */
 @Composable
 private fun LibraryNavRow(
     library: Library,
     selected: Boolean,
+    canMoveUp: Boolean,
+    canMoveDown: Boolean,
+    allLibraries: List<Library>,
     onClick: () -> Unit,
     onScan: () -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
+    onGrantAccess: (email: String, libraryKeys: List<String>) -> Unit,
 ) {
     val colours = PlexTheme.colours
     val tint = if (selected) colours.accent else colours.textPrimary
     var menuOpen by remember { mutableStateOf(false) }
+    var grantOpen by remember { mutableStateOf(false) }
 
     Row(
         modifier = Modifier
@@ -563,14 +664,191 @@ private fun LibraryNavRow(
                 .plexFocusable(shape = Radius.glassSmall, onClick = onClick, scaleOnFocus = false)
                 .padding(start = Spacing.sm, top = Spacing.sm, bottom = Spacing.sm, end = Spacing.xs),
         )
+        ReorderButton(up = true, enabled = canMoveUp, onClick = onMoveUp)
+        ReorderButton(up = false, enabled = canMoveDown, onClick = onMoveDown)
         Box {
             OverflowButton(onClick = { menuOpen = true })
             LibraryOverflowMenu(
                 expanded = menuOpen,
                 onDismiss = { menuOpen = false },
                 onScan = { menuOpen = false; onScan() },
+                onGrantAccess = { menuOpen = false; grantOpen = true },
             )
         }
+    }
+
+    if (grantOpen) {
+        GrantAccessDialog(
+            libraries = allLibraries,
+            initialLibraryKey = library.key,
+            onShare = { email, keys -> grantOpen = false; onGrantAccess(email, keys) },
+            onDismiss = { grantOpen = false },
+        )
+    }
+}
+
+/**
+ * A small up or down chevron control for library reordering. A 28 dp focus target so a remote or
+ * keyboard lands on it cleanly; dimmed and non-interactive at the ends of the list.
+ */
+@Composable
+private fun ReorderButton(up: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val tint = if (enabled) {
+        PlexTheme.colours.textSecondary
+    } else {
+        PlexTheme.colours.textSecondary.copy(alpha = 0.3f)
+    }
+    Box(
+        modifier = Modifier
+            .size(28.dp)
+            .then(
+                if (enabled) {
+                    Modifier.plexFocusable(shape = Radius.glassSmall, onClick = onClick, scaleOnFocus = false)
+                } else {
+                    Modifier
+                },
+            )
+            .clip(Radius.glassSmall),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(Modifier.size(16.dp)) {
+            val w = size.width
+            val h = size.height
+            val yTip = if (up) h * 0.38f else h * 0.62f
+            val ySide = if (up) h * 0.62f else h * 0.38f
+            val sw = w * 0.12f
+            drawLine(tint, Offset(w * 0.26f, ySide), Offset(w * 0.5f, yTip), sw, StrokeCap.Round)
+            drawLine(tint, Offset(w * 0.5f, yTip), Offset(w * 0.74f, ySide), sw, StrokeCap.Round)
+        }
+    }
+}
+
+/**
+ * The grant-access dialog raised from a library's overflow. An email field and a checkbox list of
+ * every library (the one the menu was opened on pre-checked), sharing through the view model. A
+ * [GlassRole.SHEET] surface, matching the delete-confirmation dialog. See CLAUDE.md section 5.
+ */
+@Composable
+private fun GrantAccessDialog(
+    libraries: List<Library>,
+    initialLibraryKey: String,
+    onShare: (email: String, libraryKeys: List<String>) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colours = PlexTheme.colours
+    var email by remember { mutableStateOf("") }
+    val checked = remember { mutableStateListOf<String>().apply { add(initialLibraryKey) } }
+    val canShare = email.isNotBlank() && checked.isNotEmpty()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        modifier = Modifier.material(GlassRole.SHEET, Radius.card),
+        containerColor = Color.Transparent,
+        tonalElevation = 0.dp,
+        titleContentColor = colours.textPrimary,
+        textContentColor = colours.textSecondary,
+        shape = Radius.card,
+        title = { PlexText(text = "Grant access", style = PlexTheme.type.title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .material(GlassRole.SECONDARY, Radius.glassSmall)
+                        .padding(horizontal = Spacing.md, vertical = Spacing.sm),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.fillMaxWidth()) {
+                        if (email.isEmpty()) {
+                            PlexText(
+                                text = "Plex account email",
+                                style = PlexTheme.type.body,
+                                colour = colours.textSecondary,
+                            )
+                        }
+                        BasicTextField(
+                            value = email,
+                            onValueChange = { email = it },
+                            singleLine = true,
+                            textStyle = LocalTextStyle.current.merge(PlexTheme.type.body)
+                                .copy(color = colours.textPrimary),
+                            cursorBrush = SolidColor(colours.accent),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                }
+                PlexText(
+                    text = "Libraries",
+                    style = PlexTheme.type.caption,
+                    colour = colours.textSecondary,
+                )
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 240.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
+                ) {
+                    libraries.forEach { library ->
+                        val isChecked = checked.contains(library.key)
+                        LibraryCheckRow(
+                            title = library.title,
+                            checked = isChecked,
+                            onToggle = {
+                                if (isChecked) checked.remove(library.key) else checked.add(library.key)
+                            },
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            PrimaryButton(
+                label = "Share",
+                onClick = { onShare(email.trim(), checked.toList()) },
+                enabled = canShare,
+            )
+        },
+        dismissButton = { SecondaryButton(label = "Cancel", onClick = onDismiss) },
+    )
+}
+
+/** A single library checkbox row inside [GrantAccessDialog]: an accent tick box and the title. */
+@Composable
+private fun LibraryCheckRow(title: String, checked: Boolean, onToggle: () -> Unit) {
+    val colours = PlexTheme.colours
+    val box = RoundedCornerShape(6.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .plexFocusable(shape = Radius.glassSmall, onClick = onToggle, scaleOnFocus = false)
+            .clip(Radius.glassSmall)
+            .padding(horizontal = Spacing.xs, vertical = Spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(22.dp)
+                .clip(box)
+                .background(if (checked) colours.accent else Color.Transparent, box)
+                .then(if (checked) Modifier else Modifier.border(1.dp, colours.border, box)),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (checked) {
+                PlexIcon(
+                    kind = PlexIconKind.CHECK,
+                    size = 16.dp,
+                    tint = if (colours.isDark) colours.background else Color.White,
+                )
+            }
+        }
+        PlexText(
+            text = title,
+            style = PlexTheme.type.label,
+            colour = colours.textPrimary,
+            maxLines = 1,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
@@ -660,9 +938,11 @@ private fun BottomNavItem(
 private fun LibrarySheet(
     libraries: List<Library>,
     openLibraryKey: String?,
+    scanActivities: List<ServerActivity>,
     onDismiss: () -> Unit,
     onOpenLibrary: (Library) -> Unit,
     onScanLibrary: (Library) -> Unit,
+    onGrantLibraryAccess: (email: String, libraryKeys: List<String>) -> Unit,
 ) {
     val colours = PlexTheme.colours
     Box(
@@ -698,30 +978,39 @@ private fun LibrarySheet(
                     .background(colours.border),
             )
             Spacer(Modifier.height(Spacing.xs))
+            if (scanActivities.isNotEmpty()) {
+                ScanningSection(activities = scanActivities)
+            }
             SectionHeader("Libraries")
             libraries.forEach { library ->
                 SheetLibraryRow(
                     library = library,
                     selected = openLibraryKey == library.key,
+                    allLibraries = libraries,
                     onClick = { onOpenLibrary(library) },
                     onScan = { onScanLibrary(library) },
+                    onGrantAccess = onGrantLibraryAccess,
                 )
             }
         }
     }
 }
 
-/** A library row inside the compact sheet: the title selects it, the overflow scans it. */
+/** A library row inside the compact sheet: the title selects it, the overflow scans it or opens
+ * the grant-access dialog. */
 @Composable
 private fun SheetLibraryRow(
     library: Library,
     selected: Boolean,
+    allLibraries: List<Library>,
     onClick: () -> Unit,
     onScan: () -> Unit,
+    onGrantAccess: (email: String, libraryKeys: List<String>) -> Unit,
 ) {
     val colours = PlexTheme.colours
     val tint = if (selected) colours.accent else colours.textPrimary
     var menuOpen by remember { mutableStateOf(false) }
+    var grantOpen by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -748,8 +1037,18 @@ private fun SheetLibraryRow(
                 expanded = menuOpen,
                 onDismiss = { menuOpen = false },
                 onScan = { menuOpen = false; onScan() },
+                onGrantAccess = { menuOpen = false; grantOpen = true },
             )
         }
+    }
+
+    if (grantOpen) {
+        GrantAccessDialog(
+            libraries = allLibraries,
+            initialLibraryKey = library.key,
+            onShare = { email, keys -> grantOpen = false; onGrantAccess(email, keys) },
+            onDismiss = { grantOpen = false },
+        )
     }
 }
 
@@ -776,12 +1075,13 @@ private fun OverflowButton(onClick: () -> Unit) {
     }
 }
 
-/** A per-library overflow menu with the one server action a library carries: a files scan. */
+/** A per-library overflow menu: scan the library's files, or grant an account access to it. */
 @Composable
 private fun LibraryOverflowMenu(
     expanded: Boolean,
     onDismiss: () -> Unit,
     onScan: () -> Unit,
+    onGrantAccess: () -> Unit,
 ) {
     val colours = PlexTheme.colours
     DropdownMenu(
@@ -799,6 +1099,17 @@ private fun LibraryOverflowMenu(
                 )
             },
             onClick = onScan,
+        )
+        DropdownMenuItem(
+            text = {
+                PlexText(
+                    text = "Grant access…",
+                    style = PlexTheme.type.label,
+                    colour = colours.textPrimary,
+                    maxLines = 1,
+                )
+            },
+            onClick = onGrantAccess,
         )
     }
 }

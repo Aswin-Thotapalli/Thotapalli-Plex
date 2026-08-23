@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -18,6 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.thotapalli.plex.core.model.PlexServer
+import com.thotapalli.plex.core.model.ServerUpdate
 import com.thotapalli.plex.ui.design.GlassRole
 import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
@@ -45,6 +47,10 @@ fun SettingsScreen(
     onSignOut: () -> Unit,
     themeMode: ThemeMode,
     onThemeModeChange: (ThemeMode) -> Unit,
+    serverUpdate: com.thotapalli.plex.core.model.ServerUpdate?,
+    serverUpdateApplying: Boolean,
+    onCheckServerUpdate: () -> Unit,
+    onApplyServerUpdate: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colours = PlexTheme.colours
@@ -114,9 +120,12 @@ fun SettingsScreen(
                 )
             }
 
+            // The Server section carries both the server picker (when there is more than one to
+            // choose between) and the server-update controls, which are always available.
+            item { SectionHeader("Server") }
+
             // Server selection, only when there is more than one to choose between.
             if (state.servers.size > 1) {
-                item { SectionHeader("Server") }
                 items(state.servers.size) { index ->
                     val server = state.servers[index]
                     Box(
@@ -142,6 +151,15 @@ fun SettingsScreen(
                         }
                     }
                 }
+            }
+
+            item {
+                ServerUpdateSection(
+                    update = serverUpdate,
+                    applying = serverUpdateApplying,
+                    onCheck = onCheckServerUpdate,
+                    onApply = onApplyServerUpdate,
+                )
             }
 
             item { SectionHeader("Account") }
@@ -255,6 +273,105 @@ private fun ThemeSegment(
             },
             maxLines = 1,
         )
+    }
+}
+
+/**
+ * The server-update controls. A "Check for updates" row is always present; when the server reports
+ * a pending update a CARD notice names the version (and change notes when present) and offers to
+ * apply it in place. Applying restarts the server and the connection may drop, so while it runs the
+ * apply button is replaced by an indeterminate progress row. See [ServerUpdate].
+ */
+@Composable
+private fun ServerUpdateSection(
+    update: ServerUpdate?,
+    applying: Boolean,
+    onCheck: () -> Unit,
+    onApply: () -> Unit,
+) {
+    val colours = PlexTheme.colours
+
+    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+        // Always offer a manual check.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .plexFocusable(Radius.card, onClick = onCheck, scaleOnFocus = false)
+                .material(GlassRole.CARD, shape = Radius.card)
+                .padding(Spacing.md),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            PlexText("Check for updates", style = PlexTheme.type.label)
+            TextChip("Check", selected = false, onClick = onCheck)
+        }
+
+        when {
+            update?.available == true -> {
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .material(GlassRole.CARD, shape = Radius.card)
+                        .border(1.dp, colours.accent, Radius.card)
+                        .padding(Spacing.md),
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                        PlexText("Update available", style = PlexTheme.type.label)
+                        update.version?.let {
+                            PlexText(
+                                text = "Version $it",
+                                style = PlexTheme.type.caption,
+                                colour = colours.textSecondary,
+                            )
+                        }
+                        update.notes?.let {
+                            PlexText(
+                                text = it,
+                                style = PlexTheme.type.caption,
+                                colour = colours.textSecondary,
+                            )
+                        }
+
+                        if (applying) {
+                            // Applying restarts the server; the connection may drop meanwhile.
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+                            ) {
+                                PlexText(
+                                    text = "Updating server…",
+                                    style = PlexTheme.type.label,
+                                    maxLines = 1,
+                                )
+                                LinearProgressIndicator(
+                                    modifier = Modifier.weight(1f).clip(Radius.pill),
+                                    color = colours.accent,
+                                    trackColor = colours.surface,
+                                )
+                            }
+                        } else if (update.canApply) {
+                            TextChip("Update server now", selected = true, onClick = onApply)
+                        } else {
+                            PlexText(
+                                text = "This update must be applied on the server itself.",
+                                style = PlexTheme.type.caption,
+                                colour = colours.textSecondary,
+                            )
+                        }
+                    }
+                }
+            }
+
+            update != null -> {
+                PlexText(
+                    text = "Server is up to date",
+                    style = PlexTheme.type.caption,
+                    colour = colours.textSecondary,
+                    modifier = Modifier.padding(horizontal = Spacing.md),
+                )
+            }
+        }
     }
 }
 
