@@ -105,16 +105,24 @@ fun HomeHero(
                 ),
         )
 
-        HeroCaption(
-            item = item,
-            resuming = resuming,
-            onPlay = onPlay,
-            onDetails = onDetails,
-            modifier = Modifier
+        // The hero art is always dark; render the caption + its glass buttons on the dark palette
+        // regardless of the app theme, so the Details button never washes out in light mode.
+        Box(
+            Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
                 .padding(Spacing.lg),
-        )
+        ) {
+            com.thotapalli.plex.ui.design.OnDarkSurface {
+                HeroCaption(
+                    item = item,
+                    resuming = resuming,
+                    onPlay = onPlay,
+                    onDetails = onDetails,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
     }
 }
 

@@ -134,4 +134,19 @@ fun PlexText(
     )
 }
 
+/**
+ * Render [content] on the DARK palette regardless of the active theme. For controls that sit over
+ * always-dark artwork — the hero/backdrop action buttons — so a light theme never makes a glass
+ * button (e.g. Details) wash out over a dark still. The engine roles then resolve their dark,
+ * over-art calibration.
+ */
+@Composable
+fun OnDarkSurface(content: @Composable () -> Unit) {
+    CompositionLocalProvider(
+        LocalPlexColours provides DarkColours,
+        LocalContentColor provides DarkColours.textPrimary,
+        content = content,
+    )
+}
+
 internal val localColoursForPreview: ProvidableCompositionLocal<PlexColours> = LocalPlexColours
