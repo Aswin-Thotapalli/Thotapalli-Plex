@@ -24,14 +24,16 @@ class PlexUrls(
      */
     fun artwork(path: String?, width: Int, height: Int): String? {
         if (path.isNullOrBlank()) return null
-        val inner = "$base$path?X-Plex-Token=${accessToken.encodeURLParameter()}"
-        return "$base/photo/:/transcode" +
-            "?width=$width" +
-            "&height=$height" +
-            "&minSize=1" +
-            "&upscale=1" +
-            "&url=${inner.encodeURLParameter()}" +
-            "&X-Plex-Token=${accessToken.encodeURLParameter()}"
+        // Serve the STORED image directly rather than through the server's per-image photo
+        // transcoder. The transcode makes each request smaller, but every first-view poster then
+        // waits in the server's CPU photo-transcode queue — which is what makes a fast scroll
+        // through a fresh library crawl, and also upscales a small transcode into a blurry tile on
+        // a big screen. On a local server the stored thumbnail downloads in tens of milliseconds
+        // with no queue and at full sharpness. See CLAUDE.md section 5 (scroll #5 / sharpness).
+        //
+        // width/height are kept in the signature (callers pass display-appropriate sizes) but the
+        // stored thumbnail is already sized for its art; we no longer ask the server to re-render.
+        return withToken(path)
     }
 
     /** The original file, for direct play and for downloads. Never a transcode. */

@@ -573,10 +573,12 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                 if (watched) container.serverApi.scrobble(server.scope, item.ratingKey)
                 else container.serverApi.unscrobble(server.scope, item.ratingKey)
             }
+            // Deliberately do NOT reload the open library here: the repository read is cache-first
+            // and the cache still holds the pre-scrobble watch state for a moment, so a reload would
+            // immediately revert the optimistic badge we just set. The optimistic [reflectWatched]
+            // above is the source of truth for the UI until the next natural navigation refreshes it
+            // from the server. Home still refreshes (its rails re-fetch). See §5 (#1).
             refreshHome(server)
-            // Reload the open library so its grid matches the server (e.g. an "Unwatched only"
-            // filter drops the item), reconciling the optimistic change above.
-            _state.value.library?.let { loadLibraryContents(it.library, it.unwatchedOnly) }
         }
     }
 
@@ -698,15 +700,23 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
      */
     private fun publishScanActivities(real: List<ServerActivity>) {
         val realKeys = real.mapNotNull { it.librarySectionId }.toSet()
+        val expired = mutableListOf<String>()
         val next = optimisticScanCycles.mapNotNull { (key, cycles) ->
             when {
                 key in realKeys -> null   // the real activity is showing now; drop the placeholder
-                cycles <= 1 -> null       // grace elapsed: treat a too-fast scan as finished
+                cycles <= 1 -> { expired += key; null }  // grace elapsed: a too-fast scan finished
                 else -> key to (cycles - 1)
             }
         }.toMap()
         optimisticScanCycles.clear()
         optimisticScanCycles.putAll(next)
+        // A scan we showed optimistically that the server never reported a lasting activity for has
+        // finished near-instantly — a small library with nothing new to index. Tell the viewer it
+        // completed, so a non-TV scan gives closure instead of a bar that just disappears (#2).
+        expired.forEach { key ->
+            val title = _state.value.libraries.firstOrNull { it.key == key }?.title ?: "Library"
+            notify("Scan complete — “$title”")
+        }
         val synthetic = optimisticScanCycles.keys.map { syntheticScan(it) }
         _state.update { it.copy(scanActivities = real + synthetic) }
     }
