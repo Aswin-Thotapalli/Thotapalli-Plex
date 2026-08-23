@@ -584,8 +584,10 @@ private fun LibrariesGlyph(tint: Color, modifier: Modifier = Modifier) {
 // --- television Home ----------------------------------------------------------------------
 
 /** Wide (16:9) continue-watching tile width and 2:3 poster width for the ten-foot layout. */
-private val TvWideWidth = 360.dp
-private val TvPosterWidth = 184.dp
+// Landscape continue-watching card and poster width for the TV rows. Sized for a ~960dp-wide
+// 1080p canvas so several cards show per row like Netflix/Plex, not one giant tile. (TV refinement)
+private val TvWideWidth = 248.dp
+private val TvPosterWidth = 124.dp
 
 /** The immersive hero occupies this share of the viewport before the rails begin beneath it. */
 private const val TV_HERO_HEIGHT_FRACTION = 0.55f
@@ -654,10 +656,12 @@ private fun TvHome(
                 ),
                 contentDescription = primaryLine(featured),
                 fallbackTitle = primaryLine(featured),
-                modifier = Modifier.fillMaxSize().kenBurns(enabled = !isDesktopPlatform()),
+                // No ken-burns or animated grain on TV: weak TV GPUs stutter redrawing a full 1080p
+                // backdrop every frame, and a still hero reads more like Netflix/Plex anyway.
+                modifier = Modifier.fillMaxSize(),
                 alignment = Alignment.TopCenter,
             )
-            Box(Modifier.fillMaxSize().cinematicTexture(animated = !isDesktopPlatform()))
+            Box(Modifier.fillMaxSize().cinematicTexture(animated = false))
             // Left bed: dark where the caption sits, clearing toward the right so the art reads.
             Box(
                 Modifier.fillMaxSize().background(
@@ -686,7 +690,7 @@ private fun TvHome(
             // The scrolling content is the Haze source the frosted navigation samples.
             modifier = Modifier.fillMaxSize().glassSource(),
             contentPadding = PaddingValues(bottom = overscanV + Spacing.xxl),
-            verticalArrangement = Arrangement.spacedBy(Spacing.xl),
+            verticalArrangement = Arrangement.spacedBy(Spacing.lg),
         ) {
             // The hero caption occupies the top region, its content gathered in the lower-left.
             item(key = "tv-hero") {
