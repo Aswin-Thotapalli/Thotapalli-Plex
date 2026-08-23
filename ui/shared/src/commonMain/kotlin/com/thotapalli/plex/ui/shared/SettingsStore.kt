@@ -53,6 +53,21 @@ class SettingsStore(
             ?: ThemeMode.SYSTEM
         set(value) = store.putString(THEME_MODE, value.name)
 
+    /**
+     * The viewer's preferred order of the library cards, as a list of library keys.
+     *
+     * Plex has no reliable client reorder API, so the order is kept locally. Persisted as a
+     * newline-delimited string of keys; empty by default, which leaves libraries in the
+     * server's own order. Keys no longer on the server are harmless — the sort simply ignores
+     * them. See CLAUDE.md section 3 (Library screen) and section 14.
+     */
+    var libraryOrder: List<String>
+        get() = store.getString(LIBRARY_ORDER)
+            ?.split(ORDER_DELIMITER)
+            ?.filter { it.isNotBlank() }
+            ?: emptyList()
+        set(value) = store.putString(LIBRARY_ORDER, value.joinToString(ORDER_DELIMITER))
+
     /** Set by the platform layer, since only it knows whether Android or Windows is running. */
     var defaultUnmetered: Boolean = true
 
@@ -63,6 +78,8 @@ class SettingsStore(
         const val SUBTITLE_LANGUAGE = "setting_subtitle_language"
         const val SUBTITLES_ON = "setting_subtitles_on"
         const val THEME_MODE = "setting_theme_mode"
+        const val LIBRARY_ORDER = "setting_library_order"
         const val DEFAULT_LANGUAGE = "eng"
+        const val ORDER_DELIMITER = "\n"
     }
 }

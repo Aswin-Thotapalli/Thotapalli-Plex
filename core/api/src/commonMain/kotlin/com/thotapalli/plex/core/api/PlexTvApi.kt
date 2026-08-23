@@ -3,22 +3,29 @@ package com.thotapalli.plex.core.api
 import com.thotapalli.plex.core.api.dto.HomeUsersDto
 import com.thotapalli.plex.core.api.dto.PinDto
 import com.thotapalli.plex.core.api.dto.ResourceDto
+import com.thotapalli.plex.core.api.dto.ShareServerRequest
+import com.thotapalli.plex.core.api.dto.SharedServerDto
 import com.thotapalli.plex.core.api.dto.UserDto
 import com.thotapalli.plex.core.api.mapper.toHomeUsers
 import com.thotapalli.plex.core.api.mapper.toPlexAccount
 import com.thotapalli.plex.core.api.mapper.toPlexServers
+import com.thotapalli.plex.core.api.mapper.toSharedUsers
 import com.thotapalli.plex.core.model.HomeUser
 import com.thotapalli.plex.core.model.PlexAccount
 import com.thotapalli.plex.core.model.PlexServer
+import com.thotapalli.plex.core.model.SharedUser
 import io.ktor.client.call.body
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
 import io.ktor.client.request.headers
 import io.ktor.client.request.parameter
 import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.contentType
 import io.ktor.http.encodeURLParameter
 import io.ktor.http.isSuccess
 
@@ -128,6 +135,54 @@ class PlexTvApi(
         // account token for every later request.
         return response.body<SwitchResponse>().authToken
     }
+
+    // --- library sharing ------------------------------------------------------------------
+    //
+    // The account model is separate accounts with a shared library (CLAUDE.md section 2): the
+    // owner grants another account access to selected libraries. Sharing goes through plex.tv
+    // with the ACCOUNT token, never the server token.
+
+    /**
+     * Share selected libraries of one server with an account by email.
+     *
+     * Library keys are the string section ids the browsing API uses; the sharing API wants
+     * integers, so non-numeric keys are dropped. Returns whether plex.tv accepted the share;
+     * any failure is swallowed and reported as false rather than thrown.
+     */
+    suspend fun shareLibraries(
+        accountToken: String,
+        machineIdentifier: String,
+        invitedEmail: String,
+        librarySectionIds: List<String>,
+    ): Boolean = runCatching {
+        val response = client.post("$PLEX_TV_BASE/api/v2/shared_servers") {
+            applyIdentity(accountToken)
+            contentType(ContentType.Application.Json)
+            setBody(
+                ShareServerRequest(
+                    machineIdentifier = machineIdentifier,
+                    invitedEmail = invitedEmail,
+                    librarySectionIds = librarySectionIds.mapNotNull { it.toIntOrNull() },
+                ),
+            )
+        }
+        response.status.isSuccess()
+    }.getOrDefault(false)
+
+    /**
+     * The accounts a server is already shared with. Best-effort: any failure — no network, a
+     * shape the mapper does not recognise — returns an empty list rather than throwing, so a
+     * sharing screen can still be shown. See CLAUDE.md section 18 point 2.
+     */
+    suspend fun sharedUsers(accountToken: String, machineIdentifier: String): List<SharedUser> =
+        runCatching {
+            val response = client.get("$PLEX_TV_BASE/api/v2/shared_servers") {
+                parameter("machineIdentifier", machineIdentifier)
+                applyIdentity(accountToken)
+            }
+            if (!response.status.isSuccess()) return emptyList()
+            response.body<List<SharedServerDto>>().toSharedUsers()
+        }.getOrDefault(emptyList())
 
     private suspend fun HttpRequestBuilder.applyIdentity(token: String?) {
         val identity = identityHeaders.headers()

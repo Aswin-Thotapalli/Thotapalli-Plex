@@ -73,7 +73,8 @@ class AppContainer(
 
     val identity = IdentityHeaderProvider(keyValueStore, device)
 
-    private val tvApi = PlexTvApi(http, identity)
+    /** The plex.tv API, exposed so the view model can share libraries with other accounts. */
+    val tvApi = PlexTvApi(http, identity)
     /** The server API, exposed so the player screen can build a PlaybackController. */
     val serverApi = PlexServerApi(http, identity)
     private val tokens = TokenStore(secureStore, keyValueStore)

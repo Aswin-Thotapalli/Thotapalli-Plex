@@ -6,6 +6,7 @@ import com.thotapalli.plex.core.api.dto.HubContainer
 import com.thotapalli.plex.core.api.dto.IdentityContainer
 import com.thotapalli.plex.core.api.dto.MediaContainerResponse
 import com.thotapalli.plex.core.api.dto.MetadataContainer
+import com.thotapalli.plex.core.api.dto.UpdaterStatusContainer
 import com.thotapalli.plex.core.api.mapper.toLibraries
 import com.thotapalli.plex.core.api.mapper.toMediaDetail
 import com.thotapalli.plex.core.api.mapper.toMediaItems
@@ -16,6 +17,7 @@ import com.thotapalli.plex.core.model.MediaDetail
 import com.thotapalli.plex.core.model.MediaItem
 import com.thotapalli.plex.core.model.Movie
 import com.thotapalli.plex.core.model.Season
+import com.thotapalli.plex.core.model.ServerUpdate
 import com.thotapalli.plex.core.model.Show
 import io.ktor.client.call.body
 import io.ktor.client.request.HttpRequestBuilder
@@ -282,6 +284,53 @@ class PlexServerApi(
             scope.apply(this)
         }
         response.requireSuccess("delete $ratingKey")
+    }
+
+    // --- server updates -------------------------------------------------------------------
+    //
+    // The server product updating itself, as the official app exposes. Distinct from the
+    // client's own update flow, which lives in core/session (CLAUDE.md section 17).
+
+    /**
+     * The server's own update state. A pending release maps to an available [ServerUpdate];
+     * an up-to-date server, or any failure, returns null. Polled on connect, so it must never
+     * take the interface down — every failure is swallowed. See CLAUDE.md section 18 point 2.
+     */
+    suspend fun serverUpdateStatus(scope: ServerScope): ServerUpdate? = runCatching {
+        val response = client.get("${scope.baseUri}/updater/status") { scope.apply(this) }
+        if (response.status.value !in 200..299) return null
+        val container = response.body<MediaContainerResponse<UpdaterStatusContainer>>().mediaContainer
+        val release = container.release.firstOrNull()
+        // A Release entry means the server has a newer build than the one running.
+        val available = release != null
+        ServerUpdate(
+            available = available,
+            version = release?.version ?: container.version,
+            notes = release?.fixed,
+            canApply = container.canInstall,
+        )
+    }.getOrNull()
+
+    /** Ask the server to check for, and download, an available update. */
+    suspend fun checkServerUpdate(scope: ServerScope) {
+        val response = client.put("${scope.baseUri}/updater/check") {
+            parameter("download", "1")
+            scope.apply(this)
+        }
+        response.requireSuccess("check server update")
+    }
+
+    /**
+     * Install the downloaded update and restart the server.
+     *
+     * Applying restarts the server, so the connection may drop before a response arrives:
+     * a dropped or non-success response means "applying started", not a failure, and is
+     * swallowed. The caller surfaces that the update is under way rather than an error.
+     */
+    suspend fun applyServerUpdate(scope: ServerScope) {
+        runCatching {
+            client.put("${scope.baseUri}/updater/apply") { scope.apply(this) }
+        }
     }
 
     /**

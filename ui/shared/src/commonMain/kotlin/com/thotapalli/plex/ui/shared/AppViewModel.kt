@@ -14,6 +14,8 @@ import com.thotapalli.plex.core.model.MediaDetail
 import com.thotapalli.plex.core.model.MediaItem
 import com.thotapalli.plex.core.model.Movie
 import com.thotapalli.plex.core.model.Season
+import com.thotapalli.plex.core.model.ServerUpdate
+import com.thotapalli.plex.core.model.SharedUser
 import com.thotapalli.plex.core.model.Show
 import com.thotapalli.plex.core.model.watched
 import com.thotapalli.plex.core.download.DownloadQueue
@@ -162,6 +164,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         refreshHome(active)
         refreshDownloads()
         checkForUpdate()
+        refreshServerUpdate(active)
         startScanPolling(active)
 
         viewModelScope.launch {
@@ -230,7 +233,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             val libraries = runCatching {
                 container.repository.libraries(server.scope, server.machineIdentifier)
-            }.getOrDefault(emptyList())
+            }.getOrDefault(emptyList()).let(::orderedLibraries)
 
             val continueWatching = runCatching {
                 container.repository.continueWatching(server.scope)
@@ -508,6 +511,129 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         _state.update { it.copy(notice = null) }
     }
 
+    // --- server updates --------------------------------------------------------------------
+    //
+    // The server product updating itself, surfaced the way the official app does. Distinct
+    // from the client's own update notice (checkForUpdate), which compares this build against
+    // the release manifest in CLAUDE.md section 17.
+
+    /**
+     * Poll the server's own update state once, so an available update can be surfaced. Folded
+     * into the connect path via [applyTarget]. Silent on failure — an unreachable or older
+     * server simply reports nothing.
+     */
+    private fun refreshServerUpdate(server: ActiveServer = requireServer()) {
+        viewModelScope.launch {
+            val update = container.serverApi.serverUpdateStatus(server.scope)
+            // A reachable status also means a server that was restarting has come back.
+            _state.update { it.copy(serverUpdate = update, serverUpdateApplying = false) }
+        }
+    }
+
+    /** Ask the server to check for, and download, an available update, then re-poll status. */
+    fun checkServerUpdate() {
+        val server = _state.value.server ?: return
+        notify("Checking for a server update…")
+        viewModelScope.launch {
+            runCatching { container.serverApi.checkServerUpdate(server.scope) }
+                .onFailure { notify("Couldn't check for a server update") }
+            val update = container.serverApi.serverUpdateStatus(server.scope)
+            _state.update { it.copy(serverUpdate = update) }
+            if (update?.available == true) {
+                notify("Server update available: ${update.version ?: "new version"}")
+            } else {
+                notify("The server is up to date")
+            }
+        }
+    }
+
+    /**
+     * Install the available server update and restart the server. Applying drops the
+     * connection, so this is fire-and-forget: the flag stays set and the interface tells the
+     * viewer the update is under way rather than waiting for a response that may never come.
+     */
+    fun applyServerUpdate() {
+        val server = _state.value.server ?: return
+        _state.update { it.copy(serverUpdateApplying = true) }
+        notify("Applying the server update. The server will restart…")
+        viewModelScope.launch {
+            container.serverApi.applyServerUpdate(server.scope)
+        }
+    }
+
+    // --- library sharing -------------------------------------------------------------------
+    //
+    // The account model is separate accounts with a shared library (CLAUDE.md section 2). The
+    // owner grants another account access to selected libraries; sharing goes through plex.tv
+    // with the account token, never the server token.
+
+    /**
+     * Grant an account access to selected libraries of the active server by email. Surfaces
+     * the result as a notice and refreshes the shared-users list on success.
+     */
+    fun grantLibraryAccess(email: String, libraryKeys: List<String>) {
+        val server = _state.value.server ?: return
+        val accountToken = container.session.accountToken()
+        if (accountToken == null) {
+            notify("Sign in again to share libraries")
+            return
+        }
+        notify("Sharing libraries with $email…")
+        viewModelScope.launch {
+            val ok = container.tvApi.shareLibraries(
+                accountToken = accountToken,
+                machineIdentifier = server.machineIdentifier,
+                invitedEmail = email,
+                librarySectionIds = libraryKeys,
+            )
+            if (ok) {
+                notify("Shared with $email")
+                refreshSharedUsers()
+            } else {
+                notify("Couldn't share with $email")
+            }
+        }
+    }
+
+    /** The accounts the active server is already shared with. Best-effort. */
+    fun refreshSharedUsers() {
+        val server = _state.value.server ?: return
+        val accountToken = container.session.accountToken() ?: return
+        viewModelScope.launch {
+            val users = container.tvApi.sharedUsers(accountToken, server.machineIdentifier)
+            _state.update { it.copy(sharedUsers = users) }
+        }
+    }
+
+    // --- library order ---------------------------------------------------------------------
+    //
+    // Plex has no reliable client reorder API, so the order is kept locally and applied on
+    // every load. See [SettingsStore.libraryOrder].
+
+    /**
+     * Reorder the library cards, persisting the new order so it survives a restart. Reorders
+     * the current in-memory list and writes the resulting key order to settings.
+     */
+    fun moveLibrary(fromIndex: Int, toIndex: Int) {
+        val current = _state.value.libraries
+        if (fromIndex !in current.indices || toIndex !in current.indices || fromIndex == toIndex) return
+        val reordered = current.toMutableList().apply { add(toIndex, removeAt(fromIndex)) }
+        container.settings.libraryOrder = reordered.map { it.key }
+        _state.update { it.copy(libraries = reordered) }
+    }
+
+    /**
+     * Sort [libraries] by the saved order. Keys present in the saved order lead, in that
+     * order; anything unknown (a newly added library) falls to the end in the server's own
+     * order rather than disappearing. See [SettingsStore.libraryOrder].
+     */
+    private fun orderedLibraries(libraries: List<Library>): List<Library> {
+        val order = container.settings.libraryOrder
+        if (order.isEmpty()) return libraries
+        val rank = order.withIndex().associate { (index, key) -> key to index }
+        return libraries.sortedBy { rank[it.key] ?: (order.size + libraries.indexOf(it)) }
+    }
+
     // --- player ----------------------------------------------------------------------------
 
     /**
@@ -766,6 +892,12 @@ data class AppState(
     /** Bumped so a settings change recomposes; the values themselves live in the store. */
     val settingsRevision: Int = 0,
     val availableUpdate: com.thotapalli.plex.core.session.AvailableUpdate? = null,
+    /** The server's own pending update, polled once on connect. Null when none or unknown. */
+    val serverUpdate: ServerUpdate? = null,
+    /** True from the moment [AppViewModel.applyServerUpdate] fires; the server then restarts. */
+    val serverUpdateApplying: Boolean = false,
+    /** Accounts the active server is shared with, when the sharing screen has loaded them. */
+    val sharedUsers: List<SharedUser> = emptyList(),
     /** A short transient message for a server action's result, shown as a snackbar. */
     val notice: String? = null,
     /** Light, dark or follow the system. Applied by PlexApp, not here. */
