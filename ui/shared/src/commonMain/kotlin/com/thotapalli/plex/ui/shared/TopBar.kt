@@ -15,12 +15,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.thotapalli.plex.ui.design.GlassRole
 import com.thotapalli.plex.ui.design.Layout
 import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
-import com.thotapalli.plex.ui.design.liquidGlass
 
 /**
  * A slim top bar: an optional back button, a title, and an optional trailing actions slot.
@@ -80,11 +80,11 @@ fun TopBar(
  * A round, focusable icon button sized for the bar, and the floating back control.
  *
  * The back control has to survive being dropped onto the brightest still in a library, so it is
- * never a bare glyph. It is a small sheet of liquid glass — the same frosted material as every
- * other floating control, with its specular, refractive rim and cool glow. In [scrim] mode the
- * glass is tinted with the heavy dark scrim so a bright still cannot swallow its white glyph; in
- * opaque mode (a trailing action on a painted bar) it takes the default cool glass tint. The press
- * bubble and focus ring ride along through [plexFocusable].
+ * never a bare glyph. It is a small sheet of glass carrying the [GlassRole.CHIP] material — the
+ * pill-shaped floating-control role whose calibrated tint keeps the glyph legible over bright
+ * artwork. In [scrim] mode the glyph is white so a bright still cannot swallow it; in opaque mode
+ * (a trailing action on a painted bar) it takes the primary text colour. The press bubble and focus
+ * ring ride along through [plexFocusable].
  */
 @Composable
 fun TopBarIconButton(
@@ -104,11 +104,9 @@ fun TopBarIconButton(
         modifier = modifier
             .plexFocusable(shape = Radius.pill, onClick = onClick)
             .size(touch)
-            .liquidGlass(
-                shape = Radius.pill,
-                elevated = scrim,
-                tint = if (scrim) colours.scrimHeavy else Color.Unspecified,
-            ),
+            // The CHIP role owns the calibrated tint that keeps the glyph legible when this floats
+            // over bright artwork (the old scrim-heavy bed); scrim still drives the glyph colour.
+            .material(GlassRole.CHIP, shape = Radius.pill),
         contentAlignment = Alignment.Center,
     ) {
         PlexIcon(

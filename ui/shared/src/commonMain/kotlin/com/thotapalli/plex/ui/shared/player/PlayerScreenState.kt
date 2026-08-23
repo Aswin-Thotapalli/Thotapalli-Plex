@@ -24,6 +24,10 @@ data class PlayerScreenState(
     val nextEpisodeTitle: String? = null,
     val countdownSeconds: Int = 10,
 
+    /** Whether an adjacent episode exists, so the transport can offer explicit previous/next. */
+    val hasPreviousEpisode: Boolean = false,
+    val hasNextEpisode: Boolean = false,
+
     val showTranscodingChip: Boolean = false,
 
     /** Windows only. See CLAUDE.md section 14 item 7. */
@@ -58,7 +62,12 @@ data class PlayerActions(
     val onScrub: (Long) -> Unit = {},
     val onScrubEnd: (Long) -> Unit = {},
     val onSkipIntro: () -> Unit = {},
+    /** The auto-play route: the credit skip, the countdown and a natural end all fire this. */
     val onPlayNext: () -> Unit = {},
+    /** The explicit transport control: play the previous episode now. */
+    val onPlayPreviousEpisode: () -> Unit = {},
+    /** The explicit transport control: play the next episode now, distinct from auto-play. */
+    val onPlayNextEpisodeNow: () -> Unit = {},
     val onCancelAutoPlay: () -> Unit = {},
     val onOpenAudioTracks: () -> Unit = {},
     val onOpenSubtitleTracks: () -> Unit = {},

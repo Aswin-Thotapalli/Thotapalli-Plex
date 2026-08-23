@@ -32,11 +32,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.unit.dp
 import com.thotapalli.plex.core.download.DownloadRow
 import com.thotapalli.plex.core.download.DownloadState
+import com.thotapalli.plex.ui.design.GlassRole
 import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
-import com.thotapalli.plex.ui.design.backgroundBrush
 import com.thotapalli.plex.ui.design.glassSource
 import com.thotapalli.plex.ui.design.liquidGlass
 import com.thotapalli.plex.ui.design.pressBubble
@@ -44,6 +44,7 @@ import com.thotapalli.plex.ui.shared.ContentWidthCap
 import com.thotapalli.plex.ui.shared.PlexIcon
 import com.thotapalli.plex.ui.shared.PlexIconKind
 import com.thotapalli.plex.ui.shared.SectionHeader
+import com.thotapalli.plex.ui.shared.material
 import com.thotapalli.plex.ui.shared.input.rememberFirstFocus
 
 /**
@@ -68,8 +69,8 @@ fun DownloadsScreen(
     val firstFocus = rememberFirstFocus(enabled = PlexTheme.sizeClass.isTelevision)
 
     ContentWidthCap(modifier) {
-        // The deep-indigo ground, and the source every frosted panel above it samples.
-        Box(Modifier.fillMaxSize().background(colours.backgroundBrush())) {
+        // The translucent veil over the ambient backdrop, and the source every frosted panel samples.
+        Box(Modifier.fillMaxSize().material(GlassRole.GROUND)) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().glassSource(),
                 contentPadding = PaddingValues(PlexTheme.sizeClass.screenPadding),
@@ -82,7 +83,7 @@ fun DownloadsScreen(
                             .fillMaxWidth()
                             .focusRequester(firstFocus)
                             .focusable()
-                            .liquidGlass(shape = Radius.glass, elevated = true)
+                            .material(GlassRole.CARD, shape = Radius.glass)
                             .padding(Spacing.md),
                         verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
                     ) {
@@ -103,7 +104,7 @@ fun DownloadsScreen(
                         ) {
                             Column(
                                 modifier = Modifier
-                                    .liquidGlass(shape = Radius.glass)
+                                    .material(GlassRole.CARD, shape = Radius.glass)
                                     .padding(horizontal = Spacing.xl, vertical = Spacing.lg),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 verticalArrangement = Arrangement.spacedBy(Spacing.xs),
@@ -144,7 +145,7 @@ private fun DownloadRowItem(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .liquidGlass(shape = Radius.card)
+            .material(GlassRole.CARD, shape = Radius.card)
             .padding(Spacing.md),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {

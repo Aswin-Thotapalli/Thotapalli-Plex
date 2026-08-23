@@ -23,11 +23,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.thotapalli.plex.core.model.MediaItem
 import com.thotapalli.plex.core.model.watched
+import com.thotapalli.plex.ui.design.GlassRole
 import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
-import com.thotapalli.plex.ui.design.liquidGlass
 
 /**
  * The actions a media item's context menu offers. Every one is already implemented on the
@@ -152,7 +152,7 @@ private fun ItemActionsMenu(
     DropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismiss,
-        modifier = Modifier.liquidGlass(shape = Radius.glassSmall),
+        modifier = Modifier.material(GlassRole.SHEET, Radius.glassSmall),
     ) {
         if (item.watched) {
             MenuRow("Mark as Unwatched") { onDismiss(); actions.onMarkUnwatched() }
@@ -219,7 +219,7 @@ private fun DeleteConfirmDialog(
     val colours = PlexTheme.colours
     AlertDialog(
         onDismissRequest = onCancel,
-        modifier = Modifier.liquidGlass(shape = Radius.card),
+        modifier = Modifier.material(GlassRole.SHEET, Radius.card),
         containerColor = Color.Transparent,
         tonalElevation = 0.dp,
         titleContentColor = colours.textPrimary,

@@ -18,14 +18,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.thotapalli.plex.core.model.PlexServer
+import com.thotapalli.plex.ui.design.GlassRole
 import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
 import com.thotapalli.plex.ui.design.ThemeMode
-import com.thotapalli.plex.ui.design.liquidGlass
+import com.thotapalli.plex.ui.design.glassSource
 import com.thotapalli.plex.ui.shared.ContentWidthCap
 import com.thotapalli.plex.ui.shared.SectionHeader
+import com.thotapalli.plex.ui.shared.material
 import com.thotapalli.plex.ui.shared.plexFocusable
 
 /**
@@ -48,8 +50,9 @@ fun SettingsScreen(
     val colours = PlexTheme.colours
 
     ContentWidthCap(modifier) {
+        // The translucent veil over the ambient backdrop, on the source the frosted nav samples.
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().material(GlassRole.GROUND).glassSource(),
             contentPadding = PaddingValues(PlexTheme.sizeClass.screenPadding),
             verticalArrangement = Arrangement.spacedBy(Spacing.xs),
         ) {
@@ -120,7 +123,7 @@ fun SettingsScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .plexFocusable(Radius.card, onClick = { onSelectServer(server) }, scaleOnFocus = false)
-                            .liquidGlass(shape = Radius.card)
+                            .material(GlassRole.CARD, shape = Radius.card)
                             .border(
                                 1.dp,
                                 if (server.machineIdentifier == state.activeServerId) colours.accent
@@ -165,7 +168,7 @@ fun SettingsScreen(
                         Modifier
                             .fillMaxWidth()
                             .padding(top = Spacing.lg)
-                            .liquidGlass(shape = Radius.card)
+                            .material(GlassRole.CARD, shape = Radius.card)
                             .border(1.dp, colours.accent, Radius.card)
                             .padding(Spacing.md),
                     ) {
@@ -194,11 +197,10 @@ private fun ThemeModeRow(
     selected: ThemeMode,
     onSelect: (ThemeMode) -> Unit,
 ) {
-    val colours = PlexTheme.colours
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .liquidGlass(shape = Radius.card)
+            .material(GlassRole.CARD, shape = Radius.card)
             .padding(Spacing.md),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
@@ -206,9 +208,7 @@ private fun ThemeModeRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(Radius.pill)
-                .background(colours.surface, Radius.pill)
-                .border(1.dp, colours.border, Radius.pill)
+                .material(GlassRole.CHIP, shape = Radius.pill)
                 .padding(Spacing.xxs),
             horizontalArrangement = Arrangement.spacedBy(Spacing.xxs),
         ) {
@@ -271,7 +271,7 @@ private fun ToggleRow(
         modifier = Modifier
             .fillMaxWidth()
             .plexFocusable(Radius.card, onClick = { onChange(!checked) }, scaleOnFocus = false)
-            .liquidGlass(shape = Radius.card)
+            .material(GlassRole.CARD, shape = Radius.card)
             .padding(Spacing.md),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -296,7 +296,7 @@ private fun ChoiceRow(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .liquidGlass(shape = Radius.card)
+            .material(GlassRole.CARD, shape = Radius.card)
             .padding(Spacing.md),
         verticalArrangement = Arrangement.spacedBy(Spacing.xs),
     ) {

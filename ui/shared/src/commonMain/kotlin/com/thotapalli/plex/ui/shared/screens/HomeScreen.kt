@@ -1,6 +1,5 @@
 package com.thotapalli.plex.ui.shared.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,15 +32,14 @@ import com.thotapalli.plex.core.model.Library
 import com.thotapalli.plex.core.model.LibraryKind
 import com.thotapalli.plex.core.model.MediaItem
 import com.thotapalli.plex.ui.design.Elevation
+import com.thotapalli.plex.ui.design.GlassRole
 import com.thotapalli.plex.ui.design.Layout
 import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.SizeClass
 import com.thotapalli.plex.ui.design.Spacing
-import com.thotapalli.plex.ui.design.backgroundBrush
 import com.thotapalli.plex.ui.design.glassSource
-import com.thotapalli.plex.ui.design.liquidGlass
 import com.thotapalli.plex.ui.shared.ActiveServer
 import com.thotapalli.plex.ui.shared.Artwork
 import com.thotapalli.plex.ui.shared.ArtworkSize
@@ -51,6 +49,7 @@ import com.thotapalli.plex.ui.shared.PlexIcon
 import com.thotapalli.plex.ui.shared.PlexIconKind
 import com.thotapalli.plex.ui.shared.SectionHeader
 import com.thotapalli.plex.ui.shared.WideProgressTile
+import com.thotapalli.plex.ui.shared.material
 import com.thotapalli.plex.ui.shared.plexFocusable
 import com.thotapalli.plex.ui.shared.motion.staggeredEntrance
 
@@ -86,9 +85,11 @@ fun HomeScreen(
     // The viewport height bounds the hero: on a short window the hero is capped to a fraction of
     // it so its action buttons stay clear of the bottom edge and the rails below remain in view.
     BoxWithConstraints(
+        // The ground veil: a translucent skin over the ambient featured art, so Home shares the
+        // nav's glass world and the art bleeds through faintly instead of an opaque wall below the hero.
         modifier = modifier
             .fillMaxSize()
-            .background(PlexTheme.colours.backgroundBrush()),
+            .material(GlassRole.GROUND),
     ) {
         val viewportHeight = maxHeight
 
@@ -202,7 +203,7 @@ private fun LibraryPeekCard(
     Column(
         modifier = modifier
             .plexFocusable(shape = Radius.card, onClick = onClick, scaleOnFocus = false)
-            .liquidGlass(shape = Radius.card)
+            .material(GlassRole.CARD, shape = Radius.card)
             .padding(Spacing.md),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {

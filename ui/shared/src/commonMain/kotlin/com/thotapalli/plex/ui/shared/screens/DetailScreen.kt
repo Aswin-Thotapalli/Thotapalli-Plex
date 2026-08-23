@@ -37,6 +37,7 @@ import com.thotapalli.plex.core.model.Season
 import com.thotapalli.plex.core.model.Show
 import com.thotapalli.plex.core.model.partiallyWatched
 import com.thotapalli.plex.core.model.watched
+import com.thotapalli.plex.ui.design.GlassRole
 import com.thotapalli.plex.ui.design.Layout
 import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
@@ -44,7 +45,6 @@ import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
 import com.thotapalli.plex.ui.design.backgroundBrush
 import com.thotapalli.plex.ui.design.glassSource
-import com.thotapalli.plex.ui.design.liquidGlass
 import com.thotapalli.plex.ui.shared.ActiveServer
 import com.thotapalli.plex.ui.shared.ArtworkSize
 import com.thotapalli.plex.ui.shared.CinematicBackdrop
@@ -58,6 +58,7 @@ import com.thotapalli.plex.ui.shared.PrimaryButton
 import com.thotapalli.plex.ui.shared.SecondaryButton
 import com.thotapalli.plex.ui.shared.SectionHeader
 import com.thotapalli.plex.ui.shared.formatDuration
+import com.thotapalli.plex.ui.shared.material
 import com.thotapalli.plex.ui.shared.input.rememberFirstFocus
 import com.thotapalli.plex.ui.shared.motion.staggeredEntrance
 import com.thotapalli.plex.ui.shared.plexFocusable
@@ -68,9 +69,10 @@ import com.thotapalli.plex.ui.shared.plexFocusable
  *
  * The screen is built as layers of the redesign: a full-bleed [CinematicBackdrop] bleeds art to
  * the top edge, an [AmbientBackground] carries the artwork's colour down the whole screen and is
- * marked as the glass source, and every cluster of chrome below — the action bar, the track
- * reference, the episode list — floats as a sheet of frosted [liquidGlass] that frosts that
- * colour. Compact and Medium scroll one column; Expanded and Television split into two panes.
+ * marked as the glass source, a [GlassRole.GROUND] veil over it is the same base the rest of the
+ * app floats on, and every cluster below — the action/metadata cluster, the track reference, each
+ * episode row — floats as a [GlassRole.CARD] via `Modifier.material`, with the season pills as
+ * [GlassRole.CHIP]. Compact and Medium scroll one column; Expanded and Television split two panes.
  */
 @Composable
 fun DetailScreen(
@@ -110,6 +112,11 @@ fun DetailScreen(
             url = backdropUrl,
             modifier = Modifier.fillMaxSize().glassSource(),
         )
+
+        // The GROUND veil: the same translucent base every screen floats on, laid over the ambient
+        // art so the whole area below the cinematic backdrop reads as one glass world with the nav.
+        // The full-bleed backdrop is drawn above it and covers it at the top.
+        Box(Modifier.fillMaxSize().material(GlassRole.GROUND))
 
         if (sizeClass.twoPaneDetail) {
             TwoPaneDetail(
@@ -231,13 +238,14 @@ private fun SingleColumnDetail(
             }
 
             item {
-                GlassPanel(
+                // Each episode row floats as its own CARD, rather than sharing one panel, so the
+                // list reads as a stack of glass tiles in the same material world as the app.
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = contentPadding)
                         .padding(top = Spacing.xs),
-                    contentPadding = Spacing.xs,
-                    verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.xs),
                 ) {
                     state.episodesInSelectedSeason.forEachIndexed { index, episode ->
                         EpisodeRow(
@@ -251,7 +259,9 @@ private fun SingleColumnDetail(
                             onSelect = { onSelectEpisode(episode) },
                             selected = episode.ratingKey == state.selectedEpisode?.ratingKey,
                             actions = actions,
-                            modifier = Modifier.staggeredEntrance(index = index, key = episode.ratingKey),
+                            modifier = Modifier
+                                .material(GlassRole.CARD, shape = Radius.card)
+                                .staggeredEntrance(index = index, key = episode.ratingKey),
                         )
                     }
                 }
@@ -330,7 +340,9 @@ private fun TwoPaneDetail(
             // Right pane: the episode list for a show, the overview for a movie, on one tall
             // frosted panel filling the remainder.
             if (item is Show) {
-                GlassPanel(
+                // The episode pane sits directly on the GROUND; the header and season chips float
+                // over it and every episode row is its own CARD, matching the single-column layout.
+                Column(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
@@ -341,7 +353,7 @@ private fun TwoPaneDetail(
                     SeasonSelector(state, onSeasonSelected)
                     LazyColumn(
                         modifier = Modifier.fillMaxWidth().weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
+                        verticalArrangement = Arrangement.spacedBy(Spacing.xs),
                     ) {
                         itemsIndexed(
                             state.episodesInSelectedSeason,
@@ -358,7 +370,9 @@ private fun TwoPaneDetail(
                                 onSelect = { onSelectEpisode(episode) },
                                 selected = episode.ratingKey == state.selectedEpisode?.ratingKey,
                                 actions = actions,
-                                modifier = Modifier.staggeredEntrance(index = index, key = episode.ratingKey),
+                                modifier = Modifier
+                                    .material(GlassRole.CARD, shape = Radius.card)
+                                    .staggeredEntrance(index = index, key = episode.ratingKey),
                             )
                         }
                         item { Spacer(Modifier.height(Spacing.lg)) }
@@ -404,9 +418,10 @@ private fun HeroCaption(item: MediaItem, modifier: Modifier = Modifier) {
 }
 
 /**
- * A sheet of frosted liquid glass hosting a stack of detail content. Every chrome cluster on the
- * screen — the actions, the track reference, the episode list — floats as one of these, so it
- * frosts the ambient artwork behind and reads as part of one bubbly glass system.
+ * A [GlassRole.CARD] surface hosting a stack of detail content. Every content cluster on the
+ * screen — the action/metadata cluster, the track reference, the movie overview — floats as one of
+ * these, so the material engine gives each the same calibrated frost and it reads as part of one
+ * glass world with the rest of the app.
  */
 @Composable
 private fun GlassPanel(
@@ -417,7 +432,7 @@ private fun GlassPanel(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
-        modifier = modifier.liquidGlass(shape = shape).padding(contentPadding),
+        modifier = modifier.material(GlassRole.CARD, shape = shape).padding(contentPadding),
         verticalArrangement = verticalArrangement,
         content = content,
     )
@@ -562,7 +577,7 @@ private fun SeasonPill(
     val base = if (selected) {
         Modifier.background(colours.accent, Radius.pill)
     } else {
-        Modifier.liquidGlass(shape = Radius.pill)
+        Modifier.material(GlassRole.CHIP, shape = Radius.pill)
     }
     Box(
         modifier = Modifier

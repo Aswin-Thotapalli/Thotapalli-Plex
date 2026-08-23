@@ -21,11 +21,12 @@ import androidx.compose.ui.unit.dp
 import com.thotapalli.plex.core.model.Library
 import com.thotapalli.plex.core.model.MediaCollection
 import com.thotapalli.plex.core.model.MediaItem
+import com.thotapalli.plex.ui.design.GlassRole
 import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
-import com.thotapalli.plex.ui.design.liquidGlass
+import com.thotapalli.plex.ui.design.glassSource
 import com.thotapalli.plex.ui.shared.ActiveServer
 import com.thotapalli.plex.ui.shared.ArtworkSize
 import com.thotapalli.plex.ui.shared.CollectionTile
@@ -35,6 +36,7 @@ import com.thotapalli.plex.ui.shared.PosterGrid
 import com.thotapalli.plex.ui.shared.PosterTile
 import com.thotapalli.plex.ui.shared.SectionHeader
 import com.thotapalli.plex.ui.shared.SkeletonPosterGrid
+import com.thotapalli.plex.ui.shared.material
 import com.thotapalli.plex.ui.shared.input.rememberFirstFocus
 import com.thotapalli.plex.ui.shared.motion.staggeredEntrance
 
@@ -63,7 +65,10 @@ fun LibraryScreen(
     val firstFocus = rememberFirstFocus(enabled = PlexTheme.sizeClass.isTelevision)
     val collectionsShown = !insideCollection && state.collections.isNotEmpty()
 
-    Column(modifier = modifier.fillMaxSize()) {
+    // The screen root lays the GROUND veil over the app's ambient backdrop: content stays readable
+    // while the featured art still bleeds through, so the library shares the one glass world as the
+    // navigation instead of sitting on an opaque panel. See CLAUDE.md section 12.
+    Column(modifier = modifier.fillMaxSize().material(GlassRole.GROUND)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -107,7 +112,7 @@ fun LibraryScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = PlexTheme.sizeClass.screenPadding, vertical = Spacing.xxs)
-                    .liquidGlass(shape = Radius.glassSmall)
+                    .material(GlassRole.CHIP, shape = Radius.pill)
                     .padding(horizontal = Spacing.md, vertical = Spacing.sm),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.md),
@@ -132,7 +137,8 @@ fun LibraryScreen(
             return@Column
         }
 
-        PosterGrid {
+        // The scrolling grid is the Haze source the frosted navigation samples and blurs.
+        PosterGrid(modifier = Modifier.glassSource()) {
             if (!insideCollection && state.collections.isNotEmpty()) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     SectionHeader("Collections", Modifier.padding(top = Spacing.xs))
@@ -149,7 +155,10 @@ fun LibraryScreen(
                         onClick = { onCollectionClick(collection) },
                         modifier = Modifier
                             .staggeredEntrance(index, key = collection.ratingKey)
-                            .then(if (index == 0) Modifier.focusRequester(firstFocus) else Modifier),
+                            .then(if (index == 0) Modifier.focusRequester(firstFocus) else Modifier)
+                            // The stacked collection plate is a card-like surface, so it floats on the
+                            // shared glass rather than reading as a bare poster. See CLAUDE.md §12.
+                            .material(GlassRole.CARD, shape = Radius.poster),
                     )
                 }
                 item(span = { GridItemSpan(maxLineSpan) }) {
@@ -209,7 +218,7 @@ internal fun TextChip(
     Box(
         modifier = modifier
             .clip(Radius.pill)
-            // Selected is a solid amber pill; unselected is a sheet of frosted glass, so the chip
+            // Selected is a solid amber pill; unselected takes the calibrated CHIP glass, so the chip
             // reads as chrome without competing with the poster art around it. See CLAUDE.md §12.
             .then(
                 if (selected) {
@@ -217,7 +226,7 @@ internal fun TextChip(
                         .background(colours.accent, Radius.pill)
                         .border(1.dp, colours.accent, Radius.pill)
                 } else {
-                    Modifier.liquidGlass(shape = Radius.pill)
+                    Modifier.material(GlassRole.CHIP, shape = Radius.pill)
                 },
             )
             .clickable(onClick = onClick)

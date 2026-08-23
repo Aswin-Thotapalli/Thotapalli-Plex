@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -43,12 +44,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.thotapalli.plex.core.playback.PlaybackState
 import com.thotapalli.plex.core.playback.PlayerTrack
+import com.thotapalli.plex.ui.design.GlassRole
 import com.thotapalli.plex.ui.design.Layout
 import com.thotapalli.plex.ui.design.Motion
 import com.thotapalli.plex.ui.design.PlayerColours
@@ -59,6 +65,7 @@ import com.thotapalli.plex.ui.design.Spacing
 import com.thotapalli.plex.ui.design.liquidGlass
 import com.thotapalli.plex.ui.design.pressBubble
 import com.thotapalli.plex.ui.shared.Artwork
+import com.thotapalli.plex.ui.shared.material
 import com.thotapalli.plex.ui.shared.LoadingIndicator
 import com.thotapalli.plex.ui.shared.PlexIcon
 import com.thotapalli.plex.ui.shared.PlexIconKind
@@ -69,9 +76,11 @@ import com.thotapalli.plex.ui.shared.plexFocusable
  * The player overlay from CLAUDE.md section 12, dressed in the liquid-glass language.
  *
  * Idle is nothing on screen: no bar, no clock, no logo, no title. Active is a bottom gradient
- * scrim, the title, a progress bar and transport controls, and nothing else. The transport
- * controls float in a frosted glass bar, the one warm-amber accent marks only the active scrubber
- * fill and the call-to-action pills, and every control answers a press with a springy bubble.
+ * scrim, the title, a progress bar and transport controls, and nothing else. The overlay chrome —
+ * the transport bar ([GlassRole.CHROME]), the track-selector and up-next sheets ([GlassRole.SHEET])
+ * and the pill controls ([GlassRole.CHIP]) — is dressed by the material-role theme engine rather
+ * than hand-picked tints; the one warm-amber accent marks only the active scrubber fill and the
+ * call-to-action pills, and every control answers a press with a springy bubble.
  *
  * This is Compose content in a layer above the video surface. It never causes the surface to be
  * redrawn, and showing or hiding it never recreates the player or the surface. The video is not a
@@ -363,25 +372,22 @@ private fun SeekHint(visible: Boolean, label: String, modifier: Modifier = Modif
 }
 
 /**
- * The floating transport bar: a sheet of frosted glass carrying the transport controls, left to
- * right per CLAUDE.md section 14 item 7 — play/pause, seek back, seek forward, then the audio and
- * subtitle selectors and the Windows full-screen toggle pushed to the right. Position, the progress
- * bar and duration sit on the scrubber row just above. The tint is a touch denser than the ambient
- * glass so white glyphs stay legible over bright footage.
+ * The floating transport bar: the showcase chrome glass carrying the transport controls, left to
+ * right per CLAUDE.md section 14 item 7 — the previous-episode control, play/pause, seek back, seek
+ * forward, the next-episode control, then the audio and subtitle selectors and the Windows
+ * full-screen toggle pushed to the right. Position, the progress bar and duration sit on the scrubber
+ * row just above. The bar is styled through the material-role engine ([GlassRole.CHROME]); it never
+ * hand-picks tint numbers. The previous/next episode controls appear only when an adjacent episode
+ * exists. See the theme engine in ui/design/Material.kt.
  */
 @Composable
 private fun TransportBar(state: PlayerScreenState, actions: PlayerActions) {
-    val colours = PlayerColours
     val isTv = PlexTheme.sizeClass.isTelevision
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .liquidGlass(
-                shape = Radius.glass,
-                elevated = true,
-                tint = colours.surface.copy(alpha = 0.82f),
-            )
+            .material(GlassRole.CHROME, shape = Radius.glass)
             .padding(
                 horizontal = if (isTv) Spacing.md else Spacing.sm,
                 vertical = if (isTv) Spacing.sm else Spacing.xs,
@@ -389,6 +395,10 @@ private fun TransportBar(state: PlayerScreenState, actions: PlayerActions) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
+        // Previous episode, shown only when one exists. A skip-previous glyph in a glass pill.
+        if (state.hasPreviousEpisode) {
+            GlassGlyphButton(forward = false, onClick = actions.onPlayPreviousEpisode)
+        }
         GlassIconButton(
             kind = if (state.isPlaying) PlexIconKind.PAUSE else PlexIconKind.PLAY,
             onClick = actions.onPlayPause,
@@ -396,6 +406,11 @@ private fun TransportBar(state: PlayerScreenState, actions: PlayerActions) {
         )
         GlassTextButton("-10s", actions.onSeekBack)
         GlassTextButton("+30s", actions.onSeekForward)
+        // Next episode, shown only when one exists. The explicit "next now", distinct from the
+        // auto-play countdown. A skip-next glyph in a glass pill.
+        if (state.hasNextEpisode) {
+            GlassGlyphButton(forward = true, onClick = actions.onPlayNextEpisodeNow)
+        }
 
         Spacer(Modifier.weight(1f))
 
@@ -563,7 +578,7 @@ private fun NextEpisodePrompt(
 
     Column(
         modifier = Modifier
-            .liquidGlass(shape = Radius.glass, elevated = true)
+            .material(GlassRole.SHEET, shape = Radius.glass)
             .padding(Spacing.md),
         verticalArrangement = Arrangement.spacedBy(Spacing.xs),
     ) {
@@ -626,10 +641,72 @@ private fun GlassIconButton(
 }
 
 /**
- * The shared glass-pill control. Owns its interaction source so a press can both spring the bubble
- * ([Modifier.pressBubble]) and brighten the glass ([liquidGlass]'s `specularBoost`), and a focus or
- * hover can raise the amber ring and grow — so a remote, a keyboard and a mouse each get the same
- * "this is the thing under me" cue. Glow is off so pills inside the transport bar do not stack halos.
+ * A glass control button carrying the skip-previous / skip-next episode glyph.
+ *
+ * Compose Multiplatform ships no icon pack and [PlexIconKind] carries no skip glyph, so — matching
+ * how this client draws its own line icons — the glyph is drawn on a Canvas here in the same idiom
+ * as [PlexIcon]'s filled play triangle. [forward] true is skip-next (two triangles then a bar),
+ * false is skip-previous (a bar then two triangles).
+ */
+@Composable
+private fun GlassGlyphButton(forward: Boolean, onClick: () -> Unit) {
+    val colours = PlayerColours
+    val isTv = PlexTheme.sizeClass.isTelevision
+    val glyphSize = if (isTv) 26.dp else 22.dp
+    GlassControlButton(onClick = onClick) {
+        SkipGlyph(forward = forward, size = glyphSize, tint = colours.textPrimary)
+    }
+}
+
+/** The filled skip-previous / skip-next glyph, in the same drawn idiom as the play triangle. */
+@Composable
+private fun SkipGlyph(forward: Boolean, size: Dp, tint: Color) {
+    Canvas(Modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+        val top = h * 0.28f
+        val bottom = h * 0.72f
+        val mid = h * 0.50f
+        val barWidth = w * 0.09f
+        if (forward) {
+            drawPath(
+                Path().apply {
+                    moveTo(w * 0.16f, top); lineTo(w * 0.16f, bottom); lineTo(w * 0.45f, mid); close()
+                },
+                tint,
+            )
+            drawPath(
+                Path().apply {
+                    moveTo(w * 0.45f, top); lineTo(w * 0.45f, bottom); lineTo(w * 0.74f, mid); close()
+                },
+                tint,
+            )
+            drawRect(tint, Offset(w * 0.75f, top), Size(barWidth, bottom - top))
+        } else {
+            drawRect(tint, Offset(w * 0.16f, top), Size(barWidth, bottom - top))
+            drawPath(
+                Path().apply {
+                    moveTo(w * 0.84f, top); lineTo(w * 0.84f, bottom); lineTo(w * 0.55f, mid); close()
+                },
+                tint,
+            )
+            drawPath(
+                Path().apply {
+                    moveTo(w * 0.55f, top); lineTo(w * 0.55f, bottom); lineTo(w * 0.26f, mid); close()
+                },
+                tint,
+            )
+        }
+    }
+}
+
+/**
+ * The shared glass-pill control. Owns its interaction source so a press can spring the bubble
+ * ([Modifier.pressBubble]) and a focus or hover can raise the amber ring and grow — so a remote, a
+ * keyboard and a mouse each get the same "this is the thing under me" cue. The quiet controls draw
+ * their glass through the material-role engine ([GlassRole.CHIP]); a call-to-action ([accent], e.g.
+ * Skip intro / Play now) takes the one warm accent token as a solid fill so it pops. Neither branch
+ * hand-picks tint numbers.
  */
 @Composable
 private fun GlassControlButton(
@@ -668,11 +745,12 @@ private fun GlassControlButton(
                 color = if (highlighted) colours.focusRing else Color.Transparent,
                 shape = shape,
             )
-            .liquidGlass(
-                shape = shape,
-                glow = false,
-                tint = if (accent) colours.accent else Color.Unspecified,
-                specularBoost = if (pressed) 1f else 0f,
+            .then(
+                if (accent) {
+                    Modifier.background(colours.accent, shape)
+                } else {
+                    Modifier.material(GlassRole.CHIP, shape = shape)
+                },
             )
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(
@@ -707,7 +785,7 @@ fun TrackSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .liquidGlass(shape = Radius.sheet, elevated = true)
+                .material(GlassRole.SHEET, shape = Radius.sheet)
                 .padding(Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(Spacing.xs),
         ) {
@@ -732,7 +810,8 @@ private fun TrackRow(label: String, selected: Boolean, onClick: () -> Unit) {
             .plexFocusable(shape = Radius.card, onClick = onClick, scaleOnFocus = false)
             .then(
                 if (selected) {
-                    Modifier.liquidGlass(shape = Radius.card, glow = false, tint = colours.accent)
+                    // The one warm accent token marks the selected track; no ad-hoc glass tint.
+                    Modifier.background(colours.accent, Radius.card)
                 } else {
                     Modifier
                 },

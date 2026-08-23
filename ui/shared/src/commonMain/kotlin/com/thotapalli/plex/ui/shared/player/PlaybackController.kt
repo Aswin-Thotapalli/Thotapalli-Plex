@@ -65,6 +65,7 @@ class PlaybackController(
     private var markers = MarkerController()
     private var current: MediaItem? = null
     private var detail: MediaDetail? = null
+    private var previousEpisode: Episode? = null
     private var nextEpisode: Episode? = null
     private var partId: String? = null
     private var lastInputAtMs: Long = 0
@@ -72,17 +73,20 @@ class PlaybackController(
     private var chipJob: Job? = null
 
     var onPlayNextEpisode: ((Episode) -> Unit)? = null
+    var onPlayPreviousEpisode: ((Episode) -> Unit)? = null
 
     // --- starting -----------------------------------------------------------------------
 
     suspend fun start(
         item: MediaItem,
         detail: MediaDetail?,
+        previousEpisode: Episode?,
         nextEpisode: Episode?,
         startAtMs: Long,
     ) {
         this.current = item
         this.detail = detail
+        this.previousEpisode = previousEpisode
         this.nextEpisode = nextEpisode
         this.partId = detail?.primaryPart?.partId
 
@@ -102,6 +106,8 @@ class PlaybackController(
             durationMs = item.durationMs,
             positionMs = startAtMs,
             nextEpisodeTitle = nextEpisode?.title,
+            hasPreviousEpisode = previousEpisode != null,
+            hasNextEpisode = nextEpisode != null,
             controlsVisible = true,
             trickplayUrlAt = { positionMs ->
                 partId?.takeIf { detail?.primaryPart != null }?.let { urls.trickplay(it, positionMs) }
@@ -275,6 +281,12 @@ class PlaybackController(
         onPlayNextEpisode?.invoke(next)
     }
 
+    private fun playPrevious() {
+        val previous = previousEpisode ?: return
+        countdown.reset()
+        onPlayPreviousEpisode?.invoke(previous)
+    }
+
     // --- actions --------------------------------------------------------------------------
 
     /** Any pointer movement, touch or remote key press. */
@@ -333,6 +345,8 @@ class PlaybackController(
             }
         },
         onPlayNext = { noteInput(); playNext() },
+        onPlayPreviousEpisode = { noteInput(); playPrevious() },
+        onPlayNextEpisodeNow = { noteInput(); playNext() },
         onCancelAutoPlay = {
             countdown.cancel()
             _state.update { it.copy(showNextEpisodePrompt = false) }

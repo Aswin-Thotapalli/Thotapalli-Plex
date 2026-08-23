@@ -51,12 +51,12 @@ import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
+import com.thotapalli.plex.ui.design.GlassRole
 import com.thotapalli.plex.ui.design.GlassScaffold
 import com.thotapalli.plex.ui.design.SizeClass
 import com.thotapalli.plex.ui.design.ThotapalliTheme
 import com.thotapalli.plex.ui.design.backgroundBrush
 import com.thotapalli.plex.ui.design.glassSource
-import com.thotapalli.plex.ui.design.liquidGlass
 import com.thotapalli.plex.ui.shared.player.PlayerScreen
 import com.thotapalli.plex.ui.shared.screens.DetailScreen
 import com.thotapalli.plex.ui.shared.screens.DownloadsScreen
@@ -418,14 +418,14 @@ private fun NavigationRail(
         modifier = Modifier
             .width(if (narrow) 176.dp else 236.dp)
             .fillMaxHeight()
-            // Real liquid glass: on Android Kyant refracts the featured backdrop through the rail
-            // (optical lens + Fresnel edge); on desktop the Haze frost. A rounded right edge makes
-            // it read as a floating pane (Kyant's lens also requires a corner-based shape). The
-            // translucent tint keeps labels legible while the artwork stays visible under the glass.
-            .liquidGlassPanel(
-                backdrop,
+            // The showcase chrome material: on Android Kyant refracts the featured backdrop through
+            // the rail (optical lens + Fresnel edge); on desktop the Haze frost. A rounded right edge
+            // makes it read as a floating pane (Kyant's lens also requires a corner-based shape). The
+            // CHROME role owns the calibrated tint that keeps labels legible over bright artwork.
+            .material(
+                GlassRole.CHROME,
                 RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
-                navPanelTint(colours),
+                backdrop,
             )
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .padding(vertical = Spacing.md, horizontal = Spacing.sm),
@@ -468,17 +468,6 @@ private fun NavigationRail(
         }
     }
 }
-
-/**
- * The frost tint for the navigation panels. A glass panel over scrolling artwork blurs whatever is
- * behind it, and bright posters left the nav labels sitting on a pale, unpredictable bed. A
- * near-solid surface tint pins the bed to a known high-contrast colour — deep indigo on dark, white
- * on light — so the labels are always legible, while the rim, specular and glow still read as glass.
- */
-private fun navPanelTint(colours: com.thotapalli.plex.ui.design.PlexColours): Color =
-    // A translucent bed so the nav reads as real glass — the darkened ambient backdrop behind the
-    // shell shows through the frost — while staying dark/opaque enough that labels stay legible.
-    colours.surface.copy(alpha = if (colours.isDark) 0.20f else 0.42f)
 
 /**
  * The full-bleed field the whole shell floats on and the single Haze source the navigation frosts.
@@ -603,13 +592,13 @@ private fun NavigationBottomBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            // Same liquid-glass material as the rail: Kyant refraction on Android, Haze frost on
-            // desktop, translucent so the content beneath stays visible under the bar. Rounded top
-            // edge for a floating pane (and Kyant's lens needs a corner-based shape).
-            .liquidGlassPanel(
-                backdrop,
+            // Same chrome material as the rail: Kyant refraction on Android, Haze frost on desktop,
+            // translucent so the content beneath stays visible under the bar. Rounded top edge for a
+            // floating pane (and Kyant's lens needs a corner-based shape).
+            .material(
+                GlassRole.CHROME,
                 RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                navPanelTint(PlexTheme.colours),
+                backdrop,
             )
             .windowInsetsPadding(WindowInsets.safeDrawing)
             .padding(vertical = Spacing.xs, horizontal = Spacing.sm),
@@ -690,7 +679,7 @@ private fun LibrarySheet(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .liquidGlass(shape = Radius.glass, elevated = true)
+                .material(GlassRole.SHEET, Radius.glass)
                 // Swallow taps on the panel itself so only the scrim dismisses.
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
@@ -798,7 +787,7 @@ private fun LibraryOverflowMenu(
     DropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismiss,
-        modifier = Modifier.liquidGlass(shape = Radius.glassSmall),
+        modifier = Modifier.material(GlassRole.SHEET, Radius.glassSmall),
     ) {
         DropdownMenuItem(
             text = {

@@ -108,6 +108,9 @@ fun PlayerScreen(
         )
         // The credit skip, the countdown and a natural end all route the next episode here.
         built.onPlayNextEpisode = { next -> target = PlayTarget(next, next.viewOffsetMs) }
+        // The explicit previous-episode transport control routes the prior episode here, mirroring
+        // next: the engine and surface are reused, so no teardown happens on an episode change.
+        built.onPlayPreviousEpisode = { previous -> target = PlayTarget(previous, previous.viewOffsetMs) }
         controller = built
     }
 
@@ -117,8 +120,9 @@ fun PlayerScreen(
         val active = controller ?: return@LaunchedEffect
         val media = target.item
         val detail = runCatching { container.repository.detail(serverScope, media.ratingKey) }.getOrNull()
+        val previousEpisode = runCatching { previousEpisodeFor(container.serverApi, serverScope, media) }.getOrNull()
         val nextEpisode = runCatching { nextEpisodeFor(container.serverApi, serverScope, media) }.getOrNull()
-        active.start(media, detail, nextEpisode, target.startAtMs)
+        active.start(media, detail, previousEpisode, nextEpisode, target.startAtMs)
     }
 
     // Sends state=stopped and releases the engine when the screen leaves. The work runs on
@@ -439,4 +443,20 @@ private suspend fun nextEpisodeFor(
     val all = api.allEpisodes(scope, item.showRatingKey)
     val index = all.indexOfFirst { it.ratingKey == item.ratingKey }
     return if (index >= 0 && index + 1 < all.size) all[index + 1] else null
+}
+
+/**
+ * The previous episode, or null when there is none — the mirror of [nextEpisodeFor]: the one
+ * before the current episode in the show's flat episode order. A movie never has one, and neither
+ * does the first episode of a show. See CLAUDE.md section 8.
+ */
+private suspend fun previousEpisodeFor(
+    api: PlexServerSource,
+    scope: ServerScope,
+    item: MediaItem,
+): Episode? {
+    if (item !is Episode) return null
+    val all = api.allEpisodes(scope, item.showRatingKey)
+    val index = all.indexOfFirst { it.ratingKey == item.ratingKey }
+    return if (index >= 1) all[index - 1] else null
 }

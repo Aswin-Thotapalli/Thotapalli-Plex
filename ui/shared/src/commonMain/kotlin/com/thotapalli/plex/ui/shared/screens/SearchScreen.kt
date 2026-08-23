@@ -1,6 +1,5 @@
 package com.thotapalli.plex.ui.shared.screens
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -33,13 +32,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.thotapalli.plex.core.model.MediaItem
+import com.thotapalli.plex.ui.design.GlassRole
 import com.thotapalli.plex.ui.design.PlexText
 import com.thotapalli.plex.ui.design.PlexTheme
 import com.thotapalli.plex.ui.design.Radius
 import com.thotapalli.plex.ui.design.Spacing
-import com.thotapalli.plex.ui.design.backgroundBrush
 import com.thotapalli.plex.ui.design.glassSource
-import com.thotapalli.plex.ui.design.liquidGlass
 import com.thotapalli.plex.ui.shared.ActiveServer
 import com.thotapalli.plex.ui.shared.ArtworkSize
 import com.thotapalli.plex.ui.shared.ContentWidthCap
@@ -49,6 +47,7 @@ import com.thotapalli.plex.ui.shared.PosterTile
 import com.thotapalli.plex.ui.shared.SearchState
 import com.thotapalli.plex.ui.shared.SectionHeader
 import com.thotapalli.plex.ui.shared.SkeletonBox
+import com.thotapalli.plex.ui.shared.material
 import com.thotapalli.plex.ui.shared.plexFocusable
 import com.thotapalli.plex.ui.shared.input.rememberFirstFocus
 
@@ -69,7 +68,6 @@ fun SearchScreen(
     modifier: Modifier = Modifier,
     focusRequester: FocusRequester = FocusRequester(),
 ) {
-    val colours = PlexTheme.colours
     val sizeClass = PlexTheme.sizeClass
     // On a television the search field takes first focus, so the remote has somewhere to
     // start typing. See CLAUDE.md section 13.
@@ -82,8 +80,8 @@ fun SearchScreen(
     val posterWidth: Dp = if (sizeClass.isTelevision) 168.dp else 132.dp
 
     ContentWidthCap(modifier) {
-        // The deep-indigo ground, and the source every glass panel above it frosts.
-        Box(Modifier.fillMaxSize().background(colours.backgroundBrush())) {
+        // The translucent veil over the ambient backdrop, and the source every glass panel frosts.
+        Box(Modifier.fillMaxSize().material(GlassRole.GROUND)) {
             val results = state.results
 
             LazyColumn(
@@ -152,11 +150,7 @@ private fun SearchField(
 
     Row(
         modifier = modifier
-            .liquidGlass(
-                shape = Radius.pill,
-                elevated = true,
-                specularBoost = if (focused) 0.7f else 0f,
-            )
+            .material(GlassRole.CHIP, shape = Radius.pill)
             // Selection and focus are the accent's only jobs: an amber rim on the focused field.
             .then(
                 if (focused) Modifier.border(1.5.dp, colours.accent, Radius.pill) else Modifier,
@@ -229,7 +223,7 @@ private fun LazyListScope.resultGroup(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .liquidGlass(shape = Radius.glass)
+                .material(GlassRole.CARD, shape = Radius.glass)
                 .padding(Spacing.md),
             verticalArrangement = Arrangement.spacedBy(Spacing.xs),
         ) {
@@ -261,7 +255,7 @@ private fun LazyListScope.searchSkeleton(posterWidth: Dp) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .liquidGlass(shape = Radius.glass)
+                .material(GlassRole.CARD, shape = Radius.glass)
                 .padding(Spacing.md),
             verticalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
@@ -291,7 +285,7 @@ private fun SearchPlaceholder(title: String, subtitle: String) {
     ) {
         Column(
             modifier = Modifier
-                .liquidGlass(shape = Radius.glass)
+                .material(GlassRole.CARD, shape = Radius.glass)
                 .padding(horizontal = Spacing.xl, vertical = Spacing.lg),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(Spacing.xs),
