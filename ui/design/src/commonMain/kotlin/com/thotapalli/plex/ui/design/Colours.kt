@@ -91,56 +91,58 @@ data class PlexColours(
 )
 
 val DarkColours = PlexColours(
-    // Deep indigo, never black, sinking a shade toward a bluer black at the foot of the screen.
-    background = Color(0xFF0A0C17),
-    backgroundGradientEnd = Color(0xFF0E1120),
-    surface = Color(0xFF161A2E),
-    surfaceElevated = Color(0xFF1E2440),
-    border = Color(0xFF39406A),
-    textPrimary = Color(0xFFEEF0F8),
-    // Brightened from the old dim blue-grey so secondary text, captions and unselected chrome
-    // clear AA over the frosted panels and the indigo ground rather than sinking into them.
-    textSecondary = Color(0xFFBFC5DE),
+    // A deep near-black navy ground with a faint vignette toward the foot, matching the reference
+    // mockups: a clean, modern dark surface rather than a heavy tinted glass world.
+    background = Color(0xFF0A0D14),
+    backgroundGradientEnd = Color(0xFF0C1119),
+    // Cards and the navigation panel: solid, a touch above the ground, lifted by a border + shadow.
+    surface = Color(0xFF141925),
+    surfaceElevated = Color(0xFF1B2230),
+    border = Color(0xFF242C3B),
+    textPrimary = Color(0xFFF3F5F9),
+    textSecondary = Color(0xFF98A2B3),
     accent = Color(0xFFF5A623),
     focusRing = Color(0xFFF5A623),
-    scrim = Color(0x9E0A0C17), // the indigo ground at 62 percent, so a scrim stays in the palette
+    scrim = Color(0xA60A0D14),
     error = Color(0xFFFF6B6B),
-    accentBright = Color(0xFFFFCE63), // the mark's upper highlight
-    accentDeep = Color(0xFFD4820C), // the mark's lower stop
-    scrimHeavy = Color(0xB3000000), // black at 70 percent, the disc behind a floating control
-    edgeHighlight = Color(0x29FFFFFF), // white at 16 percent, a card's lit lip
-    elevationShadow = Color(0xA8000000), // black at 66 percent, so tiles lift off the indigo ground
-    skeletonBase = Color(0xFF1E2440),
-    skeletonSheen = Color(0xFF2C3358),
-    glassTint = Color(0x571A2040), // indigo at ~34 percent — translucent frost, real see-through glass
-    glassHighlight = Color(0xB3FFFFFF), // white at 70 percent, the top specular
-    glassRim = Color(0x40FFFFFF), // white at 25 percent, the refractive edge
-    glassGlow = Color(0x385B7CFF), // a cool blue at 22 percent, the backlit halo
+    accentBright = Color(0xFFFFC46B),
+    accentDeep = Color(0xFFD4820C),
+    scrimHeavy = Color(0xB3000000),
+    edgeHighlight = Color(0x1FFFFFFF), // white at 12 percent, a card's quiet top lip
+    elevationShadow = Color(0x8C000000), // soft black, so a card lifts off the navy ground
+    skeletonBase = Color(0xFF1B2230),
+    skeletonSheen = Color(0xFF283040),
+    // The glass fields remain for the player overlay (which floats over motion video); the main
+    // chrome no longer uses them — surfaces are solid now, matching the mockups.
+    glassTint = Color(0xCC141925), // near-solid surface, a quiet frost for the player only
+    glassHighlight = Color(0x40FFFFFF),
+    glassRim = Color(0x24FFFFFF),
+    glassGlow = Color(0x2E5B7CFF),
     isDark = true,
 )
 
 val LightColours = PlexColours(
     // A cool blue-grey ground, deep enough that a white card reads as a lifted panel rather than
     // dissolving into a flat near-white void. The gradient sinks a further shade at the foot.
-    background = Color(0xFFE4E8F3),
-    backgroundGradientEnd = Color(0xFFD6DCEC),
+    // A soft off-white ground; white cards lift off it with a light border + soft shadow.
+    background = Color(0xFFF5F7FB),
+    backgroundGradientEnd = Color(0xFFEDF1F8),
     surface = Color(0xFFFFFFFF),
     surfaceElevated = Color(0xFFFFFFFF),
-    border = Color(0xFFBEC6DC),
-    textPrimary = Color(0xFF171A2B),
-    textSecondary = Color(0xFF565E80),
-    accent = Color(0xFFE08A12),
-    focusRing = Color(0xFFE08A12),
-    scrim = Color(0x66000000), // black at 40 percent
+    border = Color(0xFFE4E9F1),
+    textPrimary = Color(0xFF1B2130),
+    textSecondary = Color(0xFF616B7D),
+    accent = Color(0xFFF5911E),
+    focusRing = Color(0xFFF5911E),
+    scrim = Color(0x66000000),
     error = Color(0xFFD64545),
-    accentBright = Color(0xFFF5A623), // a brighter amber for the button highlight
-    accentDeep = Color(0xFFB36F0C), // the deep ground of a card wash
-    // A floating control always sits over artwork, so its disc stays dark on the light theme too.
+    accentBright = Color(0xFFFBA94A),
+    accentDeep = Color(0xFFC2740E),
     scrimHeavy = Color(0xB3000000),
-    edgeHighlight = Color(0xB3FFFFFF), // white at 70 percent, a bright lip on pale glass
-    elevationShadow = Color(0x40243A66), // a cool shadow at ~25 percent, grounding cards on the pale ground
-    skeletonBase = Color(0xFFDBE0EC),
-    skeletonSheen = Color(0xFFEEF1F7),
+    edgeHighlight = Color(0x99FFFFFF),
+    elevationShadow = Color(0x1A1B2740), // a soft cool shadow grounding white cards on the pale ground
+    skeletonBase = Color(0xFFE7EBF2),
+    skeletonSheen = Color(0xFFF3F5F9),
     // A near-solid white frost: on a pale ground a translucent pane vanishes, so light glass reads
     // as a crisp white panel with a faint refracted tint rather than a washed-out ghost.
     glassTint = Color(0x73FFFFFF), // white at ~45 percent — translucent frost, real see-through glass
