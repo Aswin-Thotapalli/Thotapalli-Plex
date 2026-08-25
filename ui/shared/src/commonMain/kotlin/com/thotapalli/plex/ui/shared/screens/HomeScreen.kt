@@ -843,6 +843,17 @@ private fun TvHeroCaption(
                         maxLines = 1,
                     )
                 }
+                // A short synopsis under the meta, so the billboard reads like a real feature panel
+                // rather than a bare title. One line so it never crowds the Play/Details actions out
+                // of the compact hero. (TV polish)
+                if (item.summary.isNotBlank()) {
+                    PlexText(
+                        text = item.summary,
+                        style = PlexTheme.type.body,
+                        colour = Color(0xFFB9BFC9),
+                        maxLines = 1,
+                    )
+                }
                 if (item.progress > 0f) {
                     ProgressBar(
                         progress = item.progress,
