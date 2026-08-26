@@ -64,6 +64,7 @@ import com.thotapalli.plex.ui.shared.PlexIcon
 import com.thotapalli.plex.ui.shared.PlexIconKind
 import com.thotapalli.plex.ui.shared.PosterTile
 import com.thotapalli.plex.ui.shared.PrimaryButton
+import com.thotapalli.plex.ui.shared.TvActionButton
 import com.thotapalli.plex.ui.shared.ProgressBar
 import com.thotapalli.plex.ui.shared.SecondaryButton
 import com.thotapalli.plex.ui.shared.formatDuration
@@ -862,18 +863,19 @@ private fun TvHeroCaption(
                 }
                 Spacer(Modifier.height(Spacing.xs))
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    PrimaryButton(
+                    TvActionButton(
                         label = if (resuming) "Resume" else "Play",
-                        leadingIcon = PlexIconKind.PLAY,
+                        icon = PlexIconKind.PLAY,
+                        primary = true,
                         onClick = onPlay,
                         modifier = Modifier.focusRequester(resumeFocus),
                     )
-                    SecondaryButton(
+                    TvActionButton(
                         label = "Details",
-                        leadingIcon = PlexIconKind.INFO,
+                        icon = PlexIconKind.INFO,
                         onClick = onDetails,
                     )
                 }

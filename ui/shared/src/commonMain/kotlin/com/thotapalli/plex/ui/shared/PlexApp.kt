@@ -9,6 +9,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -651,7 +652,11 @@ private fun TvShell(
             onSelect = onSelect,
             onOpenProfile = onOpenProfile,
         )
-        Box(Modifier.fillMaxWidth().weight(1f)) { content() }
+        // A focus group around the content so the remote stays inside the page while browsing and
+        // only crosses up to the nav on a deliberate D-pad UP from the top row — never as a stray
+        // fallback when a DOWN press finds nothing composed yet (which read as "the nav randomly
+        // grabbed focus"). See CLAUDE.md section 13.
+        Box(Modifier.fillMaxWidth().weight(1f).focusGroup()) { content() }
     }
 }
 

@@ -80,6 +80,7 @@ import com.thotapalli.plex.ui.shared.material
 import com.thotapalli.plex.ui.shared.input.rememberFirstFocus
 import com.thotapalli.plex.ui.shared.motion.staggeredEntrance
 import com.thotapalli.plex.ui.shared.plexFocusable
+import com.thotapalli.plex.ui.shared.TvActionButton
 import kotlin.math.roundToInt
 
 /**
@@ -135,7 +136,9 @@ fun DetailScreen(
         // column (with the sidebar hidden, they get the full width), which reads far better than the
         // cramped two-pane. The single column scrolls, so a comfortable fixed hero is right.
         val heroHeight = if (sizeClass == SizeClass.TELEVISION) {
-            (maxHeight * 0.44f).coerceIn(220.dp, 460.dp)
+            // The TV column scrolls as one and the actions sit on the ground below the art, so the
+            // hero can be a comfortable, cinematic height rather than a cramped band.
+            (maxHeight * 0.52f).coerceIn(320.dp, 540.dp)
         } else {
             (maxHeight * 0.5f).coerceIn(300.dp, 440.dp)
         }
@@ -152,7 +155,7 @@ fun DetailScreen(
         Box(Modifier.fillMaxSize().material(GlassRole.GROUND))
 
         if (sizeClass == SizeClass.TELEVISION) {
-            TwoPaneDetail(
+            TvDetail(
                 server = server,
                 state = state,
                 heroHeight = heroHeight,
@@ -184,6 +187,188 @@ fun DetailScreen(
                 actions = actions,
             )
         }
+    }
+}
+
+// --- television: one clean full-bleed column built for the ten-foot UI --------------------
+
+/**
+ * The television detail, rebuilt from the ground up for the ten-foot experience.
+ *
+ * One vertical column that scrolls as a whole — a cinematic full-bleed backdrop with the title and
+ * key facts over its foot, then the primary actions on the solid dark ground (never a floating glass
+ * pane), then the Plex-style Seasons rail and the episode list. Nothing overlaps, the remote never
+ * lands in a cramped sub-pane, and every surface is solid with a crisp focus model. This replaces
+ * the old two-pane layout, whose panes overlapped the season rail and whose glass controls washed
+ * out over the backdrop.
+ */
+@Composable
+private fun TvDetail(
+    server: ActiveServer,
+    state: DetailState,
+    heroHeight: Dp,
+    contentPadding: Dp,
+    backdropUrl: String?,
+    firstFocus: FocusRequester?,
+    onPlay: (MediaItem, Long) -> Unit,
+    onDownload: (MediaItem) -> Unit,
+    onToggleWatched: (MediaItem) -> Unit,
+    onSeasonSelected: (Season) -> Unit,
+    onSelectEpisode: (Episode) -> Unit,
+    onSetContainerWatched: (String, Boolean) -> Unit,
+    actions: ItemActions?,
+) {
+    val item = state.item
+
+    // A plain scrollable Column, not a LazyColumn. A detail screen holds one season of episodes at a
+    // time — a bounded list — so every row is composed and laid out, which is exactly what the
+    // ten-foot focus model needs: D-pad DOWN can traverse the whole page (actions → seasons →
+    // episodes) because every target already exists, and a verticalScroll reliably scrolls a focused
+    // child into view. A LazyColumn defeats both — off-screen rows are not composed (so focus cannot
+    // reach them) and a single over-tall item will not scroll to a focused row inside it. That is the
+    // bug the old two-pane and the first rebuild both had. See CLAUDE.md sections 13 and 14.
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+    ) {
+        // The hero: the backdrop bleeds to the top edge and fades into the ground, with the title,
+        // one fact line and a short synopsis riding the darkest foot of the fade.
+        CinematicBackdrop(url = backdropUrl, title = item.title, height = heroHeight) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .fillMaxWidth(0.62f)
+                    .padding(horizontal = contentPadding, vertical = Spacing.lg),
+                verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+            ) {
+                PlexText(
+                    text = item.title,
+                    style = PlexTheme.type.display,
+                    colour = Color.White,
+                    maxLines = 2,
+                )
+                PlexText(
+                    text = metadataLine(item),
+                    style = PlexTheme.type.label,
+                    colour = Color.White.copy(alpha = 0.80f),
+                    maxLines = 1,
+                )
+                if (item.summary.isNotBlank()) {
+                    PlexText(
+                        text = item.summary,
+                        style = PlexTheme.type.body,
+                        colour = Color.White.copy(alpha = 0.74f),
+                        maxLines = 2,
+                    )
+                }
+            }
+        }
+
+        // The actions, on the solid ground directly under the art — the one place first focus lands.
+        TvActionRow(
+            state = state,
+            onPlay = onPlay,
+            onDownload = onDownload,
+            onToggleWatched = onToggleWatched,
+            firstFocus = firstFocus,
+            modifier = Modifier.padding(horizontal = contentPadding, vertical = Spacing.md),
+        )
+
+        if (item is Show || item is Episode) {
+            Column(
+                modifier = Modifier.padding(horizontal = contentPadding),
+                verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+            ) {
+                EpisodeNav(server, state, onSeasonSelected, onSetContainerWatched)
+                state.episodesInSelectedSeason.forEachIndexed { index, episode ->
+                    EpisodeRow(
+                        episode = episode,
+                        thumbnailUrl = server.urls.artwork(
+                            episode.thumbPath,
+                            ArtworkSize.THUMB_WIDTH,
+                            ArtworkSize.THUMB_HEIGHT,
+                        ),
+                        onPlay = { onPlay(episode, episode.viewOffsetMs) },
+                        onSelect = { onSelectEpisode(episode) },
+                        selected = episode.ratingKey == state.selectedEpisode?.ratingKey,
+                        actions = actions,
+                        modifier = Modifier
+                            .material(GlassRole.CARD, shape = Radius.card)
+                            .staggeredEntrance(index = index, key = episode.ratingKey),
+                    )
+                }
+            }
+        } else if (item.summary.isNotBlank()) {
+            Column(
+                modifier = Modifier.padding(horizontal = contentPadding, vertical = Spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+            ) {
+                SectionHeader("Overview")
+                PlexText(text = item.summary, colour = PlexTheme.colours.textSecondary)
+            }
+        }
+
+        Spacer(Modifier.height(Spacing.xxl))
+    }
+}
+
+/**
+ * The television action cluster: the amber primary (Play / Resume) plus the quiet secondary controls,
+ * all as solid [TvActionButton]s on the dark ground. First focus lands on the primary. Mirrors the
+ * play-target logic of [DetailActions] so a show plays its next unwatched episode and an
+ * episode-opened detail plays the episode in view.
+ */
+@Composable
+private fun TvActionRow(
+    state: DetailState,
+    onPlay: (MediaItem, Long) -> Unit,
+    onDownload: (MediaItem) -> Unit,
+    onToggleWatched: (MediaItem) -> Unit,
+    firstFocus: FocusRequester?,
+    modifier: Modifier = Modifier,
+) {
+    val item = state.item
+    val playTarget: MediaItem = when {
+        item is Episode -> state.selectedEpisode ?: item
+        else -> state.nextUnwatched
+            ?: state.episodesInSelectedSeason.firstOrNull()
+            ?: state.episodes.firstOrNull()
+            ?: item
+    }
+    val resumeFrom = playTarget.viewOffsetMs
+    val resumable = playTarget.partiallyWatched
+
+    FlowRow(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        TvActionButton(
+            label = when {
+                item is Show && state.nextUnwatched != null ->
+                    "Play S${pad(state.nextUnwatched.seasonIndex)}E${pad(state.nextUnwatched.episodeIndex)}"
+                resumable -> "Resume"
+                else -> "Play"
+            },
+            icon = PlexIconKind.PLAY,
+            primary = true,
+            onClick = { onPlay(playTarget, resumeFrom) },
+            modifier = if (firstFocus != null) Modifier.focusRequester(firstFocus) else Modifier,
+        )
+        if (resumable) {
+            TvActionButton(label = "From start", onClick = { onPlay(playTarget, 0L) })
+        }
+        TvActionButton(
+            label = "Download",
+            icon = PlexIconKind.DOWNLOADS,
+            onClick = { onDownload(item) },
+        )
+        TvActionButton(
+            label = if (item.watched) "Watched" else "Mark watched",
+            icon = if (item.watched) PlexIconKind.CHECK else null,
+            onClick = { onToggleWatched(item) },
+        )
     }
 }
 
@@ -307,132 +492,6 @@ private fun SingleColumnDetail(
         }
 
         item { Spacer(Modifier.height(Spacing.xxl)) }
-    }
-}
-
-// --- two pane, Expanded and Television ---------------------------------------------------
-
-@Composable
-private fun TwoPaneDetail(
-    server: ActiveServer,
-    state: DetailState,
-    heroHeight: Dp,
-    contentPadding: Dp,
-    backdropUrl: String?,
-    firstFocus: FocusRequester?,
-    onPlay: (MediaItem, Long) -> Unit,
-    onDownload: (MediaItem) -> Unit,
-    onToggleWatched: (MediaItem) -> Unit,
-    onSeasonSelected: (Season) -> Unit,
-    onSelectEpisode: (Episode) -> Unit,
-    onSetContainerWatched: (String, Boolean) -> Unit,
-    actions: ItemActions?,
-) {
-    val item = state.item
-
-    Column(Modifier.fillMaxSize()) {
-        // The hero stays full width, above the split, bleeding to the top edge.
-        CinematicBackdrop(url = backdropUrl, title = item.title, height = heroHeight) {
-            HeroCaption(item, Modifier.align(Alignment.BottomStart).padding(horizontal = contentPadding, vertical = Spacing.lg))
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .padding(horizontal = contentPadding),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.lg),
-        ) {
-            // Left pane: fixed 380dp, scrolling on its own if the content runs long.
-            Column(
-                modifier = Modifier
-                    .width(Layout.detailPaneWidth)
-                    .fillMaxHeight()
-                    .verticalScroll(rememberScrollState())
-                    .padding(top = Spacing.md, bottom = Spacing.xxl),
-                verticalArrangement = Arrangement.spacedBy(Spacing.md),
-            ) {
-                GlassPanel(modifier = Modifier.fillMaxWidth().staggeredEntrance(index = 0)) {
-                    DetailActions(
-                        state = state,
-                        onPlay = onPlay,
-                        onDownload = onDownload,
-                        onToggleWatched = onToggleWatched,
-                        actions = actions,
-                        firstFocus = firstFocus,
-                    )
-                    // A show keeps its summary on the left; a movie hands it to the right pane so
-                    // the left column is not carrying the whole screen alone.
-                    if (item !is Movie && item.summary.isNotBlank()) {
-                        PlexText(text = item.summary, colour = PlexTheme.colours.textSecondary)
-                    }
-                }
-
-                if (state.detail?.primaryPart != null) {
-                    GlassPanel(modifier = Modifier.fillMaxWidth().staggeredEntrance(index = 1)) {
-                        MediaInfoSection(state)
-                    }
-                }
-            }
-
-            // Right pane: the episode list for episodic content (a show, or an episode-opened
-            // detail), the overview for a movie, on one tall frosted panel filling the remainder.
-            if (item is Show || item is Episode) {
-                // The episode pane sits directly on the GROUND; the header and season chips float
-                // over it and every episode row is its own CARD, matching the single-column layout.
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .padding(top = Spacing.md, bottom = Spacing.xxl),
-                    verticalArrangement = Arrangement.spacedBy(Spacing.xs),
-                ) {
-                    EpisodeNav(server, state, onSeasonSelected, onSetContainerWatched)
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth().weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(Spacing.xs),
-                    ) {
-                        itemsIndexed(
-                            state.episodesInSelectedSeason,
-                            key = { _, ep -> ep.ratingKey },
-                        ) { index, episode ->
-                            EpisodeRow(
-                                episode = episode,
-                                thumbnailUrl = server.urls.artwork(
-                                    episode.thumbPath,
-                                    ArtworkSize.THUMB_WIDTH,
-                                    ArtworkSize.THUMB_HEIGHT,
-                                ),
-                                onPlay = { onPlay(episode, episode.viewOffsetMs) },
-                                onSelect = { onSelectEpisode(episode) },
-                                selected = episode.ratingKey == state.selectedEpisode?.ratingKey,
-                                actions = actions,
-                                modifier = Modifier
-                                    .material(GlassRole.CARD, shape = Radius.card)
-                                    .staggeredEntrance(index = index, key = episode.ratingKey),
-                            )
-                        }
-                        item { Spacer(Modifier.height(Spacing.lg)) }
-                    }
-                }
-            } else {
-                GlassPanel(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .padding(top = Spacing.md, bottom = Spacing.xxl)
-                        .staggeredEntrance(index = 2),
-                    verticalArrangement = Arrangement.spacedBy(Spacing.sm),
-                ) {
-                    SectionHeader("Overview")
-                    if (item.summary.isNotBlank()) {
-                        Column(Modifier.verticalScroll(rememberScrollState())) {
-                            PlexText(text = item.summary, colour = PlexTheme.colours.textSecondary)
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
