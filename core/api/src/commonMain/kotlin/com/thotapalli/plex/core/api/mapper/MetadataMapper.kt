@@ -75,6 +75,11 @@ private fun MetadataDto.resolvedLibraryKey(fallback: String?): String =
 /** Plex omits titleSort when it equals the title. */
 private val MetadataDto.sortTitle: String get() = titleSort ?: title
 
+/** The transparent title-logo, from the scalar field or the typed Image array, else null. */
+private val MetadataDto.clearLogoPath: String?
+    get() = clearLogo
+        ?: image.firstOrNull { it.type.equals("clearLogo", ignoreCase = true) }?.url
+
 fun MetadataDto.toMovie(libraryKey: String? = null) = Movie(
     ratingKey = ratingKey,
     title = title,
@@ -82,6 +87,7 @@ fun MetadataDto.toMovie(libraryKey: String? = null) = Movie(
     summary = summary,
     thumbPath = thumb,
     artPath = art,
+    logoPath = clearLogoPath,
     durationMs = duration,
     viewOffsetMs = viewOffset,
     viewCount = viewCount,
@@ -96,6 +102,7 @@ fun MetadataDto.toShow(libraryKey: String? = null) = Show(
     summary = summary,
     thumbPath = thumb,
     artPath = art,
+    logoPath = clearLogoPath,
     durationMs = duration,
     viewOffsetMs = viewOffset,
     viewCount = viewCount,
@@ -115,6 +122,7 @@ fun MetadataDto.toSeason() = Season(
     // half empty.
     thumbPath = thumb ?: parentThumb,
     artPath = art ?: grandparentArt,
+    logoPath = clearLogoPath,
     durationMs = duration,
     viewOffsetMs = viewOffset,
     viewCount = viewCount,
@@ -132,6 +140,7 @@ fun MetadataDto.toEpisode() = Episode(
     summary = summary,
     thumbPath = thumb,
     artPath = art ?: grandparentArt,
+    logoPath = clearLogoPath,
     durationMs = duration,
     viewOffsetMs = viewOffset,
     viewCount = viewCount,
@@ -149,6 +158,7 @@ fun MetadataDto.toCollection(libraryKey: String? = null) = MediaCollection(
     summary = summary,
     thumbPath = thumb,
     artPath = art,
+    logoPath = clearLogoPath,
     durationMs = duration,
     viewOffsetMs = viewOffset,
     viewCount = viewCount,

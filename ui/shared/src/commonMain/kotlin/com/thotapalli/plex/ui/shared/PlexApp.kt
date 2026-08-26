@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.focusGroup
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -473,6 +474,10 @@ private fun ReadyContent(
                 // ([TvHomeScreen] / [TvLibraryScreen]) — authored for the remote, borrowing nothing
                 // from the touch layouts. Detail, Search, Downloads and Settings still use the shared
                 // screens (now stripped of glass/animation on TV). See CLAUDE.md section 13.
+                // Retains each screen's saveable state (scroll positions, focusRestorer target) while
+                // it is off-composition — so opening a detail and pressing Back returns to the same
+                // card and the same scroll offset, not the top of the grid (reference §17).
+                val tvStateHolder = rememberSaveableStateHolder()
                 val tvContent: @Composable () -> Unit = {
                     when {
                         // Detail has no floating back button on TV: the remote Back exits it and the
@@ -483,16 +488,22 @@ private fun ReadyContent(
                             destination == Destination.DOWNLOADS ||
                             destination == Destination.SETTINGS ->
                             bodyWithBack(Modifier.padding(start = TvRailCollapsedWidth))
-                        state.library != null -> TvLibraryScreen(
-                            server = server,
-                            title = state.library.openCollection?.title ?: state.library.library.title,
-                            items = state.library.items,
-                            collections = if (state.library.openCollection != null) emptyList()
-                            else state.library.collections,
-                            onItemClick = viewModel::openDetail,
-                            onCollectionClick = viewModel::openCollection,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                        state.library != null -> {
+                            val lib = state.library
+                            val key = "tv-library-${lib.library.key}-${lib.openCollection?.ratingKey ?: "root"}"
+                            tvStateHolder.SaveableStateProvider(key) {
+                                TvLibraryScreen(
+                                    server = server,
+                                    title = lib.openCollection?.title ?: lib.library.title,
+                                    items = lib.items,
+                                    collections = if (lib.openCollection != null) emptyList()
+                                    else lib.collections,
+                                    onItemClick = viewModel::openDetail,
+                                    onCollectionClick = viewModel::openCollection,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                            }
+                        }
                         showChooser -> LibrariesScreen(
                             server = server,
                             libraries = state.libraries,
@@ -503,16 +514,18 @@ private fun ReadyContent(
                             itemActions = itemActions,
                             modifier = Modifier.fillMaxSize().padding(start = TvRailCollapsedWidth).then(topSafe),
                         )
-                        else -> TvHomeScreen(
-                            server = server,
-                            continueWatching = state.continueWatching,
-                            libraries = state.libraries,
-                            libraryPreviews = state.libraryPreviews,
-                            onItemClick = viewModel::openDetail,
-                            onOpenLibrary = { viewModel.openLibrary(it) },
-                            onPlay = onPlay,
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                        else -> tvStateHolder.SaveableStateProvider("tv-home") {
+                            TvHomeScreen(
+                                server = server,
+                                continueWatching = state.continueWatching,
+                                libraries = state.libraries,
+                                libraryPreviews = state.libraryPreviews,
+                                onItemClick = viewModel::openDetail,
+                                onOpenLibrary = { viewModel.openLibrary(it) },
+                                onPlay = onPlay,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        }
                     }
                 }
                 TvShell(

@@ -204,6 +204,13 @@ fun PlayerScreen(
             LaunchedEffect(controller) {
                 if (container.isTelevision) runCatching { playerFocus.requestFocus() }
             }
+            // When a track sheet closes, hand focus back to the player so the remote never lands on
+            // nothing (reference §40, §49) — no dead-end after Audio/Subtitles.
+            LaunchedEffect(screenState.openSheet) {
+                if (container.isTelevision && screenState.openSheet == null) {
+                    runCatching { playerFocus.requestFocus() }
+                }
+            }
 
             // Holding left or right on the D-pad scrubs at thirty seconds per 400 ms. HeldSeek
             // turns the elapsed hold time into steps; a short press instead does a single quick
@@ -243,6 +250,17 @@ fun PlayerScreen(
                         when (event.type) {
                             KeyEventType.KeyDown -> {
                                 val wasVisible = screenState.controlsVisible
+                                // Back is layered (reference §36, §48): an open track sheet closes
+                                // first, then visible controls hide, and only a Back on a bare picture
+                                // exits playback (propagated, not consumed). Handled before noteInput
+                                // so Back never itself wakes the controls.
+                                if (event.key == Key.Back || event.key == Key.Escape) {
+                                    return@onPreviewKeyEvent when {
+                                        screenState.openSheet != null -> { actions.onDismissSheet(); true }
+                                        wasVisible -> { actions.onToggleControls(); true }
+                                        else -> false
+                                    }
+                                }
                                 c.noteInput()
                                 when (event.key) {
                                     Key.DirectionCenter, Key.Enter, Key.Spacebar, Key.MediaPlayPause -> {

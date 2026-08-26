@@ -145,7 +145,7 @@ private fun sampleMovie(index: Int) = Movie(
     year = 1990 + (index % 35),
     summary = "",
     thumbPath = null,
-    artPath = null,
+    artPath = null, logoPath = null,
     durationMs = 6_000_000,
     viewOffsetMs = if (index % 4 == 0) 2_000_000 else 0,
     viewCount = if (index % 7 == 0) 1 else 0,
@@ -155,46 +155,46 @@ private fun sampleMovie(index: Int) = Movie(
 
 private val sampleWatchedMovie = Movie(
     ratingKey = "w1", title = "A Watched Film", year = 2019, summary = "",
-    thumbPath = null, artPath = null, durationMs = 7_241_000,
+    thumbPath = null, artPath = null, logoPath = null, durationMs = 7_241_000,
     viewOffsetMs = 0, viewCount = 1, titleSort = "Watched Film, A", libraryKey = "1",
 )
 
 private val samplePartWatchedMovie = Movie(
     ratingKey = "p1", title = "Half Way Through", year = 2021, summary = "",
-    thumbPath = null, artPath = null, durationMs = 5_400_000,
+    thumbPath = null, artPath = null, logoPath = null, durationMs = 5_400_000,
     viewOffsetMs = 2_700_000, viewCount = 0, titleSort = "Half Way Through", libraryKey = "1",
 )
 
 private val sampleUnstartedMovie = Movie(
     ratingKey = "u1", title = "Not Started", year = 2024, summary = "",
-    thumbPath = null, artPath = null, durationMs = 6_600_000,
+    thumbPath = null, artPath = null, logoPath = null, durationMs = 6_600_000,
     viewOffsetMs = 0, viewCount = 0, titleSort = "Not Started", libraryKey = "1",
 )
 
 /** No year, no summary, no duration. Ordinary in a real library. */
 private val sampleEmptyMovie = Movie(
     ratingKey = "e1", title = "Missing Everything", year = null, summary = "",
-    thumbPath = null, artPath = null, durationMs = 0,
+    thumbPath = null, artPath = null, logoPath = null, durationMs = 0,
     viewOffsetMs = 0, viewCount = 0, titleSort = "Missing Everything", libraryKey = "1",
 )
 
 private val sampleShow = Show(
     ratingKey = "s1", title = "A Long Running Series", year = 2014, summary = "",
-    thumbPath = null, artPath = null, durationMs = 0, viewOffsetMs = 0, viewCount = 0,
+    thumbPath = null, artPath = null, logoPath = null, durationMs = 0, viewOffsetMs = 0, viewCount = 0,
     titleSort = "Long Running Series, A", libraryKey = "2",
     childCount = 8, leafCount = 92, viewedLeafCount = 61,
 )
 
 private val sampleCollection = MediaCollection(
     ratingKey = "c1", title = "The Trilogy", year = null, summary = "",
-    thumbPath = null, artPath = null, durationMs = 0, viewOffsetMs = 0, viewCount = 0,
+    thumbPath = null, artPath = null, logoPath = null, durationMs = 0, viewOffsetMs = 0, viewCount = 0,
     titleSort = "Trilogy, The", libraryKey = "1", childCount = 3,
 )
 
 private val sampleEpisode = Episode(
     ratingKey = "ep1", title = "The One With The Markers", year = 2016,
     summary = "An episode summary long enough to wrap onto a second line in the row.",
-    thumbPath = null, artPath = null, durationMs = 2_712_000,
+    thumbPath = null, artPath = null, logoPath = null, durationMs = 2_712_000,
     viewOffsetMs = 900_000, viewCount = 0,
     showRatingKey = "s1", seasonRatingKey = "se1", showTitle = "A Long Running Series",
     seasonIndex = 3, episodeIndex = 7,
@@ -202,7 +202,7 @@ private val sampleEpisode = Episode(
 
 private val sampleWatchedEpisode = Episode(
     ratingKey = "ep2", title = "The Next One Up", year = 2016, summary = "",
-    thumbPath = null, artPath = null, durationMs = 2_700_000,
+    thumbPath = null, artPath = null, logoPath = null, durationMs = 2_700_000,
     viewOffsetMs = 0, viewCount = 1,
     showRatingKey = "s1", seasonRatingKey = "se1", showTitle = "A Long Running Series",
     seasonIndex = 3, episodeIndex = 8,

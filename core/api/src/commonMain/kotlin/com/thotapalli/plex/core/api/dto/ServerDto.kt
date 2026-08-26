@@ -98,9 +98,21 @@ data class MetadataDto(
     val grandparentTitle: String? = null,
     val grandparentThumb: String? = null,
     val grandparentArt: String? = null,
+    // Some servers expose a scalar clearLogo; newer builds carry it in the Image array below.
+    val clearLogo: String? = null,
+    @SerialName("Image") val image: List<ImageDto> = emptyList(),
     @SerialName("Media") val media: List<MediaDto> = emptyList(),
     @SerialName("Marker") val marker: List<MarkerDto> = emptyList(),
     @SerialName("Chapter") val chapter: List<ChapterDto> = emptyList(),
+)
+
+/** A typed artwork entry Plex attaches to a metadata item: `type` is "clearLogo", "coverPoster",
+ *  "background", "snapshot"; `url` is a server-relative image path. */
+@Serializable
+data class ImageDto(
+    val type: String = "",
+    val url: String? = null,
+    val alt: String? = null,
 )
 
 @Serializable

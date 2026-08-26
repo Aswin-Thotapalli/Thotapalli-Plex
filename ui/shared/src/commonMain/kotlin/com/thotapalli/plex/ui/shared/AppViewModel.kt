@@ -498,6 +498,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                 summary = "",
                 thumbPath = null,
                 artPath = null,
+                logoPath = null,
                 durationMs = 0L,
                 viewOffsetMs = 0L,
                 viewCount = 0,

@@ -1,9 +1,13 @@
 package com.thotapalli.plex.ui.shared
 
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.BringIntoViewSpec
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -36,19 +40,28 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import com.thotapalli.plex.ui.shared.input.rememberFirstFocus
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import coil3.compose.AsyncImagePainter
+import coil3.compose.rememberAsyncImagePainter
 import com.thotapalli.plex.core.model.Episode
 import com.thotapalli.plex.core.model.Library
 import com.thotapalli.plex.core.model.MediaCollection
@@ -236,15 +249,10 @@ private fun TvHomeHero(
                     .padding(start = TvContentStart, end = Spacing.xl, bottom = Spacing.xl),
                 verticalArrangement = Arrangement.spacedBy(Spacing.xs),
             ) {
-                // Hierarchy (reference §3): the show/movie name leads big, then a quiet fact line,
-                // then the episode title (episodes only), then a short synopsis — none competing at
-                // the same weight.
-                PlexText(
-                    text = heroTitle(item),
-                    style = PlexTheme.type.display,
-                    colour = Color.White,
-                    maxLines = 2,
-                )
+                // Hierarchy (reference §3): the show/movie name (or its clear-logo) leads big, then a
+                // quiet fact line, then the episode title (episodes only), then a short synopsis —
+                // none competing at the same weight.
+                HeroTitle(server = server, item = item)
                 heroMeta(item)?.let {
                     PlexText(text = it, style = PlexTheme.type.label, colour = Color(0xFFB9C0CC), maxLines = 1)
                 }
@@ -297,8 +305,15 @@ fun TvLibraryScreen(
     onCollectionClick: (MediaCollection) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val firstFocus = rememberFirstFocus(enabled = true)
+    // Exact focus + scroll restoration (reference §17). The last-focused poster's index and the grid
+    // scroll offset both live in saveable state, which the screen's SaveableStateProvider keeps alive
+    // while a detail is open — so pressing Back re-focuses the very poster the viewer left from, at
+    // the same scroll position, rather than jumping to the top. On a fresh open the saved index is 0,
+    // so the first poster takes focus.
+    var lastFocusedIndex by rememberSaveable { mutableStateOf(0) }
+    val targetFocus = remember { FocusRequester() }
     val gridState = rememberLazyGridState()
+    LaunchedEffect(Unit) { runCatching { targetFocus.requestFocus() } }
     BoxWithConstraints(modifier.fillMaxSize().background(PlexTheme.colours.background)) {
         val overscanV = maxHeight * Layout.TELEVISION_OVERSCAN_FRACTION
         // Collections lead, then titles — both are MediaItems for the card.
@@ -308,9 +323,7 @@ fun TvLibraryScreen(
             // staying readable from the sofa (reference §12).
             columns = GridCells.Adaptive(minSize = 144.dp),
             state = gridState,
-            // Restore focus to the last-focused poster when the remote returns to the grid — e.g.
-            // after opening a detail and pressing Back (reference §17).
-            modifier = Modifier.fillMaxSize().focusRestorer(),
+            modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = TvContentStart,
                 end = Spacing.xxl,
@@ -338,7 +351,8 @@ fun TvLibraryScreen(
                     onClick = {
                         if (entry is MediaCollection) onCollectionClick(entry) else onItemClick(entry)
                     },
-                    modifier = if (index == 0) Modifier.fillMaxWidth().focusRequester(firstFocus)
+                    onFocused = { lastFocusedIndex = index },
+                    modifier = if (index == lastFocusedIndex) Modifier.fillMaxWidth().focusRequester(targetFocus)
                     else Modifier.fillMaxWidth(),
                 )
             }
@@ -348,7 +362,20 @@ fun TvLibraryScreen(
 
 // --- Rails & cards ----------------------------------------------------------------------------
 
+/**
+ * Pivot scrolling (reference §15): instead of the default "just barely into view", hold the focused
+ * card at a fixed column ~18% from the left once the row starts scrolling, so upcoming content is
+ * always previewed on the right. The first cards sit at their natural place (the list clamps at the
+ * start); past the pivot the card stays put and the row slides under it.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+private val TvPivotBringIntoView = object : BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float =
+        offset - containerSize * 0.18f
+}
+
 /** A titled horizontal rail. The header sits inset past the rail; the row overruns to the right. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TvRail(
     title: String,
@@ -362,14 +389,16 @@ private fun TvRail(
             maxLines = 1,
             modifier = Modifier.padding(start = TvContentStart, end = Spacing.xl, bottom = Spacing.sm),
         )
-        LazyRow(
-            // Restore focus to the last-focused card when the remote comes back to this row
-            // (row-to-row moves and returning from a detail) — reference §16–17.
-            modifier = Modifier.fillMaxWidth().focusRestorer(),
-            contentPadding = PaddingValues(start = TvContentStart, end = Spacing.xxl),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.md),
-            content = content,
-        )
+        CompositionLocalProvider(LocalBringIntoViewSpec provides TvPivotBringIntoView) {
+            LazyRow(
+                // Restore focus to the last-focused card when the remote comes back to this row
+                // (row-to-row moves and returning from a detail) — reference §16–17.
+                modifier = Modifier.fillMaxWidth().focusRestorer(),
+                contentPadding = PaddingValues(start = TvContentStart, end = Spacing.xxl),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.md),
+                content = content,
+            )
+        }
     }
 }
 
@@ -498,6 +527,33 @@ private fun TvSeeAllCard(onClick: () -> Unit) {
 internal fun heroTitle(item: MediaItem): String = when (item) {
     is Episode -> item.showTitle.ifBlank { item.title }
     else -> item.title
+}
+
+/**
+ * The hero headline: Plex's transparent clear-logo when the server has one, otherwise the name as
+ * text (reference §4). The logo is size-capped so it never dominates, and any load error falls back
+ * to text. Uses the non-transcoded image URL so the logo's transparency is preserved.
+ */
+@Composable
+internal fun HeroTitle(server: ActiveServer, item: MediaItem, modifier: Modifier = Modifier) {
+    val logoUrl = item.logoPath?.takeIf { it.isNotBlank() }?.let { server.urls.withToken(it) }
+    if (logoUrl == null) {
+        PlexText(text = heroTitle(item), style = PlexTheme.type.display, colour = Color.White, maxLines = 2, modifier = modifier)
+        return
+    }
+    val painter = rememberAsyncImagePainter(model = logoUrl, contentScale = ContentScale.Fit)
+    val state by painter.state.collectAsState()
+    if (state is AsyncImagePainter.State.Error) {
+        PlexText(text = heroTitle(item), style = PlexTheme.type.display, colour = Color.White, maxLines = 2, modifier = modifier)
+    } else {
+        Image(
+            painter = painter,
+            contentDescription = heroTitle(item),
+            contentScale = ContentScale.Fit,
+            alignment = Alignment.BottomStart,
+            modifier = modifier.heightIn(min = 44.dp, max = 96.dp).widthIn(max = 480.dp),
+        )
+    }
 }
 
 /** The hero's quiet fact line: "S15 E01 • 1h 03m", "2011 • 1h 46m", "22 seasons", etc. */

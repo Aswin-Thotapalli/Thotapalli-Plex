@@ -11,6 +11,9 @@ sealed interface MediaItem {
     val summary: String
     val thumbPath: String?
     val artPath: String?
+
+    /** A transparent clear-logo / title-logo when the server has one, else null (falls back to text). */
+    val logoPath: String?
     val durationMs: Long
     val viewOffsetMs: Long
     val viewCount: Int
@@ -34,6 +37,7 @@ data class Movie(
     override val summary: String,
     override val thumbPath: String?,
     override val artPath: String?,
+    override val logoPath: String?,
     override val durationMs: Long,
     override val viewOffsetMs: Long,
     override val viewCount: Int,
@@ -48,6 +52,7 @@ data class Show(
     override val summary: String,
     override val thumbPath: String?,
     override val artPath: String?,
+    override val logoPath: String?,
     override val durationMs: Long,
     override val viewOffsetMs: Long,
     override val viewCount: Int,
@@ -67,6 +72,7 @@ data class Season(
     override val summary: String,
     override val thumbPath: String?,
     override val artPath: String?,
+    override val logoPath: String?,
     override val durationMs: Long,
     override val viewOffsetMs: Long,
     override val viewCount: Int,
@@ -84,6 +90,7 @@ data class Episode(
     override val summary: String,
     override val thumbPath: String?,
     override val artPath: String?,
+    override val logoPath: String?,
     override val durationMs: Long,
     override val viewOffsetMs: Long,
     override val viewCount: Int,
@@ -105,6 +112,7 @@ data class MediaCollection(
     override val summary: String,
     override val thumbPath: String?,
     override val artPath: String?,
+    override val logoPath: String?,
     override val durationMs: Long,
     override val viewOffsetMs: Long,
     override val viewCount: Int,

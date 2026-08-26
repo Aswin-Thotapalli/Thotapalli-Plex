@@ -247,14 +247,10 @@ private fun TvDetail(
                     .padding(horizontal = contentPadding, vertical = Spacing.lg),
                 verticalArrangement = Arrangement.spacedBy(Spacing.xs),
             ) {
-                // Same hierarchy as the home hero (reference §3, §19): the show/movie name leads, a
-                // quiet fact line follows, then the episode title (episodes only), then the synopsis.
-                PlexText(
-                    text = com.thotapalli.plex.ui.shared.heroTitle(item),
-                    style = PlexTheme.type.display,
-                    colour = Color.White,
-                    maxLines = 2,
-                )
+                // Same hierarchy as the home hero (reference §3, §19): the show/movie name (or its
+                // clear-logo) leads, a quiet fact line follows, then the episode title (episodes
+                // only), then the synopsis.
+                com.thotapalli.plex.ui.shared.HeroTitle(server = server, item = item)
                 com.thotapalli.plex.ui.shared.heroMeta(item)?.let {
                     PlexText(text = it, style = PlexTheme.type.label, colour = Color(0xFFB9C0CC), maxLines = 1)
                 }
