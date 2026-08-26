@@ -58,6 +58,10 @@ fun Modifier.staggeredEntrance(
     baseDelayMs: Int = 40,
     key: Any? = index,
 ): Modifier = composed {
+    // Television skips the per-tile entrance cascade: dozens of graphics-layer fade/scale
+    // animations firing as rows scroll into view is a needless stutter source on a weak TV GPU,
+    // and a ten-foot grid should snap in, not cascade. See CLAUDE.md section 13.
+    if (com.thotapalli.plex.ui.design.PlexTheme.sizeClass.isTelevision) return@composed this
     val risePx = with(LocalDensity.current) { ENTRANCE_RISE.toPx() }
 
     // Held outside the animation so a key change restarts from hidden without a visible flash.

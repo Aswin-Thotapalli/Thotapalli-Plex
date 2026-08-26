@@ -112,8 +112,13 @@ fun DetailScreen(
     // On a television the primary Play/Resume action takes first focus on entry, so the
     // remote lands on the one action that matters. See CLAUDE.md section 13.
     val firstFocus = rememberFirstFocus(enabled = sizeClass.isTelevision)
-    // Content sits in a readable measure and never stretches to a television's full width.
-    val contentPadding = sizeClass.screenPadding
+    // Content sits in a readable measure and never stretches to a television's full width. On TV it
+    // also clears the floating left nav rail (the backdrop still bleeds behind it).
+    val contentPadding = if (sizeClass == SizeClass.TELEVISION) {
+        com.thotapalli.plex.ui.shared.TvContentStart
+    } else {
+        sizeClass.screenPadding
+    }
     val backdropUrl = server.urls.artwork(
         item.artPath ?: item.thumbPath,
         ArtworkSize.BACKDROP_WIDTH,

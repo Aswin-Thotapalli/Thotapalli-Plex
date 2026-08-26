@@ -68,6 +68,9 @@ private const val VIGNETTE_INNER_STOP = 0.55f
  *   single static grain frame is drawn, which still gives tooth with zero ongoing work.
  */
 fun Modifier.filmGrain(intensity: Float = 0.04f, animated: Boolean = true): Modifier = composed {
+    // Television skips film grain entirely: the animated variant repaints noise every frame (a real
+    // stutter source on weak TV GPUs) and even the still tile buys nothing at ten feet. See §13.
+    if (com.thotapalli.plex.ui.design.PlexTheme.sizeClass.isTelevision) return@composed this
     // Read the animated phase as a State and sample it inside the draw block, so an advancing frame
     // invalidates only the draw phase and never recomposes anything.
     val transition = rememberInfiniteTransition(label = "film-grain")

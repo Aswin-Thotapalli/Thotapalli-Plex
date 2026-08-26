@@ -671,7 +671,7 @@ private fun TvMic(onStart: () -> Unit, modifier: Modifier = Modifier) {
             MicGlyph(tint = colours.accent, size = 48.dp)
         }
         PlexText(
-            text = "Press and hold mic for voice search.",
+            text = "Press to speak",
             style = PlexTheme.type.caption.copy(textAlign = TextAlign.Center),
             colour = colours.textSecondary,
             maxLines = 2,

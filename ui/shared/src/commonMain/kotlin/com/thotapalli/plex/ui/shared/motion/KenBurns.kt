@@ -34,6 +34,10 @@ fun Modifier.kenBurns(
 ): Modifier {
     if (!enabled) return this
     return composed {
+        // No continuous animation on television: an infinitely-repeating full-bleed zoom repaints
+        // the backdrop every frame, which stutters on weak TV GPUs and reads as juddery. A still
+        // backdrop is the ten-foot norm anyway. See CLAUDE.md section 13.
+        if (com.thotapalli.plex.ui.design.PlexTheme.sizeClass.isTelevision) return@composed this
         val transition = rememberInfiniteTransition(label = "ken-burns")
 
         val zoom by transition.animateFloat(

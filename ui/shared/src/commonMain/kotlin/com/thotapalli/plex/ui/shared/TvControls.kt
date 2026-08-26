@@ -41,10 +41,11 @@ import com.thotapalli.plex.ui.shared.motion.rememberHaptics
 
 private val TvButtonShape = RoundedCornerShape(10.dp)
 
-/** Brand amber, the one accent that marks the primary action and focus. */
-private val TvAmber = Color(0xFFF5A623)
-private val TvAmberBright = Color(0xFFFFCC7A)
-private val TvInk = Color(0xFF0A0D14)
+/** The ten-foot accent (per the TV UI reference): a bright gold that marks the primary action and
+ *  focus, brighter than the phone's amber so it reads across a room. */
+internal val TvGold = Color(0xFFFFD54F)
+private val TvGoldBright = Color(0xFFFFE082)
+internal val TvInk = Color(0xFF0A0D14)
 private val TvLight = Color(0xFFF3F5F9)
 
 /**
@@ -66,8 +67,8 @@ fun TvActionButton(
     val scale by animateFloatAsState(if (focused) 1.05f else 1f, label = "tv-action-scale")
 
     val background = when {
-        primary && focused -> TvAmberBright
-        primary -> TvAmber
+        primary && focused -> TvGoldBright
+        primary -> TvGold
         focused -> TvLight
         else -> Color(0x24FFFFFF)
     }

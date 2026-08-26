@@ -99,6 +99,10 @@ fun GlassScaffold(
  * with neither, it is a no-op, so it is always safe to attach.
  */
 fun Modifier.glassSource(state: HazeState? = null): Modifier = composed {
+    // Television draws no glass — the ten-foot chrome is a solid left rail — so there is nothing to
+    // frost and registering a Haze source would only pay a full-screen render-capture every frame,
+    // a real cause of stutter on weak TV GPUs. Skip it entirely on TV.
+    if (PlexTheme.sizeClass.isTelevision) return@composed this
     val haze = state ?: LocalHazeState.current
     if (haze != null) this.hazeSource(haze) else this
 }
