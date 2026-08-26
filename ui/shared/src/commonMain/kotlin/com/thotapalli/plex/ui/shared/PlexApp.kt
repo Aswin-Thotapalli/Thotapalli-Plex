@@ -475,7 +475,10 @@ private fun ReadyContent(
                 // screens (now stripped of glass/animation on TV). See CLAUDE.md section 13.
                 val tvContent: @Composable () -> Unit = {
                     when {
-                        state.detail != null -> bodyWithBack(Modifier)
+                        // Detail has no floating back button on TV: the remote Back exits it and the
+                        // rail is right there, and the old floating control overlapped the rail's
+                        // brand mark in the top-left corner.
+                        state.detail != null -> body(Modifier.fillMaxSize())
                         destination == Destination.SEARCH ||
                             destination == Destination.DOWNLOADS ||
                             destination == Destination.SETTINGS ->
