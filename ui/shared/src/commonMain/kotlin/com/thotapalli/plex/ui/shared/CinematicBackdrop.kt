@@ -64,6 +64,10 @@ fun CinematicBackdrop(
             url = url,
             contentDescription = title,
             fallbackTitle = title,
+            // Top-align the crop. A wide hero band is shorter than the 16:9 art, so a centre crop
+            // eats the top of the frame — exactly where faces sit — clipping heads. Aligning to the
+            // top keeps the subject and crops the foot instead, which the caption scrim covers anyway.
+            alignment = Alignment.TopCenter,
             modifier = Modifier.fillMaxSize().kenBurns(enabled = !isDesktopPlatform()).gyroParallax(),
         )
 

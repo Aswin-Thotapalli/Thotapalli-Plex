@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -273,6 +274,7 @@ fun TvLibraryScreen(
     onCollectionClick: (MediaCollection) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val firstFocus = rememberFirstFocus(enabled = true)
     BoxWithConstraints(modifier.fillMaxSize().background(PlexTheme.colours.background)) {
         val overscanV = maxHeight * Layout.TELEVISION_OVERSCAN_FRACTION
         // Collections lead, then titles — both are MediaItems for the card.
@@ -300,14 +302,15 @@ fun TvLibraryScreen(
                     )
                 }
             }
-            items(all, key = { it.ratingKey }) { entry ->
+            itemsIndexed(all, key = { _, it -> it.ratingKey }) { index, entry ->
                 TvPosterCard(
                     item = entry,
                     artworkUrl = server.urls.artwork(entry.thumbPath, ArtworkSize.POSTER_WIDTH, ArtworkSize.POSTER_HEIGHT),
                     onClick = {
                         if (entry is MediaCollection) onCollectionClick(entry) else onItemClick(entry)
                     },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = if (index == 0) Modifier.fillMaxWidth().focusRequester(firstFocus)
+                    else Modifier.fillMaxWidth(),
                 )
             }
         }
