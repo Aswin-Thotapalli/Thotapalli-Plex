@@ -66,22 +66,31 @@ fun TvActionButton(
     val haptics = rememberHaptics()
     val scale by animateFloatAsState(if (focused) 1.05f else 1f, label = "tv-action-scale")
 
+    // The primary is the one lit, filled, gold call to action. Secondaries stay quiet — a barely
+    // there fill at rest, brightening to a solid light chip only on focus — so they never compete
+    // with the primary (reference §20–21). Focus is a firm scale; only the primary/secondary-on-
+    // focus carries a ring, so a quiet secondary reads as recessive.
     val background = when {
         primary && focused -> TvGoldBright
         primary -> TvGold
         focused -> TvLight
-        else -> Color(0x24FFFFFF)
+        else -> Color(0x12FFFFFF)
     }
-    val content = if (primary || focused) TvInk else TvLight
-
+    val content = when {
+        primary || focused -> TvInk
+        else -> Color(0xFFCBD1DB)
+    }
     Row(
         modifier = modifier
             .scale(scale)
             .clip(TvButtonShape)
             .background(background)
             .then(
-                if (focused) Modifier.border(2.dp, Color.White.copy(alpha = 0.92f), TvButtonShape)
-                else Modifier,
+                if (focused || primary) Modifier.border(
+                    width = if (focused) 2.dp else 0.dp,
+                    color = if (focused) Color.White.copy(alpha = 0.92f) else Color.Transparent,
+                    shape = TvButtonShape,
+                ) else Modifier,
             )
             .clickable(
                 interactionSource = interaction,
@@ -89,12 +98,12 @@ fun TvActionButton(
                 onClick = { haptics.press(); onClick() },
             )
             .heightIn(min = 56.dp)
-            .padding(horizontal = 22.dp),
+            .padding(horizontal = if (primary) 28.dp else 20.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
         if (icon != null) {
-            PlexIcon(kind = icon, size = 22.dp, tint = content)
+            PlexIcon(kind = icon, size = if (primary) 24.dp else 20.dp, tint = content)
             Spacer(Modifier.width(10.dp))
         }
         PlexText(text = label, style = PlexTheme.type.label, colour = content, maxLines = 1)

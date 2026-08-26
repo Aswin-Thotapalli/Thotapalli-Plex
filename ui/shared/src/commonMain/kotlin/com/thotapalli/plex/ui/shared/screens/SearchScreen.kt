@@ -425,7 +425,7 @@ private fun recordRecent(recents: SnapshotStateList<String>, raw: String) {
 // ---------------------------------------------------------------------------------------------
 
 /** The height of one keyboard key on a television. Large enough to read across a room. */
-private val TV_KEY_HEIGHT: Dp = 64.dp
+private val TV_KEY_HEIGHT: Dp = 52.dp
 
 @Composable
 private fun TelevisionSearch(
@@ -657,18 +657,18 @@ private fun KeyTile(
 private fun TvMic(onStart: () -> Unit, modifier: Modifier = Modifier) {
     val colours = PlexTheme.colours
     Column(
-        modifier = modifier.width(200.dp),
+        modifier = modifier.width(132.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
         Box(
             modifier = Modifier
-                .size(120.dp)
+                .size(84.dp)
                 .material(GlassRole.CHIP, shape = Radius.pill)
                 .plexFocusable(shape = Radius.pill, onClick = onStart),
             contentAlignment = Alignment.Center,
         ) {
-            MicGlyph(tint = colours.accent, size = 48.dp)
+            MicGlyph(tint = colours.accent, size = 34.dp)
         }
         PlexText(
             text = "Press to speak",

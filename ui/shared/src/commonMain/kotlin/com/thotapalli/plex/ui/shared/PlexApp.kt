@@ -744,8 +744,59 @@ private fun TvNavRail(
     }
 }
 
-/** One rail destination: a focusable icon (collapsed) or icon + label (expanded). Focused turns a
- *  solid light pill with a dark glyph; selected wears the gold accent. */
+// The ten-foot rail focus language (reference §1–2): quiet, never a heavy circle or a giant white
+// pill. Focus is a dark charcoal rounded rectangle + a gold glyph + a gold indicator bar on the
+// left; a selected-but-unfocused item keeps the gold glyph and indicator with no fill; idle is a
+// grey glyph on nothing.
+private val TvRailIdle = Color(0xFFC2C8D2)
+private val TvRailFocusBg = Color(0xFF232A38)
+private val TvRailItemShape = RoundedCornerShape(12.dp)
+
+@Composable
+private fun TvRailRow(
+    active: Boolean,
+    focused: Boolean,
+    expanded: Boolean,
+    interaction: MutableInteractionSource,
+    onClick: () -> Unit,
+    glyph: @Composable (tint: Color) -> Unit,
+    label: String,
+) {
+    val tint = if (active) TvGold else TvRailIdle
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(TvRailItemShape)
+            .background(if (focused) TvRailFocusBg else Color.Transparent, TvRailItemShape)
+            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
+            .heightIn(min = 52.dp)
+            .padding(end = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // The gold indicator bar sits flush to the left edge when the item is active.
+        Box(
+            Modifier
+                .padding(start = 4.dp)
+                .width(3.dp)
+                .height(22.dp)
+                .clip(RoundedCornerShape(2.dp))
+                .background(if (active) TvGold else Color.Transparent),
+        )
+        Spacer(Modifier.width(10.dp))
+        Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) { glyph(tint) }
+        if (expanded) {
+            Spacer(Modifier.width(Spacing.sm))
+            PlexText(
+                text = label,
+                style = PlexTheme.type.label,
+                colour = if (active) Color.White else TvRailIdle,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+/** One rail destination. */
 @Composable
 private fun TvRailItem(
     destination: Destination,
@@ -753,75 +804,43 @@ private fun TvRailItem(
     expanded: Boolean,
     onClick: () -> Unit,
 ) {
-    val colours = PlexTheme.colours
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val bg = when {
-        focused -> Color.White
-        selected -> TvGold.copy(alpha = 0.20f)
-        else -> Color.Transparent
-    }
-    val tint = when {
-        focused -> Color(0xFF0A0D14)
-        selected -> TvGold
-        else -> colours.textPrimary
-    }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(Radius.pill)
-            .background(bg, Radius.pill)
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-            .heightIn(min = 54.dp)
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) {
-            if (destination == Destination.LIBRARY) {
-                LibrariesGlyph(tint)
-            } else {
-                PlexIcon(kind = destination.icon, tint = tint, size = 26.dp)
-            }
-        }
-        if (expanded) {
-            Spacer(Modifier.width(Spacing.sm))
-            PlexText(text = destination.label, style = PlexTheme.type.label, colour = tint, maxLines = 1)
-        }
-    }
+    TvRailRow(
+        active = focused || selected,
+        focused = focused,
+        expanded = expanded,
+        interaction = interaction,
+        onClick = onClick,
+        label = destination.label,
+        glyph = { tint ->
+            if (destination == Destination.LIBRARY) LibrariesGlyph(tint)
+            else PlexIcon(kind = destination.icon, tint = tint, size = 26.dp)
+        },
+    )
 }
 
 /** The profile affordance pinned to the foot of the rail. Opens Settings. */
 @Composable
 private fun TvRailProfile(expanded: Boolean, onClick: () -> Unit) {
-    val colours = PlexTheme.colours
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(Radius.pill)
-            .background(if (focused) Color.White else Color.Transparent, Radius.pill)
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick)
-            .heightIn(min = 54.dp)
-            .padding(horizontal = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            Modifier.size(28.dp).clip(CircleShape).background(TvGold),
-            contentAlignment = Alignment.Center,
-        ) {
-            PlexText(text = "A", style = PlexTheme.type.caption, colour = Color.Black, maxLines = 1)
-        }
-        if (expanded) {
-            Spacer(Modifier.width(Spacing.sm))
-            PlexText(
-                text = "Profile",
-                style = PlexTheme.type.label,
-                colour = if (focused) Color(0xFF0A0D14) else colours.textPrimary,
-                maxLines = 1,
-            )
-        }
-    }
+    TvRailRow(
+        active = focused,
+        focused = focused,
+        expanded = expanded,
+        interaction = interaction,
+        onClick = onClick,
+        label = "Profile",
+        glyph = {
+            Box(
+                Modifier.size(26.dp).clip(CircleShape).background(TvGold),
+                contentAlignment = Alignment.Center,
+            ) {
+                PlexText(text = "A", style = PlexTheme.type.caption, colour = Color.Black, maxLines = 1)
+            }
+        },
+    )
 }
 
 /**

@@ -4,6 +4,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -30,6 +32,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -96,7 +99,15 @@ fun TvHomeScreen(
     val firstFeatured = continueWatching.firstOrNull()
         ?: libraries.firstNotNullOfOrNull { libraryPreviews[it.key]?.firstOrNull() }
     var featuredOverride by remember(firstFeatured?.ratingKey) { mutableStateOf<MediaItem?>(null) }
-    val featured = featuredOverride ?: firstFeatured
+    val target = featuredOverride ?: firstFeatured
+    // Debounce the hero: navigation responds instantly, but wait ~130ms before committing the
+    // artwork/title change so rapidly pressing Right doesn't flash the backdrop through every card
+    // in between (reference §7). The whole hero — art, title, metadata, description — updates as one.
+    var featured by remember { mutableStateOf(target) }
+    LaunchedEffect(target?.ratingKey) {
+        kotlinx.coroutines.delay(130)
+        featured = target
+    }
     val playFocus = rememberFirstFocus(enabled = true)
 
     BoxWithConstraints(modifier.fillMaxSize().background(PlexTheme.colours.background)) {
@@ -221,29 +232,41 @@ private fun TvHomeHero(
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .fillMaxWidth(0.62f)
-                    .padding(start = TvContentStart, end = Spacing.xl, bottom = Spacing.lg),
-                verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+                    .fillMaxWidth(0.6f)
+                    .padding(start = TvContentStart, end = Spacing.xl, bottom = Spacing.xl),
+                verticalArrangement = Arrangement.spacedBy(Spacing.xs),
             ) {
+                // Hierarchy (reference §3): the show/movie name leads big, then a quiet fact line,
+                // then the episode title (episodes only), then a short synopsis — none competing at
+                // the same weight.
                 PlexText(
-                    text = primaryLine(item),
+                    text = heroTitle(item),
                     style = PlexTheme.type.display,
                     colour = Color.White,
                     maxLines = 2,
                 )
-                tvMetaLine(item)?.let {
-                    PlexText(text = it, style = PlexTheme.type.label, colour = Color(0xFFD2D7DF), maxLines = 1)
+                heroMeta(item)?.let {
+                    PlexText(text = it, style = PlexTheme.type.label, colour = Color(0xFFB9C0CC), maxLines = 1)
+                }
+                if (item is Episode && item.title.isNotBlank()) {
+                    PlexText(
+                        text = item.title,
+                        style = PlexTheme.type.title,
+                        colour = Color(0xFFF2F4F7),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
                 if (item.summary.isNotBlank()) {
                     PlexText(
                         text = item.summary,
                         style = PlexTheme.type.body,
-                        colour = Color(0xFFC2C8D2),
+                        colour = Color(0xFFB9C0CC),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Spacer(Modifier.height(Spacing.xxs))
+                Spacer(Modifier.height(Spacing.xs))
                 val resuming = item.progress > 0f
                 TvActionButton(
                     label = if (resuming) "Resume" else "Play",
@@ -275,13 +298,19 @@ fun TvLibraryScreen(
     modifier: Modifier = Modifier,
 ) {
     val firstFocus = rememberFirstFocus(enabled = true)
+    val gridState = rememberLazyGridState()
     BoxWithConstraints(modifier.fillMaxSize().background(PlexTheme.colours.background)) {
         val overscanV = maxHeight * Layout.TELEVISION_OVERSCAN_FRACTION
         // Collections lead, then titles — both are MediaItems for the card.
         val all: List<MediaItem> = collections + items
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 168.dp),
-            modifier = Modifier.fillMaxSize(),
+            // Slightly denser than before — about five complete posters across at 1080p — while
+            // staying readable from the sofa (reference §12).
+            columns = GridCells.Adaptive(minSize = 144.dp),
+            state = gridState,
+            // Restore focus to the last-focused poster when the remote returns to the grid — e.g.
+            // after opening a detail and pressing Back (reference §17).
+            modifier = Modifier.fillMaxSize().focusRestorer(),
             contentPadding = PaddingValues(
                 start = TvContentStart,
                 end = Spacing.xxl,
@@ -334,7 +363,9 @@ private fun TvRail(
             modifier = Modifier.padding(start = TvContentStart, end = Spacing.xl, bottom = Spacing.sm),
         )
         LazyRow(
-            modifier = Modifier.fillMaxWidth(),
+            // Restore focus to the last-focused card when the remote comes back to this row
+            // (row-to-row moves and returning from a detail) — reference §16–17.
+            modifier = Modifier.fillMaxWidth().focusRestorer(),
             contentPadding = PaddingValues(start = TvContentStart, end = Spacing.xxl),
             horizontalArrangement = Arrangement.spacedBy(Spacing.md),
             content = content,
@@ -381,8 +412,13 @@ private fun TvWideCard(
             }
         }
         Spacer(Modifier.height(Spacing.xs))
-        PlexText(text = primaryLine(item), style = PlexTheme.type.label, colour = PlexTheme.colours.textPrimary, maxLines = 1)
-        tvMetaLine(item)?.let {
+        PlexText(
+            text = primaryLine(item),
+            style = PlexTheme.type.label,
+            colour = if (focused) Color.White else PlexTheme.colours.textPrimary,
+            maxLines = 1,
+        )
+        cardSubLine(item)?.let {
             PlexText(text = it, style = PlexTheme.type.caption, colour = PlexTheme.colours.textSecondary, maxLines = 1)
         }
     }
@@ -399,7 +435,7 @@ private fun TvPosterCard(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale by animateFloatAsState(if (focused) 1.08f else 1f, label = "tv-poster-scale")
+    val scale by animateFloatAsState(if (focused) 1.06f else 1f, label = "tv-poster-scale")
     val shape = RoundedCornerShape(10.dp)
     Column(
         modifier = modifier
@@ -432,7 +468,7 @@ private fun TvPosterCard(
 private fun TvSeeAllCard(onClick: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
-    val scale by animateFloatAsState(if (focused) 1.08f else 1f, label = "tv-all-scale")
+    val scale by animateFloatAsState(if (focused) 1.06f else 1f, label = "tv-all-scale")
     val shape = RoundedCornerShape(10.dp)
     Column(Modifier.width(160.dp).scale(scale)) {
         Box(
@@ -458,17 +494,35 @@ private fun TvSeeAllCard(onClick: () -> Unit) {
 
 // --- helpers ----------------------------------------------------------------------------------
 
-/** One fact line for the TV cards/hero: episode code + title, or year/episode count, plus runtime. */
-private fun tvMetaLine(item: MediaItem): String? {
+/** The hero's big line: the show name for an episode, the title otherwise (reference §3). */
+internal fun heroTitle(item: MediaItem): String = when (item) {
+    is Episode -> item.showTitle.ifBlank { item.title }
+    else -> item.title
+}
+
+/** The hero's quiet fact line: "S15 E01 • 1h 03m", "2011 • 1h 46m", "22 seasons", etc. */
+internal fun heroMeta(item: MediaItem): String? {
     val bits = buildList {
         when (item) {
-            is Episode -> add("S${pad(item.seasonIndex)}E${pad(item.episodeIndex)}  ${item.title}")
+            is Episode -> add("S${item.seasonIndex} E${item.episodeIndex}")
             is Movie -> item.year?.let { add(it.toString()) }
-            is Show -> if (item.leafCount > 0) add("${item.leafCount} episodes")
-            is Season -> if (item.leafCount > 0) add("${item.leafCount} episodes")
-            is MediaCollection -> add("${item.childCount} titles")
+            is Show -> {
+                item.year?.let { add(it.toString()) }
+                if (item.leafCount > 0) add("${item.leafCount} episodes")
+            }
             else -> {}
         }
+        if (item.viewOffsetMs > 0L && item.durationMs > 0L) add(remainingLabel(item))
+        else if (item.durationMs > 0L) add(formatDuration(item.durationMs))
     }
     return bits.takeIf { it.isNotEmpty() }?.joinToString("  •  ")
 }
+
+/** A concise sub-line for a card: "S15 E01" for an episode, the year for a movie. */
+private fun cardSubLine(item: MediaItem): String? = when (item) {
+    is Episode -> "S${item.seasonIndex} E${item.episodeIndex}"
+    is Movie -> item.year?.toString()
+    is Show -> if (item.leafCount > 0) "${item.leafCount} episodes" else null
+    else -> null
+}
+
