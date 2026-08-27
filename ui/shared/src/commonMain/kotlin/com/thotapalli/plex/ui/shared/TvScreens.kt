@@ -121,7 +121,13 @@ fun TvHomeScreen(
         kotlinx.coroutines.delay(130)
         featured = target
     }
-    val playFocus = rememberFirstFocus(enabled = true)
+    // Focus restoration for the home rows (reference §17): remember which card the viewer last
+    // focused (saveable, kept alive by the screen's SaveableStateProvider). On a fresh open the key
+    // is null and the hero's primary action takes focus; after opening a detail and pressing Back the
+    // matching card — whichever row it's in — is re-focused.
+    var lastFocusedKey by rememberSaveable { mutableStateOf<String?>(null) }
+    val restoreFocus = remember { FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { restoreFocus.requestFocus() } }
 
     BoxWithConstraints(modifier.fillMaxSize().background(PlexTheme.colours.background)) {
         val overscanV = maxHeight * Layout.TELEVISION_OVERSCAN_FRACTION
@@ -137,7 +143,9 @@ fun TvHomeScreen(
                 item = featured,
                 height = heroHeight,
                 onPlay = onPlay,
-                playFocus = playFocus,
+                // On a fresh open (no remembered card) the hero action takes first focus; after a
+                // Back the remembered card claims it instead.
+                playFocus = restoreFocus.takeIf { lastFocusedKey == null },
             )
             Column(
                 modifier = Modifier
@@ -158,7 +166,8 @@ fun TvHomeScreen(
                                     ArtworkSize.WIDE_HEIGHT,
                                 ),
                                 onClick = { onItemClick(item) },
-                                onFocused = { featuredOverride = item },
+                                onFocused = { featuredOverride = item; lastFocusedKey = item.ratingKey },
+                                modifier = if (item.ratingKey == lastFocusedKey) Modifier.focusRequester(restoreFocus) else Modifier,
                             )
                         }
                     }
@@ -177,7 +186,8 @@ fun TvHomeScreen(
                                         ArtworkSize.POSTER_HEIGHT,
                                     ),
                                     onClick = { onItemClick(item) },
-                                    onFocused = { featuredOverride = item },
+                                    onFocused = { featuredOverride = item; lastFocusedKey = item.ratingKey },
+                                    modifier = if (item.ratingKey == lastFocusedKey) Modifier.focusRequester(restoreFocus) else Modifier,
                                 )
                             }
                             item(key = library.key + "-all") {
@@ -204,7 +214,7 @@ private fun TvHomeHero(
     item: MediaItem?,
     height: Dp,
     onPlay: (MediaItem, Long) -> Unit,
-    playFocus: androidx.compose.ui.focus.FocusRequester,
+    playFocus: FocusRequester?,
 ) {
     Box(Modifier.fillMaxWidth().height(height)) {
         // The backdrop crossfades on a change of featured title (250–400ms per the reference).
@@ -281,7 +291,7 @@ private fun TvHomeHero(
                     icon = PlexIconKind.PLAY,
                     primary = true,
                     onClick = { onPlay(item, item.viewOffsetMs) },
-                    modifier = Modifier.focusRequester(playFocus),
+                    modifier = if (playFocus != null) Modifier.focusRequester(playFocus) else Modifier,
                 )
             }
         }
@@ -409,13 +419,14 @@ private fun TvWideCard(
     artworkUrl: String?,
     onClick: () -> Unit,
     onFocused: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val scale by animateFloatAsState(if (focused) 1.06f else 1f, label = "tv-wide-scale")
     val shape = RoundedCornerShape(12.dp)
     Column(
-        modifier = Modifier
+        modifier = modifier
             .width(300.dp)
             .scale(scale)
             .onFocusChanged { if (it.isFocused) onFocused() }

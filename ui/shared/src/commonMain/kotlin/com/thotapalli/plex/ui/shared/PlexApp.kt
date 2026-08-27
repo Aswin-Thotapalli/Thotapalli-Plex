@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -696,11 +698,26 @@ private fun TvShell(
     onOpenProfile: () -> Unit,
     content: @Composable () -> Unit,
 ) {
+    // Selecting a rail item — including the page you are already on — drops focus straight into that
+    // page's content instead of leaving the remote stranded on the rail (the "I can't get back to
+    // the page from the side panel" and "I can't leave the library" complaints). The content is a
+    // focus group with its own requester; after any selection (and on first launch) focus is pushed
+    // into it, which also collapses the rail. See CLAUDE.md section 13.
+    val contentFocus = remember { FocusRequester() }
+    var pendingContentFocus by remember { mutableStateOf(true) }
+    LaunchedEffect(current, pendingContentFocus) {
+        if (pendingContentFocus) {
+            // Let the newly-selected page compose before handing it focus.
+            kotlinx.coroutines.delay(60)
+            runCatching { contentFocus.requestFocus() }
+            pendingContentFocus = false
+        }
+    }
     Box(Modifier.fillMaxSize().background(PlexTheme.colours.background)) {
-        content()
+        Box(Modifier.fillMaxSize().focusRequester(contentFocus).focusGroup()) { content() }
         TvNavRail(
             current = current,
-            onSelect = onSelect,
+            onSelect = { dest -> onSelect(dest); pendingContentFocus = true },
             onOpenProfile = onOpenProfile,
             modifier = Modifier.align(Alignment.CenterStart),
         )

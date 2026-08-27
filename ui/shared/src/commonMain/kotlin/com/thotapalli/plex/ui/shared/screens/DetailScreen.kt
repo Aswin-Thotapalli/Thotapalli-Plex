@@ -148,16 +148,21 @@ fun DetailScreen(
             (maxHeight * 0.5f).coerceIn(300.dp, 440.dp)
         }
         // The whole screen takes on the colour of the content's own artwork, and that wash is the
-        // glass source: every frosted panel below samples and blurs it.
-        AmbientBackground(
-            url = backdropUrl,
-            modifier = Modifier.fillMaxSize().glassSource(),
-        )
-
-        // The GROUND veil: the same translucent base every screen floats on, laid over the ambient
-        // art so the whole area below the cinematic backdrop reads as one glass world with the nav.
-        // The full-bleed backdrop is drawn above it and covers it at the top.
-        Box(Modifier.fillMaxSize().material(GlassRole.GROUND))
+        // glass source: every frosted panel below samples and blurs it. Skipped on television — the
+        // TV detail is solid-surface and scrolls, so the ambient colour sampling is pure cost there
+        // and was a source of scroll stutter; a plain dark ground is used instead.
+        if (sizeClass != SizeClass.TELEVISION) {
+            AmbientBackground(
+                url = backdropUrl,
+                modifier = Modifier.fillMaxSize().glassSource(),
+            )
+            // The GROUND veil: the same translucent base every screen floats on, laid over the ambient
+            // art so the whole area below the cinematic backdrop reads as one glass world with the nav.
+            // The full-bleed backdrop is drawn above it and covers it at the top.
+            Box(Modifier.fillMaxSize().material(GlassRole.GROUND))
+        } else {
+            Box(Modifier.fillMaxSize().background(PlexTheme.colours.background))
+        }
 
         if (sizeClass == SizeClass.TELEVISION) {
             TvDetail(
@@ -859,7 +864,9 @@ private fun SeasonRail(
     val selectedKey = state.selectedSeason?.ratingKey
     LazyRow(
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-        contentPadding = PaddingValues(vertical = Spacing.xs),
+        // Horizontal + vertical padding so the first card is not flush against the row's clip edge —
+        // otherwise its focus scale is cropped on the left (the "first season cut off" bug).
+        contentPadding = PaddingValues(horizontal = Spacing.sm, vertical = Spacing.sm),
     ) {
         items(state.seasons, key = { it.ratingKey }) { season ->
             SeasonCard(
