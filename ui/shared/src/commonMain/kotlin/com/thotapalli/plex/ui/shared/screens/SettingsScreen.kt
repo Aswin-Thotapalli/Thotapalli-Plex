@@ -144,16 +144,18 @@ fun SettingsScreen(
             item {
                 SettingsSection("Playback") {
                     SettingsCard {
-                        ToggleRow(
-                            glyph = SettingGlyph.PLAYBACK,
-                            title = "Match display rate to content",
-                            // Defaults on for television, off for phone and Windows.
-                            subtitle = "Switches the display mode so the refresh rate divides " +
-                                "evenly by the frame rate. The screen blanks briefly.",
-                            checked = state.matchDisplayRate,
-                            onChange = onMatchDisplayRateChange,
-                        )
-                        RowDivider()
+                        if (state.showMatchDisplayRate) {
+                            ToggleRow(
+                                glyph = SettingGlyph.PLAYBACK,
+                                title = "Match display rate to content",
+                                // Defaults on for television, off for phone.
+                                subtitle = "Switches the display mode so the refresh rate divides " +
+                                    "evenly by the frame rate. The screen blanks briefly.",
+                                checked = state.matchDisplayRate,
+                                onChange = onMatchDisplayRateChange,
+                            )
+                            RowDivider()
+                        }
                         ToggleRow(
                             glyph = SettingGlyph.AUTOPLAY,
                             title = "Auto play next episode",
@@ -392,15 +394,17 @@ private fun WideSettings(
 
             item {
                 GroupedSection("Playback") {
-                    ToggleRow(
-                        glyph = SettingGlyph.PLAYBACK,
-                        title = "Match display rate to content",
-                        subtitle = "Switches the display mode so the refresh rate divides evenly " +
-                            "by the frame rate. The screen blanks briefly.",
-                        checked = state.matchDisplayRate,
-                        onChange = onMatchDisplayRateChange,
-                    )
-                    RowDivider()
+                    if (state.showMatchDisplayRate) {
+                        ToggleRow(
+                            glyph = SettingGlyph.PLAYBACK,
+                            title = "Match display rate to content",
+                            subtitle = "Switches the display mode so the refresh rate divides evenly " +
+                                "by the frame rate. The screen blanks briefly.",
+                            checked = state.matchDisplayRate,
+                            onChange = onMatchDisplayRateChange,
+                        )
+                        RowDivider()
+                    }
                     ToggleRow(
                         glyph = SettingGlyph.AUTOPLAY,
                         title = "Allow autoplay next episode",
@@ -1388,6 +1392,11 @@ private fun DrawScope.drawShield(tint: Color, stroke: Stroke) {
 
 data class SettingsScreenState(
     val matchDisplayRate: Boolean = false,
+    // Whether to show the "Match display rate to content" toggle. Off on Windows: the single-window
+    // player composites the video into an embedded OpenGL surface, and a Windows refresh-rate switch
+    // destroys that surface (the picture would go black), so the option does not apply there. Android
+    // TV keeps it — the platform changes the display mode itself, cleanly.
+    val showMatchDisplayRate: Boolean = true,
     val unmeteredOnly: Boolean = true,
     val audioLanguage: String = "eng",
     val subtitleLanguage: String = "eng",

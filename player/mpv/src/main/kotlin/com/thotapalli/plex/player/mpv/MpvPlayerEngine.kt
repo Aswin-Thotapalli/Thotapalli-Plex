@@ -453,8 +453,17 @@ class MpvPlayerEngine(
      * it, once per file. The switch itself blanks the screen for a moment and can block, so it
      * runs off the event thread on the engine scope, and the matcher swallows every failure so
      * playback is never affected. See CLAUDE.md section 9.
+     *
+     * Not done in render mode. The single-window player composites the video into an embedded AWT
+     * OpenGL surface, and a Windows refresh-rate switch (`ChangeDisplaySettingsEx`, `CDS_FULLSCREEN`)
+     * destroys that surface's JAWT drawing surface below the GL layer — the picture goes black and
+     * cannot be recovered while audio keeps playing. Drift is already handled by
+     * `video-sync=display-resample` plus the vsync'd swap, so playback stays smooth without the
+     * switch; only the judder optimisation for 25/50fps content on a non-divisible display is given
+     * up, which section 9 makes optional and off by default on Windows anyway.
      */
     private fun maybeMatchDisplayRate(h: Pointer) {
+        if (renderModeActive) return
         if (rateMatchAttempted) return
         val fps = contentFrameRate() ?: return
         rateMatchAttempted = true

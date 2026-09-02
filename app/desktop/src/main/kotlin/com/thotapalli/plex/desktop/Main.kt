@@ -24,7 +24,6 @@ import com.thotapalli.plex.core.session.DpapiSecureStore
 import com.thotapalli.plex.core.session.FileKeyValueStore
 import com.thotapalli.plex.core.session.UpdateTarget
 import com.thotapalli.plex.core.session.currentDeviceInfo
-import com.thotapalli.plex.player.mpv.DisplayRateMatcher
 import com.thotapalli.plex.ui.shared.AppContainer
 import com.thotapalli.plex.ui.shared.installImageLoader
 import com.thotapalli.plex.ui.shared.AppViewModel
@@ -59,10 +58,6 @@ fun main() {
     // In case the process dies while full screen, put the window frame styles back is moot, but
     // any taskbar we hid as a fallback must be shown again.
     Runtime.getRuntime().addShutdownHook(Thread { BorderlessFullscreen.showTaskbar() })
-    // And if the process dies mid-playback with a refresh rate applied, put the display back to
-    // its saved settings. Mirrors the taskbar hook above; a no-op when nothing was changed.
-    // See CLAUDE.md section 9.
-    Runtime.getRuntime().addShutdownHook(Thread { DisplayRateMatcher.restore() })
     // Install the shared Coil loader (generous memory cache + 512 MB disk cache under
     // %LOCALAPPDATA%\ThotapalliPlex\image_cache) before the Compose window opens and any poster is
     // requested, so artwork is cached from its first fetch. See CLAUDE.md sections 5 and 13.
@@ -266,11 +261,13 @@ private fun buildContainer(): AppContainer {
     // no reliable metered signal to act on. See CLAUDE.md section 11 rule 6.
     container.settings.defaultUnmetered = false
 
-    // The mpv engine matches the display refresh rate to the content only when this setting is
-    // on (off by default on Windows). Late-bound so toggling it takes effect on the next file.
-    // See CLAUDE.md section 9.
-    DisplayRateMatcher.enabled = { container.settings.matchDisplayRate }
-
+    // The Windows single-window player never switches the display mode: the video is composited into
+    // an embedded OpenGL surface that a Windows refresh-rate change would destroy (the picture goes
+    // black, only audio survives) — the exact opposite of what a media player should do. So section
+    // 9's display-rate matching is not wired on the desktop; drift is handled by mpv's
+    // video-sync=display-resample plus the vsync'd swap, and the "Match display rate" setting is
+    // hidden on Windows (see AppViewModel.settingsState). Android TV keeps section 9 through Media3,
+    // where the platform changes the mode cleanly.
     return container
 }
 

@@ -1035,6 +1035,10 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         val settings = container.settings
         return SettingsScreenState(
             matchDisplayRate = settings.matchDisplayRate,
+            // Windows (the single-window mpv/GL player) cannot switch the display mode without
+            // destroying the video surface, so the option is not offered there. See the render-mode
+            // note in MpvPlayerEngine and CLAUDE.md section 9.
+            showMatchDisplayRate = !container.isDesktop,
             unmeteredOnly = settings.unmeteredDownloadsOnly,
             audioLanguage = settings.preferredAudioLanguage,
             subtitleLanguage = settings.preferredSubtitleLanguage,
