@@ -1,6 +1,12 @@
 package com.thotapalli.plex.mobile
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Intent
+import android.content.pm.ServiceInfo
 import androidx.annotation.OptIn
+import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -11,14 +17,66 @@ import com.thotapalli.plex.player.exo.ExoPlayerEngine
  * section 8).
  *
  * The player itself is created and owned by the UI-scoped [ExoPlayerEngine], not by this service —
- * our surface rules keep the SurfaceView in the Compose tree. So rather than owning a player, this
- * service simply hosts the session the engine has already published to [ExoPlayerEngine.activeSession].
- * Media3's [MediaSessionService] turns that into the platform media notification and lock-screen
- * transport controls, and holds the process in the foreground so audio keeps flowing while the
- * screen is off. The engine starts the service on play and stops it on release.
+ * the surface rules keep the SurfaceView in the Compose tree. So rather than owning a player, this
+ * service hosts the session the engine has already published to [ExoPlayerEngine.activeSession].
+ *
+ * Because the player lives in the UI and not here, Media3's own foreground bookkeeping does not fire
+ * the way it does when the service owns the player: a plain `startForegroundService` was not followed
+ * by a `startForeground` inside the window, and Android 14+ crashes the app for that
+ * (`ForegroundServiceDidNotStartInTimeException`). So this service calls [startForeground] itself, at
+ * once, in [onStartCommand] — which is what actually holds the process in the foreground while a
+ * video plays and stops a memory-constrained tablet from killing the app mid-playback (which lost
+ * the last progress report and resumed an earlier point on return). The engine starts the service
+ * when playback begins and the app stops it on release; the notification is a plain media-playback
+ * one (Media3 refines it once a controller connects).
  */
 @OptIn(UnstableApi::class)
 class PlaybackService : MediaSessionService() {
+
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
         ExoPlayerEngine.activeSession
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Promote to foreground immediately so the startForegroundService() that started us is always
+        // matched by a startForeground() inside Android's window — otherwise the app is crashed.
+        promoteToForeground()
+        return super.onStartCommand(intent, flags, startId)
+    }
+
+    private fun promoteToForeground() {
+        val manager = getSystemService(NotificationManager::class.java) ?: return
+        if (manager.getNotificationChannel(CHANNEL_ID) == null) {
+            manager.createNotificationChannel(
+                NotificationChannel(
+                    CHANNEL_ID,
+                    "Playback",
+                    // Low: the media session shows its own transport notification; this is only the
+                    // foreground-service placeholder, so it should be quiet and unobtrusive.
+                    NotificationManager.IMPORTANCE_LOW,
+                ).apply { setShowBadge(false) },
+            )
+        }
+
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Thotapalli Plex")
+            .setContentText("Playing")
+            .setSmallIcon(android.R.drawable.ic_media_play)
+            .setOngoing(true)
+            .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+            .build()
+
+        runCatching {
+            ServiceCompat.startForeground(
+                this,
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK,
+            )
+        }
+    }
+
+    private companion object {
+        const val CHANNEL_ID = "playback"
+        const val NOTIFICATION_ID = 1001
+    }
 }

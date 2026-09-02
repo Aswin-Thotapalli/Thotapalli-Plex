@@ -122,6 +122,15 @@ fun PlayerScreen(
                 foregroundArgb = container.settings.subtitleForegroundArgb,
                 backgroundOpacityPercent = container.settings.subtitleBackgroundOpacityPercent,
             ),
+            // Keep the local cache in step with playback, so the detail screen's "next unwatched",
+            // the library watched badges and the offline continue-watching fallback reflect what was
+            // just watched instead of resuming an already-finished episode/section. See §5.
+            recordLocalOffset = { ratingKey, positionMs ->
+                container.repository.recordLocalOffset(ratingKey, positionMs)
+            },
+            recordLocalWatched = { ratingKey ->
+                container.repository.recordLocalWatched(ratingKey)
+            },
         )
         // The credit skip, the countdown and a natural end all route the next episode here.
         built.onPlayNextEpisode = { next -> target = PlayTarget(next, next.viewOffsetMs) }

@@ -272,6 +272,36 @@ class LibraryRepositoryTest {
     }
 
     @Test
+    fun recordingLocalOffsetMovesResumeWithoutTouchingWatchCount() = runTest {
+        val source = CountingServerSource(movies = listOf(movie("1", "Alpha")))
+        val (repository, _) = fixture(source)
+        repository.libraryContents(scope, filmsLibrary)
+        // Already watched once, now being rewatched from part way.
+        repository.recordProgress("1", positionMs = 0, viewCount = 1)
+
+        repository.recordLocalOffset("1", positionMs = 120_000)
+
+        val item = assertNotNull(repository.cachedItem("1"))
+        assertEquals(120_000L, item.viewOffsetMs)
+        assertEquals(1, item.viewCount) // a live progress update must not un-watch a watched item
+    }
+
+    @Test
+    fun recordingLocalWatchedClearsResumeAndMarksWatched() = runTest {
+        val source = CountingServerSource(movies = listOf(movie("1", "Alpha")))
+        val (repository, _) = fixture(source)
+        repository.libraryContents(scope, filmsLibrary)
+        // Part way through, not yet watched — exactly the state that made "Play" resume it again.
+        repository.recordLocalOffset("1", positionMs = 800_000)
+
+        repository.recordLocalWatched("1")
+
+        val item = assertNotNull(repository.cachedItem("1"))
+        assertEquals(0L, item.viewOffsetMs)   // no stale resume point left behind
+        assertEquals(1, item.viewCount)       // now counts as watched for next-unwatched / badges
+    }
+
+    @Test
     fun aRefreshReplacesRatherThanAccumulates() = runTest {
         val source = CountingServerSource(movies = listOf(movie("1", "Alpha"), movie("2", "Beta")))
         val (repository, _) = fixture(source)

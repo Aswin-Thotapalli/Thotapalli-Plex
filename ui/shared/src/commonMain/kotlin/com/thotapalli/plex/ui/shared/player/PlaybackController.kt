@@ -72,6 +72,15 @@ class PlaybackController(
      * target with no download support, in which case everything streams from the server.
      */
     private val offlineResolver: OfflineResolver? = null,
+    /**
+     * Keeps the local cache in step with what is being watched. Timeline reports go to the server,
+     * but the detail screen's "next unwatched", the continue-watching fallback and the library
+     * watched badges read the cache, which is otherwise only refreshed on a browse — so without this
+     * a just-finished episode still looks unwatched with a stale resume point, and "Play" resumes an
+     * already-watched episode or an earlier point in the current one. Null on targets with no cache.
+     */
+    private val recordLocalOffset: ((ratingKey: String, positionMs: Long) -> Unit)? = null,
+    private val recordLocalWatched: ((ratingKey: String) -> Unit)? = null,
 ) {
 
     private val _state = MutableStateFlow(PlayerScreenState())
@@ -709,9 +718,21 @@ class PlaybackController(
             }.onFailure {
                 offlineTimeline?.record(ratingKey, positionMs, durationMs, state.name.lowercase())
             }
+
+            // Mirror the position into the local cache so cache-first reads (next-unwatched, badges,
+            // the offline continue-watching fallback) match reality immediately. A report at or past
+            // the watched threshold — including the stop report at the end of an episode — marks it
+            // watched and clears the resume point rather than leaving a near-end offset that would
+            // resume the last few seconds forever. See TimelineReporter and CLAUDE.md section 5.
+            if (TimelineReporter.isPastScrobbleThreshold(positionMs, durationMs)) {
+                recordLocalWatched?.invoke(ratingKey)
+            } else {
+                recordLocalOffset?.invoke(ratingKey, positionMs)
+            }
         }
 
         override suspend fun scrobble(ratingKey: String) {
+            recordLocalWatched?.invoke(ratingKey)
             runCatching { api.scrobble(serverScope, ratingKey) }.onFailure {
                 // Recorded at the full duration, so the replay marks it watched rather than
                 // leaving it a few seconds short forever.

@@ -204,6 +204,10 @@ class ExoPlayerEngine(
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            // The player is now actually rendering: safe to promote the process to a foreground media
+            // service (Media3 can post its notification at once). Latched true and only cleared on
+            // release, so a pause does not tear the service down. See [sessionActive].
+            if (isPlaying) _sessionActive.value = true
             if (_state.value is PlaybackState.Failed) return
             if (player.playbackState == Player.STATE_READY) {
                 _state.value = if (isPlaying) PlaybackState.Playing else PlaybackState.Paused
@@ -391,6 +395,8 @@ class ExoPlayerEngine(
             player.removeListener(listener)
             player.release()
             _state.value = PlaybackState.Idle
+            // The session is gone; let the app module stop the foreground media service.
+            _sessionActive.value = false
         }
     }
 
@@ -453,6 +459,21 @@ class ExoPlayerEngine(
         @Volatile
         var activeSession: MediaSession? = null
             internal set
+
+        /**
+         * True while a playback session is live and has actually started playing. The app module's
+         * foreground [MediaSessionService] is started off this so the process is held in the
+         * foreground while a video plays — which is what stops a memory-constrained tablet from
+         * killing the app mid-playback and relaunching it (losing the last progress report).
+         *
+         * It is set only once playback reaches [PlaybackState.Playing], never merely when the session
+         * is built: a `mediaPlayback` foreground service that is started before its session has a
+         * playing player cannot post its notification in the window Android 14+ requires and crashes
+         * the app. Waiting for Playing guarantees Media3 posts the media notification immediately, so
+         * the service goes foreground in time. Cleared on [release]. See CLAUDE.md section 8.
+         */
+        private val _sessionActive: MutableStateFlow<Boolean> = MutableStateFlow(false)
+        val sessionActive: kotlinx.coroutines.flow.StateFlow<Boolean> = _sessionActive
     }
 }
 

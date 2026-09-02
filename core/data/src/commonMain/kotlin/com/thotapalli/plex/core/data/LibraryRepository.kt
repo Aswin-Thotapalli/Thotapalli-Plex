@@ -245,6 +245,24 @@ class LibraryRepository(
         items.updateProgress(positionMs, viewCount.toLong(), ratingKey)
     }
 
+    /**
+     * Keeps the cache in step with what is being watched right now.
+     *
+     * Timeline reports go to the server, but the detail screen's "next unwatched", the continue-
+     * watching fallback and the library watched badges read this cache, which is otherwise only
+     * refreshed on a browse. Without this, an episode you just finished still looks unwatched with a
+     * stale resume point until the next refresh — so "Play" resumes an already-watched episode, or an
+     * earlier point in the current one. Called from the same place progress is reported (§5).
+     */
+    fun recordLocalOffset(ratingKey: String, positionMs: Long) {
+        runCatching { items.updateOffset(positionMs, ratingKey) }
+    }
+
+    /** Marks an item watched in the cache once it passes the scrobble threshold (§5). */
+    fun recordLocalWatched(ratingKey: String) {
+        runCatching { items.markWatchedLocal(ratingKey) }
+    }
+
     fun cachedItem(ratingKey: String): MediaItem? =
         items.selectByRatingKey(ratingKey).executeAsOneOrNull()?.toMediaItem()
 

@@ -13,6 +13,7 @@ import com.thotapalli.plex.core.download.AndroidDownloadFileSystem
 import com.thotapalli.plex.core.download.AndroidNetworkConditions
 import com.thotapalli.plex.core.session.UpdateTarget
 import com.thotapalli.plex.core.session.currentDeviceInfo
+import com.thotapalli.plex.player.exo.ExoPlayerEngine
 import com.thotapalli.plex.ui.shared.AppContainer
 import com.thotapalli.plex.ui.shared.installImageLoader
 import kotlinx.coroutines.launch
@@ -62,6 +63,37 @@ class ThotapalliApplication : Application() {
         }
 
         observeDownloadsForForegroundService()
+        observePlaybackForForegroundService()
+    }
+
+    /**
+     * Holds the process in the foreground while a video plays, so the system does not reclaim the app
+     * mid-playback and relaunch it — which loses the last progress report and resumes an earlier
+     * point on return. Started only once playback is actually playing ([ExoPlayerEngine.sessionActive]);
+     * a `mediaPlayback` foreground service started before its session has a playing player cannot post
+     * its notification in the Android 14+ window and crashes the app. Stopped when playback is
+     * released. Mirrors [observeDownloadsForForegroundService].
+     */
+    private fun observePlaybackForForegroundService() {
+        var running = false
+        container.scope.launch {
+            ExoPlayerEngine.sessionActive.collect { active ->
+                if (active && !running) {
+                    running = true
+                    runCatching {
+                        ContextCompat.startForegroundService(
+                            this@ThotapalliApplication,
+                            Intent(this@ThotapalliApplication, PlaybackService::class.java),
+                        )
+                    }
+                } else if (!active && running) {
+                    running = false
+                    runCatching {
+                        stopService(Intent(this@ThotapalliApplication, PlaybackService::class.java))
+                    }
+                }
+            }
+        }
     }
 
     /**

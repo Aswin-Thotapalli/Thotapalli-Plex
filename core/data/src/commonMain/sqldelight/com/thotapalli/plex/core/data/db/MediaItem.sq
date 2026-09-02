@@ -69,6 +69,17 @@ ORDER BY refreshed_at DESC;
 updateProgress:
 UPDATE media_item SET view_offset_ms = ?, view_count = ? WHERE rating_key = ?;
 
+-- Live playback progress: move the resume point without touching the watch count, so a partly
+-- watched item reflects where the viewer actually got to (before the next server refresh) and the
+-- detail screen's "next unwatched" and the library badges stay honest. See the timeline reporter.
+updateOffset:
+UPDATE media_item SET view_offset_ms = ? WHERE rating_key = ?;
+
+-- Past the watched threshold: clear the resume point and mark the item watched, without lowering a
+-- real rewatch count. This is what stops "Play" resuming an episode that was already finished.
+markWatchedLocal:
+UPDATE media_item SET view_offset_ms = 0, view_count = MAX(view_count, 1) WHERE rating_key = ?;
+
 deleteInLibrary:
 DELETE FROM media_item WHERE library_key = ? AND kind = ?;
 
