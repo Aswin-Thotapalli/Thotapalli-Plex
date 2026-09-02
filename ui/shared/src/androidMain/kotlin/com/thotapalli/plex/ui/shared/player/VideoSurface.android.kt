@@ -46,6 +46,9 @@ actual fun VideoSurface(
     // Android reveals the controls from the Compose overlay's own taps, so this is unused.
     onPointerActivity: () -> Unit,
     modifier: Modifier,
+    // Unused on Android: the SurfaceView sits beneath the Compose overlay in the same window, so
+    // the caller draws the overlay directly above this surface rather than handing it in here.
+    overlay: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()

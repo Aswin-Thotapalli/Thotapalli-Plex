@@ -12,6 +12,15 @@ sqldelight = "2.3.2"
 coil = "3.5.0"
 jna = "5.17.0"
 okio = "3.9.1"
+# lwjgl3-awt 0.1.8 (the AWT-embedded GL context for the single-window player) calls a JAWT struct
+# API (JAWT.wrap) whose signature changed in lwjgl 3.3.2 → 3.3.3, so a core at 3.3.3+ throws
+# NoSuchMethodError inside AWTGLCanvas at context creation. 3.3.1 is the newest core that still works
+# with it (verified via :app:desktop:glCanvasProbe). It prints a benign "Unsupported JNI version"
+# warning on JDK 21 (that detection only shipped in 3.3.3+, which we cannot use) — it falls back to a
+# working path, goes only to stderr, and never reaches a user of the packaged app. All the lwjgl
+# natives-windows artifacts derive their classifier from this same version.
+lwjgl = "3.3.1"
+lwjgl3awt = "0.1.8"
 haze = "1.6.10"
 backdrop = "2.0.0"
 # QR code painter for the television sign-in screen. A TV cannot open a browser, so the
@@ -64,6 +73,14 @@ media3-ffmpeg = { module = "androidx.media3:media3-decoder-ffmpeg", version.ref 
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
 okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
+
+# LWJGL: an OpenGL context we own, for the single-window desktop player (mpv render API composited
+# with the Compose overlay via Skia). glfw is used only by the render-pipeline proof harness; the
+# shipped player embeds the context in an AWT canvas via lwjgl3-awt.
+lwjgl-core = { module = "org.lwjgl:lwjgl", version.ref = "lwjgl" }
+lwjgl-opengl = { module = "org.lwjgl:lwjgl-opengl", version.ref = "lwjgl" }
+lwjgl-glfw = { module = "org.lwjgl:lwjgl-glfw", version.ref = "lwjgl" }
+lwjgl3-awt = { module = "org.lwjglx:lwjgl3-awt", version.ref = "lwjgl3awt" }
 haze = { module = "dev.chrisbanes.haze:haze", version.ref = "haze" }
 kyant-backdrop = { module = "io.github.kyant0:backdrop", version.ref = "backdrop" }
 qrose = { module = "io.github.alexzhirkevich:qrose", version.ref = "qrose" }

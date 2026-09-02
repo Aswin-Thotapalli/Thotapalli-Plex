@@ -33,6 +33,18 @@ dependencies {
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
     implementation(libs.compose.ui)
+
+    // The single-window player owns an OpenGL context (mpv render API composited with the Compose
+    // overlay via Skia). LWJGL provides the GL bindings and the AWT-embedded context; glfw is only
+    // used by the render-pipeline proof harness.
+    implementation(libs.lwjgl.core)
+    implementation(libs.lwjgl.opengl)
+    implementation(libs.lwjgl.glfw)
+    implementation(libs.lwjgl3.awt)
+    val lwjglVersion = libs.versions.lwjgl.get()
+    runtimeOnly("org.lwjgl:lwjgl:$lwjglVersion:natives-windows")
+    runtimeOnly("org.lwjgl:lwjgl-opengl:$lwjglVersion:natives-windows")
+    runtimeOnly("org.lwjgl:lwjgl-glfw:$lwjglVersion:natives-windows")
 }
 
 /**
@@ -49,6 +61,22 @@ val gallery by tasks.registering(JavaExec::class) {
     classpath = sourceSets["main"].runtimeClasspath
     // Rendered at a fixed density so a captured screenshot is comparable between machines.
     systemProperty("skiko.win.exception.logger.enabled", "true")
+}
+
+/** Proof harness for the single-window render pipeline (mpv render API into our own GL context). */
+val renderProbe by tasks.registering(JavaExec::class) {
+    group = "verification"
+    description = "Opens a GL window and has mpv render a test pattern into it via the render API."
+    mainClass.set("com.thotapalli.plex.desktop.RenderProbeKt")
+    classpath = sourceSets["main"].runtimeClasspath
+}
+
+/** Proof harness for the SHIPPED path: real MpvPlayerEngine (render mode) into an AWTGLCanvas. */
+val glCanvasProbe by tasks.registering(JavaExec::class) {
+    group = "verification"
+    description = "Real engine + AWTGLCanvas + Compose scene composite, read back to a PNG."
+    mainClass.set("com.thotapalli.plex.desktop.GlCanvasProbeKt")
+    classpath = sourceSets["main"].runtimeClasspath
 }
 
 val harness by tasks.registering(JavaExec::class) {

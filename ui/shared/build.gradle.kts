@@ -68,6 +68,15 @@ kotlin {
             // JNA, to read the AWT canvas's native window handle so mpv renders inside the
             // application window rather than opening its own.
             implementation(libs.jna)
+            // The single-window desktop player owns an OpenGL context (an AWT-embedded LWJGL
+            // context) into which mpv renders (render API) and the Compose overlay is composited
+            // via Skia — one window, hardware throughout. See DesktopGlPlayer.
+            implementation(libs.lwjgl.core)
+            implementation(libs.lwjgl.opengl)
+            implementation(libs.lwjgl3.awt)
+            val lwjglVersion = libs.versions.lwjgl.get()
+            runtimeOnly("org.lwjgl:lwjgl:$lwjglVersion:natives-windows")
+            runtimeOnly("org.lwjgl:lwjgl-opengl:$lwjglVersion:natives-windows")
         }
 
         commonTest.dependencies {

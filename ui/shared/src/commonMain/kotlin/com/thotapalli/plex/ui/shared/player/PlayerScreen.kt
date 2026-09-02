@@ -176,13 +176,26 @@ fun PlayerScreen(
     // light ones. See CLAUDE.md section 12.
     ThotapalliTheme(forceDark = true) {
         if (container.isDesktop) {
-            // The desktop video is a heavyweight native window Compose cannot paint over, so
-            // the controls are drawn by a separate transparent window that floats above it
-            // (see the desktop app's Main). This composition owns the picture and publishes
-            // its state and actions to that window through the bridge.
-            LaunchedEffect(controller, actions) {
+            // The desktop player is a single window: mpv renders the video into a GL framebuffer the
+            // VideoSurface owns, and the overlay below is composited straight over it in that same
+            // framebuffer (see VideoSurface.jvm). So the controls are handed to VideoSurface rather
+            // than drawn here — the outer Compose window cannot paint over the GL surface, and no
+            // second window is involved. Full screen is app-level, supplied through the screen's
+            // params, so it is wired onto the overlay's toggle here.
+            val desktopState = screenState.copy(
+                showFullScreenToggle = true,
+                isFullScreen = isFullScreen,
+            )
+            val desktopActions = remember(actions, onToggleFullScreen) {
+                actions.copy(onToggleFullScreen = onToggleFullScreen)
+            }
+
+            // The main window owns the keyboard (the GL canvas is non-focusable), so its shortcut
+            // handler still reaches the live actions through the bridge. Only the actions and the
+            // "a video is active" flag are needed now; the overlay itself no longer lives there.
+            LaunchedEffect(controller, desktopActions) {
                 controller?.let { c ->
-                    container.playerBridge.publish(c.state, actions, onActivity = { c.noteInput() })
+                    container.playerBridge.publish(c.state, desktopActions, onActivity = { c.noteInput() })
                 }
             }
             DisposableEffect(Unit) { onDispose { container.playerBridge.clear() } }
@@ -192,6 +205,37 @@ fun PlayerScreen(
                     bind = { engine = it },
                     onPointerActivity = { controller?.noteInput() },
                     modifier = Modifier.fillMaxSize(),
+                    overlay = {
+                        // A separate composition inside the GL surface, so it sets up its own theme.
+                        ThotapalliTheme(forceDark = true) {
+                            Box(Modifier.fillMaxSize()) {
+                                PlayerOverlay(
+                                    state = desktopState,
+                                    actions = desktopActions,
+                                    modifier = Modifier.fillMaxSize(),
+                                )
+                                when (desktopState.openSheet) {
+                                    TrackSheetKind.AUDIO -> TrackSheet(
+                                        title = "Audio",
+                                        tracks = desktopState.audioTracks,
+                                        allowNone = false,
+                                        onSelect = desktopActions.onSelectAudioTrack,
+                                        onDismiss = desktopActions.onDismissSheet,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                    TrackSheetKind.SUBTITLE -> TrackSheet(
+                                        title = "Subtitles",
+                                        tracks = desktopState.subtitleTracks,
+                                        allowNone = true,
+                                        onSelect = desktopActions.onSelectSubtitleTrack,
+                                        onDismiss = desktopActions.onDismissSheet,
+                                        modifier = Modifier.fillMaxSize(),
+                                    )
+                                    null -> Unit
+                                }
+                            }
+                        }
+                    },
                 )
             }
         } else {

@@ -1,9 +1,5 @@
 package com.thotapalli.plex.desktop
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -11,19 +7,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.ApplicationScope
 import androidx.compose.ui.window.Window
-import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.thotapalli.plex.core.data.DatabaseDriverFactory
@@ -34,17 +25,12 @@ import com.thotapalli.plex.core.session.FileKeyValueStore
 import com.thotapalli.plex.core.session.UpdateTarget
 import com.thotapalli.plex.core.session.currentDeviceInfo
 import com.thotapalli.plex.player.mpv.DisplayRateMatcher
-import com.thotapalli.plex.ui.design.ThotapalliTheme
 import com.thotapalli.plex.ui.shared.AppContainer
 import com.thotapalli.plex.ui.shared.installImageLoader
-import com.thotapalli.plex.ui.shared.AppState
 import com.thotapalli.plex.ui.shared.AppViewModel
 import com.thotapalli.plex.ui.shared.PlexApp
 import com.thotapalli.plex.ui.shared.input.PlayerKeyAction
 import com.thotapalli.plex.ui.shared.input.keyToPlayerAction
-import com.thotapalli.plex.ui.shared.player.PlayerOverlay
-import com.thotapalli.plex.ui.shared.player.TrackSheet
-import com.thotapalli.plex.ui.shared.player.TrackSheetKind
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -249,172 +235,10 @@ private fun ui() = application {
         )
     }
 
-    // The floating player controls. Because the video is a heavyweight native window the
-    // Compose overlay cannot paint over, the controls live in their own transparent,
-    // always-on-top window that tracks the main window's content area — so the toolbar
-    // floats over the picture and fades away exactly like a normal video player.
-    if (container.playerBridge.active) {
-        PlayerOverlayWindow(container, viewModel, appState, mainWindow)
-    }
-}
-
-@Composable
-private fun ApplicationScope.PlayerOverlayWindow(
-    container: AppContainer,
-    viewModel: AppViewModel,
-    appState: AppState,
-    anchor: ComposeWindow?,
-) {
-    val overlayState = rememberWindowState(
-        position = WindowPosition(0.dp, 0.dp),
-        width = 960.dp,
-        height = 540.dp,
-    )
-
-    // The controls window exists ONLY while the controls are actually on screen. During steady
-    // playback the controls auto-hide, and the window goes with them — so the transparent,
-    // always-on-top overlay is not sitting over every other application (which was blocking the rest
-    // of the desktop) and is not forcing the compositor off its fast full-screen path (which was the
-    // full-screen lag). Mouse movement over the video canvas and every key press wake the controls
-    // (noteInput), which brings the window back instantly. The picture never leaves the main window.
-    val playerState by container.playerBridge.stateFlow.collectAsState()
-    // Also gate on the app actually being the foreground app: the moment you click another window
-    // or Alt-Tab away, the main window loses focus and the controls window disappears with it, so it
-    // can never sit over the rest of your desktop even for the seconds the controls are up. The
-    // controls window is non-focusable, so interacting with it never moves focus off the main window.
-    var appFocused by remember { mutableStateOf(true) }
-    DisposableEffect(anchor) {
-        val w = anchor ?: return@DisposableEffect onDispose {}
-        appFocused = w.isFocused
-        val l = object : java.awt.event.WindowFocusListener {
-            override fun windowGainedFocus(e: java.awt.event.WindowEvent?) { appFocused = true }
-            override fun windowLostFocus(e: java.awt.event.WindowEvent?) { appFocused = false }
-        }
-        w.addWindowFocusListener(l)
-        onDispose { w.removeWindowFocusListener(l) }
-    }
-    val controlsShown = (playerState.controlsVisible || playerState.openSheet != null) && appFocused
-
-    // Mirror the main window's content area into the overlay's WindowState so the controls
-    // cover the picture exactly, following every move, resize and the switch to full screen.
-    //
-    // The bounds are pushed through WindowState rather than window.setBounds because Compose
-    // re-applies the state's own bounds on every frame and would otherwise snap the overlay
-    // back to its initial size. AWT reports component bounds in logical pixels, and Compose's
-    // density on this display makes one logical pixel equal one dp, so the numbers map across
-    // directly.
-    if (anchor != null) {
-        DisposableEffect(anchor) {
-            fun sync() {
-                val loc = runCatching { anchor.contentPane.locationOnScreen }.getOrNull()
-                    ?: return
-                val size = anchor.contentPane.size
-                if (size.width > 0 && size.height > 0) {
-                    overlayState.position = WindowPosition(loc.x.dp, loc.y.dp)
-                    overlayState.size = DpSize(size.width.dp, size.height.dp)
-                }
-            }
-            sync()
-            val listener = object : java.awt.event.ComponentAdapter() {
-                override fun componentMoved(e: java.awt.event.ComponentEvent?) = sync()
-                override fun componentResized(e: java.awt.event.ComponentEvent?) = sync()
-            }
-            anchor.addComponentListener(listener)
-            onDispose { anchor.removeComponentListener(listener) }
-        }
-    }
-
-    Window(
-        onCloseRequest = viewModel::closePlayer,
-        state = overlayState,
-        visible = controlsShown,
-        undecorated = true,
-        transparent = true,
-        alwaysOnTop = true,
-        resizable = false,
-        // Non-focusable: the overlay must never steal focus from the main window (which would flicker
-        // the taskbar and bounce focus every time the controls auto-hide and reappear). Mouse clicks
-        // on the controls still land; all keyboard shortcuts are handled by the main window below.
-        focusable = false,
-        title = "",
-        // The desktop keyboard shortcuts, mapped through the shared [keyToPlayerAction] so phone,
-        // television and Windows agree on what each key means. The overlay window is only ever
-        // shown while a video is active, so every action has a live player to drive. Back maps to
-        // Escape here — the single Back path, replacing the earlier Escape-only handler.
-        // See CLAUDE.md section 16 phase 7 step 2.
-        onKeyEvent = { event ->
-            when (keyToPlayerAction(event)) {
-                PlayerKeyAction.PLAY_PAUSE -> { container.playerBridge.actions.onPlayPause(); true }
-                PlayerKeyAction.SEEK_BACK -> { container.playerBridge.actions.onSeekBack(); true }
-                PlayerKeyAction.SEEK_FORWARD -> { container.playerBridge.actions.onSeekForward(); true }
-                PlayerKeyAction.TOGGLE_FULL_SCREEN -> { viewModel.toggleFullScreen(); true }
-                PlayerKeyAction.BACK -> { viewModel.closePlayer(); true }
-                PlayerKeyAction.CYCLE_SUBTITLES -> { container.playerBridge.actions.onOpenSubtitleTracks(); true }
-                PlayerKeyAction.CYCLE_AUDIO -> { container.playerBridge.actions.onOpenAudioTracks(); true }
-                null -> false
-            }
-        },
-    ) {
-        // In full screen the main window is raised above the taskbar (top-most), so the controls
-        // window must re-assert itself above it to stay visible and clickable.
-        val overlayWindow = window
-        LaunchedEffect(appState.isFullScreen) {
-            if (appState.isFullScreen) {
-                overlayWindow.isAlwaysOnTop = true
-                overlayWindow.toFront()
-            }
-        }
-
-        ThotapalliTheme(forceDark = true) {
-            val playerState by container.playerBridge.stateFlow.collectAsState()
-            // The window owns full screen, not the controller, so those two fields and the
-            // toggle are supplied here rather than coming from the engine's state.
-            val shown = playerState.copy(
-                showFullScreenToggle = true,
-                isFullScreen = appState.isFullScreen,
-            )
-            val overlayActions = container.playerBridge.actions.copy(
-                onToggleFullScreen = viewModel::toggleFullScreen,
-            )
-
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    // Any pointer movement over the picture reveals the controls, the way a
-                    // tap does; the events are not consumed, so the buttons still receive them.
-                    .pointerInput(Unit) {
-                        awaitPointerEventScope {
-                            while (true) {
-                                awaitPointerEvent()
-                                container.playerBridge.onActivity()
-                            }
-                        }
-                    },
-            ) {
-                PlayerOverlay(state = shown, actions = overlayActions, modifier = Modifier.fillMaxSize())
-
-                when (shown.openSheet) {
-                    TrackSheetKind.AUDIO -> TrackSheet(
-                        title = "Audio",
-                        tracks = shown.audioTracks,
-                        allowNone = false,
-                        onSelect = overlayActions.onSelectAudioTrack,
-                        onDismiss = overlayActions.onDismissSheet,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                    TrackSheetKind.SUBTITLE -> TrackSheet(
-                        title = "Subtitles",
-                        tracks = shown.subtitleTracks,
-                        allowNone = true,
-                        onSelect = overlayActions.onSelectSubtitleTrack,
-                        onDismiss = overlayActions.onDismissSheet,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                    null -> Unit
-                }
-            }
-        }
-    }
+    // No separate controls window any more: the desktop player is a single window in which mpv
+    // renders the video into a GL framebuffer and the overlay is composited straight over it (see
+    // VideoSurface.jvm). The main window still owns the keyboard shortcuts below, reaching the live
+    // player actions through the bridge; the bridge no longer carries an overlay.
 }
 
 private fun buildContainer(): AppContainer {

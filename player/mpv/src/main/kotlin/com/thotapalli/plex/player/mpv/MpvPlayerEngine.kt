@@ -1,6 +1,7 @@
 package com.thotapalli.plex.player.mpv
 
 import com.sun.jna.Pointer
+import com.sun.jna.ptr.PointerByReference
 import com.thotapalli.plex.core.playback.PlaybackFailure
 import com.thotapalli.plex.core.playback.PlaybackSource
 import com.thotapalli.plex.core.playback.PlaybackState
@@ -27,6 +28,7 @@ import kotlinx.coroutines.launch
 class MpvPlayerEngine(
     private val scope: CoroutineScope,
     private val lib: LibMpv = LibMpv.load(),
+    private val render: LibMpvRender = LibMpvRender.load(),
 ) : PlayerEngine {
 
     private val _state = MutableStateFlow<PlaybackState>(PlaybackState.Idle)
@@ -46,6 +48,25 @@ class MpvPlayerEngine(
     private var eventJob: Job? = null
     private var scrubbing = false
 
+    // Render-API state (single-window desktop player). Held as fields so the JNA callback and its
+    // parameter memory are never garbage-collected while mpv still holds pointers to them.
+    private var renderCtx: Pointer? = null
+    private var glInitParams: MpvOpenGLInitParams? = null
+    private var glGetProc: MpvGetProcAddressFn? = null
+    private var glUpdateCb: MpvRenderUpdateFn? = null
+    private var glApiType: com.sun.jna.Memory? = null
+
+    /** True when [initialise] ran with render mode, so [load] defers until the render context exists. */
+    private var renderModeActive = false
+
+    /**
+     * A load requested before the render context existed, replayed once it does. With `vo=libmpv` the
+     * video output is bound at loadfile time, so loading before the framebuffer target is known leaves
+     * the picture black; deferring guarantees the context is always in place first. See
+     * [createRenderContext].
+     */
+    private var pendingLoad: Pair<PlaybackSource, Long>? = null
+
     /**
      * Whether refresh-rate matching has been attempted for the current file. Reset on every
      * [load] so auto-play-next, which reuses this engine, re-evaluates for the next episode.
@@ -59,7 +80,7 @@ class MpvPlayerEngine(
      *   Compose composites its own content above it, so the video is never redrawn for an
      *   interface change.
      */
-    fun initialise(windowHandle: Long?) {
+    fun initialise(windowHandle: Long?, renderMode: Boolean = false) {
         check(handle == null) { "already initialised" }
 
         val created = lib.mpv_create() ?: error("mpv_create returned null")
@@ -71,6 +92,23 @@ class MpvPlayerEngine(
             if (result < 0) {
                 System.err.println("libmpv rejected $name=$value: ${lib.mpv_error_string(result)}")
             }
+        }
+
+        // Render-API mode: mpv renders into the framebuffer we hand it via the render context rather
+        // than owning a window, so vo becomes libmpv. hwdec also moves off the D3D11VA path from the
+        // section 8 defaults, because that produces D3D11 textures the OpenGL renderer cannot map;
+        // `auto` keeps hardware decode but through the GL-interop path (zero-copy via
+        // WGL_NV_DX_interop where the GPU supports it, a copy otherwise). Sync and audio passthrough
+        // are unchanged, so playback quality is identical — only the compositing moves into our window.
+        if (renderMode) {
+            lib.mpv_set_option_string(created, "vo", "libmpv")
+            lib.mpv_set_option_string(created, "hwdec", "auto")
+            // The render context is created with API type OpenGL, so the internal GPU context must be
+            // OpenGL too. The section 8 default (gpu-api=d3d11) makes mpv build a D3D11 context that
+            // the OpenGL render API cannot present into, and the result is a black picture with no
+            // error — so it is overridden here to match the framebuffer we actually hand mpv.
+            lib.mpv_set_option_string(created, "gpu-api", "opengl")
+            lib.mpv_set_option_string(created, "gpu-context", "auto")
         }
 
         windowHandle?.let { lib.mpv_set_option_string(created, "wid", it.toString()) }
@@ -86,14 +124,113 @@ class MpvPlayerEngine(
         }
 
         handle = created
+        renderModeActive = renderMode
         observeProperties(created)
         startEventLoop(created)
         startPositionPolling(created)
     }
 
+    // --- render API (single-window desktop player) ------------------------------------
+    //
+    // The GL player owns the context and the swap; the engine owns mpv. These four methods are the
+    // bridge: the player hands mpv its GL proc resolver, then each frame asks mpv to draw into the
+    // framebuffer the player is about to present, and tells mpv when that present happened. Every
+    // call runs on the player's render thread, which is the same thread the GL context is current on.
+
+    /**
+     * Creates mpv's render context bound to the caller's current OpenGL context. [getProc] resolves
+     * GL function names against that context. Must be called once, after [initialise] with
+     * `renderMode = true`, on the thread the GL context is current on. Returns false if mpv refuses.
+     *
+     * [onUpdate], if given, is mpv's "a new frame is ready" signal; it can fire from any thread, so
+     * it must only wake the render thread, never render inline.
+     */
+    fun createRenderContext(getProc: MpvGetProcAddressFn, onUpdate: MpvRenderUpdateFn? = null): Boolean {
+        val h = handle ?: return false
+        if (renderCtx != null) return true
+
+        val initParams = MpvOpenGLInitParams(get_proc_address = getProc).apply { write() }
+        val apiType = com.sun.jna.Memory(("opengl".toByteArray().size + 1).toLong()).apply {
+            setString(0, "opengl")
+        }
+        val createParams = MpvRenderParams(
+            listOf(
+                LibMpvRender.MPV_RENDER_PARAM_API_TYPE to apiType,
+                LibMpvRender.MPV_RENDER_PARAM_OPENGL_INIT_PARAMS to initParams.pointer,
+            ),
+        )
+        val ref = PointerByReference()
+        val rc = render.mpv_render_context_create(ref, h, createParams.pointer)
+        if (rc < 0) {
+            System.err.println("mpv_render_context_create failed: ${lib.mpv_error_string(rc)}")
+            return false
+        }
+
+        // Hold every native structure the context now points at, so the GC cannot collect the
+        // callback or its parameter memory while mpv still holds the pointers.
+        glGetProc = getProc
+        glInitParams = initParams
+        glApiType = apiType
+        renderCtx = ref.value
+
+        onUpdate?.let {
+            glUpdateCb = it
+            render.mpv_render_context_set_update_callback(ref.value!!, it, null)
+        }
+
+        // A load requested before the context existed was held back; now the framebuffer target is
+        // known, so play it. See [load] and [pendingLoad].
+        pendingLoad?.let { (source, startAtMs) ->
+            pendingLoad = null
+            load(source, startAtMs)
+        }
+        return true
+    }
+
+    /**
+     * True when mpv has a new frame ready to draw since the last [renderInto]. Used to skip
+     * redundant renders while still redrawing the overlay; safe to ignore and render every tick.
+     */
+    fun hasFrameReady(): Boolean {
+        val ctx = renderCtx ?: return false
+        return render.mpv_render_context_update(ctx) and LibMpvRender.MPV_RENDER_UPDATE_FRAME != 0L
+    }
+
+    /**
+     * Draws the current video frame into the OpenGL framebuffer [fbo] at [w]×[h]. [flipY] should be
+     * true when the target is a normal top-left-origin surface (as with an AWT/Skia framebuffer).
+     * No-ops until [createRenderContext] has succeeded.
+     */
+    fun renderInto(fbo: Int, w: Int, h: Int, flipY: Boolean = true) {
+        val ctx = renderCtx ?: return
+        val fboStruct = MpvOpenGLFbo(fbo = fbo, w = w, h = h, internal_format = 0).apply { write() }
+        val flip = com.sun.jna.Memory(4).apply { setInt(0, if (flipY) 1 else 0) }
+        val params = MpvRenderParams(
+            listOf(
+                LibMpvRender.MPV_RENDER_PARAM_OPENGL_FBO to fboStruct.pointer,
+                LibMpvRender.MPV_RENDER_PARAM_FLIP_Y to flip,
+            ),
+        )
+        render.mpv_render_context_render(ctx, params.pointer)
+    }
+
+    /** Tells mpv the last [renderInto] was presented to the display, for its vsync timing. */
+    fun reportSwap() {
+        renderCtx?.let { render.mpv_render_context_report_swap(it) }
+    }
+
     override fun load(source: PlaybackSource, startAtMs: Long) {
         val h = handle ?: run {
             _state.value = PlaybackState.Failed(PlaybackFailure.DECODER_INITIALISATION, null)
+            return
+        }
+
+        // Render mode: hold the load until the GL render context is up, then replay it in
+        // [createRenderContext]. loadfile before the context leaves the picture black (vo=libmpv binds
+        // its output target at load time). A repeat load once the context exists proceeds normally.
+        if (renderModeActive && renderCtx == null) {
+            pendingLoad = source to startAtMs
+            _state.value = PlaybackState.Buffering
             return
         }
 
@@ -192,6 +329,15 @@ class MpvPlayerEngine(
         eventJob?.cancel()
         pollJob = null
         eventJob = null
+
+        // The render context holds the GL objects and must be freed before mpv is destroyed. Freeing
+        // it also drops mpv's references to the callback and parameter memory held below.
+        renderCtx?.let { render.mpv_render_context_free(it) }
+        renderCtx = null
+        glUpdateCb = null
+        glGetProc = null
+        glInitParams = null
+        glApiType = null
 
         handle?.let { lib.mpv_terminate_destroy(it) }
         handle = null

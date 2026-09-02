@@ -29,3 +29,6 @@ app/desktop/native/windows-x64/*.dll
 # OS
 .DS_Store
 Thumbs.db
+
+# Render-probe output images (dev harnesses: renderProbe / glCanvasProbe)
+/app/desktop/*.png
