@@ -18,6 +18,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.SubtitleView
+import com.thotapalli.plex.core.playback.PlaybackState
 import com.thotapalli.plex.core.playback.PlayerEngine
 import com.thotapalli.plex.core.playback.SubtitleStyle
 import com.thotapalli.plex.player.exo.ExoPlayerEngine
@@ -57,6 +58,11 @@ actual fun VideoSurface(
     // so nothing to leak across recompositions.
     val cues by engine.cues.collectAsStateWithLifecycle()
     val subtitleStyle by engine.subtitleStyle.collectAsStateWithLifecycle()
+    // Keep the screen awake while the video is actually running. A bare SurfaceView — unlike Media3's
+    // PlayerView — does nothing on its own, so without this the phone dims and locks mid-playback and
+    // playback stops. Bound to the play state so a long pause still lets the screen time out normally.
+    val playbackState by engine.state.collectAsStateWithLifecycle()
+    val keepAwake = playbackState is PlaybackState.Playing || playbackState is PlaybackState.Buffering
 
     AndroidView(
         modifier = modifier,
@@ -75,6 +81,8 @@ actual fun VideoSurface(
             val subtitles = root.getChildAt(1) as SubtitleView
             subtitles.setCues(cues)
             subtitles.applyStyle(subtitleStyle)
+            // Setting it on the container keeps the whole window awake while it is attached.
+            root.keepScreenOn = keepAwake
         },
         onRelease = { runCatching { engine.detachSurface() } },
     )

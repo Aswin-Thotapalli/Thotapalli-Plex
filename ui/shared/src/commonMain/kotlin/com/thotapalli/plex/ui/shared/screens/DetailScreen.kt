@@ -24,6 +24,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -862,11 +865,30 @@ private fun SeasonRail(
     onSeasonSelected: (Season) -> Unit,
 ) {
     val selectedKey = state.selectedSeason?.ratingKey
+    val rowState = rememberLazyListState()
     LazyRow(
+        state = rowState,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         // Horizontal + vertical padding so the first card is not flush against the row's clip edge —
         // otherwise its focus scale is cropped on the left (the "first season cut off" bug).
         contentPadding = PaddingValues(horizontal = Spacing.sm, vertical = Spacing.sm),
+        // A desktop mouse only scrolls vertically, so the vertical wheel is redirected to this
+        // horizontal rail whenever the pointer is over it — otherwise the later seasons of a long
+        // show are unreachable. The event is consumed only when the rail actually moved, so at either
+        // end the wheel falls through to scroll the page. Harmless on touch and D-pad (no scroll).
+        modifier = Modifier.pointerInput(Unit) {
+            awaitPointerEventScope {
+                while (true) {
+                    val event = awaitPointerEvent()
+                    if (event.type == PointerEventType.Scroll) {
+                        val dy = event.changes.firstOrNull()?.scrollDelta?.y ?: 0f
+                        if (dy != 0f && rowState.dispatchRawDelta(dy * 80f) != 0f) {
+                            event.changes.forEach { it.consume() }
+                        }
+                    }
+                }
+            }
+        },
     ) {
         items(state.seasons, key = { it.ratingKey }) { season ->
             SeasonCard(

@@ -211,11 +211,30 @@ private fun ui() = application {
         title = "Thotapalli Plex",
         icon = painterResource("icon.png"),
         state = windowState,
-        // Escape pops the in-app stack (player, detail, library) the same way Back does on
-        // Android, so the whole application is operable from the keyboard alone.
+        // The main window owns the keyboard. While a video is playing it drives the player through
+        // the shared [keyToPlayerAction] map (so phone, TV and Windows agree on each key), because
+        // the controls window is non-focusable and often hidden. Otherwise Escape pops the in-app
+        // stack (detail, library) the way Back does on Android.
         onKeyEvent = { event ->
-            if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
-                viewModel.back()
+            val bridge = container.playerBridge
+            if (bridge.active) {
+                when (keyToPlayerAction(event)) {
+                    PlayerKeyAction.PLAY_PAUSE -> { bridge.actions.onPlayPause(); true }
+                    PlayerKeyAction.SEEK_BACK -> { bridge.actions.onSeekBack(); true }
+                    PlayerKeyAction.SEEK_FORWARD -> { bridge.actions.onSeekForward(); true }
+                    PlayerKeyAction.TOGGLE_FULL_SCREEN -> { viewModel.toggleFullScreen(); true }
+                    PlayerKeyAction.BACK -> { viewModel.closePlayer(); true }
+                    PlayerKeyAction.CYCLE_SUBTITLES -> { bridge.actions.onOpenSubtitleTracks(); true }
+                    PlayerKeyAction.CYCLE_AUDIO -> { bridge.actions.onOpenAudioTracks(); true }
+                    null ->
+                        if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
+                            viewModel.back(); true
+                        } else {
+                            false
+                        }
+                }
+            } else if (event.type == KeyEventType.KeyDown && event.key == Key.Escape) {
+                viewModel.back(); true
             } else {
                 false
             }
@@ -252,6 +271,30 @@ private fun ApplicationScope.PlayerOverlayWindow(
         height = 540.dp,
     )
 
+    // The controls window exists ONLY while the controls are actually on screen. During steady
+    // playback the controls auto-hide, and the window goes with them — so the transparent,
+    // always-on-top overlay is not sitting over every other application (which was blocking the rest
+    // of the desktop) and is not forcing the compositor off its fast full-screen path (which was the
+    // full-screen lag). Mouse movement over the video canvas and every key press wake the controls
+    // (noteInput), which brings the window back instantly. The picture never leaves the main window.
+    val playerState by container.playerBridge.stateFlow.collectAsState()
+    // Also gate on the app actually being the foreground app: the moment you click another window
+    // or Alt-Tab away, the main window loses focus and the controls window disappears with it, so it
+    // can never sit over the rest of your desktop even for the seconds the controls are up. The
+    // controls window is non-focusable, so interacting with it never moves focus off the main window.
+    var appFocused by remember { mutableStateOf(true) }
+    DisposableEffect(anchor) {
+        val w = anchor ?: return@DisposableEffect onDispose {}
+        appFocused = w.isFocused
+        val l = object : java.awt.event.WindowFocusListener {
+            override fun windowGainedFocus(e: java.awt.event.WindowEvent?) { appFocused = true }
+            override fun windowLostFocus(e: java.awt.event.WindowEvent?) { appFocused = false }
+        }
+        w.addWindowFocusListener(l)
+        onDispose { w.removeWindowFocusListener(l) }
+    }
+    val controlsShown = (playerState.controlsVisible || playerState.openSheet != null) && appFocused
+
     // Mirror the main window's content area into the overlay's WindowState so the controls
     // cover the picture exactly, following every move, resize and the switch to full screen.
     //
@@ -284,11 +327,15 @@ private fun ApplicationScope.PlayerOverlayWindow(
     Window(
         onCloseRequest = viewModel::closePlayer,
         state = overlayState,
+        visible = controlsShown,
         undecorated = true,
         transparent = true,
         alwaysOnTop = true,
         resizable = false,
-        focusable = true,
+        // Non-focusable: the overlay must never steal focus from the main window (which would flicker
+        // the taskbar and bounce focus every time the controls auto-hide and reappear). Mouse clicks
+        // on the controls still land; all keyboard shortcuts are handled by the main window below.
+        focusable = false,
         title = "",
         // The desktop keyboard shortcuts, mapped through the shared [keyToPlayerAction] so phone,
         // television and Windows agree on what each key means. The overlay window is only ever
