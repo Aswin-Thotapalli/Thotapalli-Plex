@@ -1,5 +1,6 @@
 package com.thotapalli.plex.mobile
 
+import android.Manifest
 import android.app.PictureInPictureParams
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -7,6 +8,7 @@ import android.content.res.Configuration
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -15,6 +17,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.addCallback
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.initializer
@@ -42,9 +46,18 @@ class MainActivity : ComponentActivity() {
     private var connectivityManager: ConnectivityManager? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
+    // The result is not acted on: playback and the foreground media service work whether or not the
+    // permission is granted (the service posts its notification either way; denial just hides it). The
+    // prompt exists so the lock-screen / notification transport controls can appear. See CLAUDE.md
+    // section 8. Registered here (before the activity is started) as the Activity Result API requires.
+    private val requestNotificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* no-op */ }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+
+        maybeRequestNotificationPermission()
 
         val container = (application as ThotapalliApplication).container
 
@@ -151,6 +164,23 @@ class MainActivity : ComponentActivity() {
         newConfig: Configuration,
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+    }
+
+    /**
+     * Asks for the notification permission on Android 13+ (a runtime permission there), so the media
+     * session's lock-screen / notification transport controls can be shown while a video plays. It is
+     * requested once; if the user denies it, playback and the foreground media service still work —
+     * the service posts its notification regardless, the system just does not display it. Below
+     * Android 13 the permission is granted at install time, so nothing is asked. See CLAUDE.md
+     * section 8 (request #2).
+     */
+    private fun maybeRequestNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            runCatching { requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
+        }
     }
 
     /**
