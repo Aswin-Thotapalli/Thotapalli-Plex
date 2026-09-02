@@ -60,6 +60,13 @@ class MpvPlayerEngine(
     private var renderModeActive = false
 
     /**
+     * Guards the render-context free so [detachRenderContext] (the GL thread) and [release] (the
+     * screen's teardown, another thread) cannot double-free it or free it after the mpv handle is
+     * gone. The render context must be freed before `mpv_terminate_destroy`.
+     */
+    private val renderLock = Any()
+
+    /**
      * A load requested before the render context existed, replayed once it does. With `vo=libmpv` the
      * video output is bound at loadfile time, so loading before the framebuffer target is known leaves
      * the picture black; deferring guarantees the context is always in place first. See
@@ -219,6 +226,23 @@ class MpvPlayerEngine(
         renderCtx?.let { render.mpv_render_context_report_swap(it) }
     }
 
+    /**
+     * Frees the render context, on the caller's (GL) thread, before the GL context it was created
+     * against goes away. Idempotent and safe to race with [release]: the shared [renderLock] and the
+     * null-out ensure the context is freed exactly once. Call this from the GL thread's teardown, so
+     * the free happens on the thread that owns the GL context and before [release] destroys mpv.
+     */
+    fun detachRenderContext() {
+        synchronized(renderLock) {
+            renderCtx?.let { render.mpv_render_context_free(it) }
+            renderCtx = null
+            glUpdateCb = null
+            glGetProc = null
+            glInitParams = null
+            glApiType = null
+        }
+    }
+
     override fun load(source: PlaybackSource, startAtMs: Long) {
         val h = handle ?: run {
             _state.value = PlaybackState.Failed(PlaybackFailure.DECODER_INITIALISATION, null)
@@ -330,14 +354,11 @@ class MpvPlayerEngine(
         pollJob = null
         eventJob = null
 
-        // The render context holds the GL objects and must be freed before mpv is destroyed. Freeing
-        // it also drops mpv's references to the callback and parameter memory held below.
-        renderCtx?.let { render.mpv_render_context_free(it) }
-        renderCtx = null
-        glUpdateCb = null
-        glGetProc = null
-        glInitParams = null
-        glApiType = null
+        // The render context holds the GL objects and must be freed before mpv is destroyed. In the
+        // single-window player the GL surface frees it on its own thread first (detachRenderContext),
+        // so this usually finds it already gone; the shared lock and null-out make the two paths safe
+        // to race — the context is freed exactly once, always before mpv_terminate_destroy.
+        detachRenderContext()
 
         handle?.let { lib.mpv_terminate_destroy(it) }
         handle = null

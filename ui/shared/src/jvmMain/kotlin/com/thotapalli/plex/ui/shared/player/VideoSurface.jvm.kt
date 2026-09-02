@@ -178,15 +178,19 @@ private class DesktopGlSurface(
     fun stop() {
         running = false
         loopJob?.cancel()
-        // Tear the GL-thread resources down on the GL thread, then shut it down. The engine itself is
-        // released by PlayerScreen (stopAndRelease), which also frees mpv's render context.
+        // Free the render context and the scene ON the GL thread, and block until that is done, so the
+        // context (created against this GL context) is gone before PlayerScreen's release() destroys
+        // the mpv handle on its own thread. The engine itself is released there; here we only detach
+        // the GL-thread-owned pieces. A timeout keeps a wedged GL thread from hanging teardown.
         runCatching {
-            glExecutor.execute {
+            val cleanup = glExecutor.submit {
+                runCatching { engine.detachRenderContext() }
                 runCatching { scene?.close() }
                 runCatching { skia?.close() }
                 scene = null
                 skia = null
             }
+            runCatching { cleanup.get(2, java.util.concurrent.TimeUnit.SECONDS) }
             glExecutor.shutdown()
         }
     }
