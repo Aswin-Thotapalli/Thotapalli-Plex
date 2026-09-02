@@ -79,6 +79,14 @@ val glCanvasProbe by tasks.registering(JavaExec::class) {
     classpath = sourceSets["main"].runtimeClasspath
 }
 
+/** Runtime harness for the shipped single-window VideoSurface (SwingPanel + AWTGLCanvas). */
+val playerHarness by tasks.registering(JavaExec::class) {
+    group = "verification"
+    description = "Opens a real Compose window hosting the shipped VideoSurface playing a test pattern."
+    mainClass.set("com.thotapalli.plex.desktop.PlayerHarnessKt")
+    classpath = sourceSets["main"].runtimeClasspath
+}
+
 val harness by tasks.registering(JavaExec::class) {
     group = "verification"
     description = "Runs the Plex account and server access harness."
