@@ -45,7 +45,7 @@ fun main(argv: Array<String>) {
 
     val plain = FileKeyValueStore()
     val secure = DpapiSecureStore()
-    val device = currentDeviceInfo(appVersion = "0.1.0")
+    val device = currentDeviceInfo(appVersion = com.thotapalli.plex.desktop.BuildInfo.VERSION_NAME)
     val identity = IdentityHeaderProvider(plain, device)
     val http = PlexHttp.create()
     val api = PlexTvApi(http, identity)

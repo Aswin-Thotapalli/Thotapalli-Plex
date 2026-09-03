@@ -7,8 +7,40 @@ plugins {
     alias(libs.plugins.compose.compiler)
 }
 
+// Emits the app version from gradle.properties as a Kotlin object, so the desktop app reports the
+// same version the Android modules do (X-Plex-Version) and the update check compares against the
+// real version code — instead of the hand-written constants that had drifted to 0.1.0 / 1.
+val generateBuildInfo = tasks.register("generateBuildInfo") {
+    val versionName = providers.gradleProperty("thotapalli.versionName")
+    val versionCode = providers.gradleProperty("thotapalli.versionCode")
+    val outDir = layout.buildDirectory.dir("generated/buildinfo/kotlin")
+    inputs.property("versionName", versionName)
+    inputs.property("versionCode", versionCode)
+    outputs.dir(outDir)
+    doLast {
+        val pkg = outDir.get().dir("com/thotapalli/plex/desktop").asFile
+        pkg.mkdirs()
+        pkg.resolve("BuildInfo.kt").writeText(
+            """
+            package com.thotapalli.plex.desktop
+
+            /** Generated from gradle.properties by the generateBuildInfo task. Do not edit. */
+            internal object BuildInfo {
+                const val VERSION_NAME = "${versionName.get()}"
+                const val VERSION_CODE = ${versionCode.get()}
+            }
+            """.trimIndent() + "\n",
+        )
+    }
+}
+
 kotlin {
     jvmToolchain(providers.gradleProperty("thotapalli.jdk").get().toInt())
+    sourceSets.main {
+        // The generated BuildInfo is part of the main source set, so the compile depends on the task
+        // through this provider and the version constants are never hand-edited or stale.
+        kotlin.srcDir(generateBuildInfo)
+    }
 }
 
 dependencies {

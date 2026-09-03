@@ -37,8 +37,10 @@ import java.awt.Desktop
 import java.net.NetworkInterface
 import java.net.URI
 
-private const val APP_VERSION = "0.1.0"
-private const val APP_VERSION_CODE = 1
+// From gradle.properties via the generated BuildInfo, so the reported version and the update-check
+// version code always match the release the build produced. See app/desktop/build.gradle.kts.
+private val APP_VERSION = BuildInfo.VERSION_NAME
+private val APP_VERSION_CODE = BuildInfo.VERSION_CODE
 
 /**
  * The update manifest from CLAUDE.md section 17 point 3: a static JSON file at a fixed
