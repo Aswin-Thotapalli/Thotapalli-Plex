@@ -44,6 +44,7 @@ import com.thotapalli.plex.ui.design.Spacing
  * optional; the menu shows the row only when the host is told the item is a Continue Watching
  * one and the lambda is present.
  */
+@androidx.compose.runtime.Immutable
 data class ItemActions(
     val onMarkWatched: () -> Unit,
     val onMarkUnwatched: () -> Unit,

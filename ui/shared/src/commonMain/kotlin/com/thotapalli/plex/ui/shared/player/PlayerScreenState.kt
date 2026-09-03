@@ -1,5 +1,6 @@
 package com.thotapalli.plex.ui.shared.player
 
+import androidx.compose.runtime.Immutable
 import com.thotapalli.plex.core.model.Chapter
 import com.thotapalli.plex.core.model.MediaItem
 import com.thotapalli.plex.core.playback.PlaybackQuality
@@ -7,7 +8,16 @@ import com.thotapalli.plex.core.playback.PlaybackState
 import com.thotapalli.plex.core.playback.PlayerTrack
 import com.thotapalli.plex.core.playback.SubtitleStyle
 
-/** Everything the overlay draws. */
+/**
+ * Everything the overlay draws.
+ *
+ * @Immutable: every property is a val and the instance is replaced wholesale on each emission,
+ * never mutated in place. Marking it tells Compose the value is a safe skip key, so a child that is
+ * handed the whole state but only reads a slice of it can be skipped when its inputs are unchanged —
+ * without the annotation the function-typed fields below make Compose infer the class unstable and
+ * recompose every reader on each 250 ms position tick.
+ */
+@Immutable
 data class PlayerScreenState(
     val title: String = "",
     val subtitle: String? = null,
@@ -71,7 +81,8 @@ data class PlayerScreenState(
 
 enum class TrackSheetKind { AUDIO, SUBTITLE }
 
-/** What the overlay can ask for. */
+/** What the overlay can ask for. Stable: a bag of callbacks, none of which mutate after construction. */
+@Immutable
 data class PlayerActions(
     val onPlayPause: () -> Unit = {},
     /** Any tap or press on the picture — reveals the controls without changing playback. */

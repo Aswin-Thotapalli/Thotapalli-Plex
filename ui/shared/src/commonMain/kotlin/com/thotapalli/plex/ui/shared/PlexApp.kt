@@ -255,15 +255,20 @@ private fun ReadyContent(
     // One factory binds every server action to a given item, so the tiles and the detail
     // overflow all raise the same menu. Remove-from-Continue-Watching is always bound; the
     // menu only offers it where the host says the tile is a Continue Watching one.
-    val itemActions: (MediaItem) -> ItemActions = { item ->
-        ItemActions(
-            onMarkWatched = { viewModel.setWatched(item, true) },
-            onMarkUnwatched = { viewModel.setWatched(item, false) },
-            onDownload = { viewModel.download(item) },
-            onRefreshMetadata = { viewModel.refreshItemMetadata(item) },
-            onDelete = { viewModel.deleteItem(item) },
-            onRemoveFromContinueWatching = { viewModel.removeFromContinueWatching(item) },
-        )
+    // Remembered against the view model (which is itself remembered), so the factory keeps one
+    // identity across recompositions instead of a fresh lambda each pass — which lets the screens
+    // that take it as a parameter skip when nothing else of theirs changed.
+    val itemActions: (MediaItem) -> ItemActions = remember(viewModel) {
+        { item ->
+            ItemActions(
+                onMarkWatched = { viewModel.setWatched(item, true) },
+                onMarkUnwatched = { viewModel.setWatched(item, false) },
+                onDownload = { viewModel.download(item) },
+                onRefreshMetadata = { viewModel.refreshItemMetadata(item) },
+                onDelete = { viewModel.deleteItem(item) },
+                onRemoveFromContinueWatching = { viewModel.removeFromContinueWatching(item) },
+            )
+        }
     }
 
     // Detail carries the floating back control. The library grid now has its own back button in

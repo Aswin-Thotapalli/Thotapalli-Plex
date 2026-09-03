@@ -256,7 +256,13 @@ fun LibraryScreen(
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     SectionHeader("Collections", Modifier.padding(top = Spacing.xs))
                 }
-                items(state.collections.size, key = { state.collections[it].ratingKey }) { index ->
+                items(
+                    state.collections.size,
+                    key = { state.collections[it].ratingKey },
+                    // Collections and posters are different composables; a stable contentType per kind
+                    // lets the grid reuse a slot's composition as one scrolls into the other's place.
+                    contentType = { "collection" },
+                ) { index ->
                     val collection = state.collections[index]
                     CollectionTile(
                         collection = collection,
@@ -276,7 +282,11 @@ fun LibraryScreen(
                 }
             }
 
-            items(state.items.size, key = { state.items[it].ratingKey }) { index ->
+            items(
+                state.items.size,
+                key = { state.items[it].ratingKey },
+                contentType = { "poster" },
+            ) { index ->
                 val item = state.items[index]
                 PosterTile(
                     item = item,
@@ -470,7 +480,11 @@ private fun CompactLibrary(
             verticalArrangement = Arrangement.spacedBy(Spacing.xs),
         ) {
             if (showCollections) {
-                items(state.collections.size, key = { state.collections[it].ratingKey }) { index ->
+                items(
+                    state.collections.size,
+                    key = { state.collections[it].ratingKey },
+                    contentType = { "collection" },
+                ) { index ->
                     val collection = state.collections[index]
                     CollectionTile(
                         collection = collection,
@@ -486,7 +500,11 @@ private fun CompactLibrary(
             }
 
             val collectionsCount = if (showCollections) state.collections.size else 0
-            items(state.items.size, key = { state.items[it].ratingKey }) { index ->
+            items(
+                state.items.size,
+                key = { state.items[it].ratingKey },
+                contentType = { "poster" },
+            ) { index ->
                 val item = state.items[index]
                 CompactPosterCell(
                     item = item,

@@ -308,7 +308,7 @@ private fun LazyListScope.resultGroup(
                 horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
                 contentPadding = PaddingValues(vertical = Spacing.xxs),
             ) {
-                items(shown, key = { it.ratingKey }) { entry ->
+                items(shown, key = { it.ratingKey }, contentType = { "poster" }) { entry ->
                     PosterTile(
                         item = entry,
                         artworkUrl = server.urls.artwork(
