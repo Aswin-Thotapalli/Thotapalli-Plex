@@ -14,18 +14,22 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
 import androidx.media3.common.text.Cue
 import androidx.media3.common.text.CueGroup
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.util.ExperimentalApi
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.session.MediaSession
+import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 import com.thotapalli.plex.core.playback.PlaybackFailure
 import com.thotapalli.plex.core.playback.PlaybackSource
 import com.thotapalli.plex.core.playback.PlaybackState
@@ -66,6 +70,18 @@ class ExoPlayerEngine(
 
     private val _renderedFirstFrame = MutableStateFlow(false)
     val renderedFirstFrame: StateFlow<Boolean> = _renderedFirstFrame.asStateFlow()
+
+    /**
+     * The display aspect ratio of the current video, width over height, with the stream's pixel
+     * aspect ratio already applied. Zero until the first [VideoSize] arrives.
+     *
+     * A bare SurfaceView stretched to MATCH_PARENT would distort anything whose shape is not the
+     * view's shape — a 2.39:1 film squashed onto a 16:9 phone. The surface's host frame reads this
+     * to size itself to the picture and letterbox the remainder, exactly as Media3's own PlayerView
+     * does through its AspectRatioFrameLayout. See CLAUDE.md section 8.
+     */
+    private val _videoAspectRatio = MutableStateFlow(0f)
+    val videoAspectRatio: StateFlow<Float> = _videoAspectRatio.asStateFlow()
 
     /**
      * The subtitle appearance the viewer has chosen.
@@ -123,7 +139,24 @@ class ExoPlayerEngine(
     }
 
     private var positionJob: Job? = null
+    private var firstFrameJob: Job? = null
     private var durationMs: Long = 0
+
+    /**
+     * The HTTP client behind the Media3 OkHttp data source.
+     *
+     * No call timeout: a direct-play stream is a single long-lived response and a call timeout would
+     * kill it mid-film. The read timeout guards against a silently stalled socket — a dead relay that
+     * never sends FIN — so Media3 sees an error and the section 10 chain can fall back rather than
+     * hang on the 8 s no-first-frame watchdog forever. Connection pooling is OkHttp's default.
+     */
+    private val httpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
+    }
 
     val player: ExoPlayer by lazy { buildPlayer() }
 
@@ -149,8 +182,24 @@ class ExoPlayerEngine(
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
             .setEnableDecoderFallback(true)
 
+        // Tuned for direct play of large, high-bitrate files over the LAN or a relay rather than for
+        // adaptive streaming. A back buffer means the 10 s seek-back replays from memory instead of
+        // re-fetching, and prioritising duration over byte size keeps the forward buffer measured in
+        // seconds even for a 60 Mbps remux. See CLAUDE.md sections 8 and 10.
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                /* minBufferMs = */ 15_000,
+                /* maxBufferMs = */ 60_000,
+                /* bufferForPlaybackMs = */ 2_500,
+                /* bufferForPlaybackAfterRebufferMs = */ 5_000,
+            )
+            .setBackBuffer(/* backBufferDurationMs = */ 20_000, /* retainBackBufferFromKeyframe = */ true)
+            .setPrioritizeTimeOverSizeThresholds(true)
+            .build()
+
         return ExoPlayer.Builder(context, renderers)
             .setTrackSelector(trackSelector)
+            .setLoadControl(loadControl)
             .setSeekBackIncrementMs(SEEK_BACK_MS)
             .setSeekForwardIncrementMs(SEEK_FORWARD_MS)
             // Reduces playback loop wake-ups. Experimental, added in Media3 1.10.
@@ -220,6 +269,17 @@ class ExoPlayerEngine(
             maybeMatchDisplayRate()
         }
 
+        override fun onVideoSizeChanged(videoSize: VideoSize) {
+            // width * pixelWidthHeightRatio / height is the true display shape: a source with
+            // non-square pixels (anamorphic DVD, some broadcast) reports a storage size that is not
+            // its display size, and pixelWidthHeightRatio corrects for it. Zero dimensions (audio
+            // gap, track change) leave the last good ratio in place rather than collapsing the frame.
+            if (videoSize.width > 0 && videoSize.height > 0) {
+                _videoAspectRatio.value =
+                    videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height
+            }
+        }
+
         override fun onPlayerError(error: PlaybackException) {
             _state.value = PlaybackState.Failed(error.toPlaybackFailure(), error)
         }
@@ -256,7 +316,7 @@ class ExoPlayerEngine(
         }
     }
 
-    fun detachSurface() {
+    fun detachSurface() = onMain {
         player.clearVideoSurface()
         surfaceView = null
     }
@@ -281,9 +341,8 @@ class ExoPlayerEngine(
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !source.subtitlesOnByDefault)
             .build()
 
-        val httpFactory = DefaultHttpDataSource.Factory()
+        val httpFactory = OkHttpDataSource.Factory(httpClient)
             .setDefaultRequestProperties(source.headers)
-            .setAllowCrossProtocolRedirects(true)
 
         // A downloaded item plays from a local file:// URI, while streaming uses http(s). Wrapping
         // the HTTP factory in DefaultDataSource routes file/content/asset URIs to the right local
@@ -381,6 +440,8 @@ class ExoPlayerEngine(
     override fun release() {
         positionJob?.cancel()
         positionJob = null
+        firstFrameJob?.cancel()
+        firstFrameJob = null
         onMain {
             // Put any refresh-rate change back before the player leaves, so a switched mode does not
             // stick after playback. Guarded inside the controller. See CLAUDE.md section 9.
@@ -437,7 +498,8 @@ class ExoPlayerEngine(
      * See CLAUDE.md section 10.
      */
     private fun watchForFirstFrame() {
-        scope.launch {
+        firstFrameJob?.cancel()
+        firstFrameJob = scope.launch {
             delay(com.thotapalli.plex.core.playback.FIRST_FRAME_TIMEOUT_MS)
             if (!_renderedFirstFrame.value && _state.value !is PlaybackState.Failed) {
                 _state.value = PlaybackState.Failed(PlaybackFailure.NO_FIRST_FRAME, null)

@@ -24,6 +24,9 @@ dependencies {
     implementation(libs.media3.session)
     implementation(libs.media3.hls)
     implementation(libs.media3.ds.okhttp)
+    // A direct OkHttpClient for the Media3 OkHttp data source: connection pooling and precise
+    // streaming timeouts the default HttpURLConnection source cannot express. See ExoPlayerEngine.
+    implementation(libs.okhttp)
 
     // The Media3 FFmpeg audio decoder, as a locally built AAR, when one is present in libs/.
     //

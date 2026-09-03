@@ -2,6 +2,7 @@ package com.thotapalli.plex.ui.shared.player
 
 import android.graphics.Color
 import android.graphics.Typeface
+import android.view.Gravity
 import android.view.SurfaceView
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.widget.FrameLayout
@@ -16,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.SubtitleView
 import com.thotapalli.plex.core.playback.PlaybackState
@@ -61,6 +63,9 @@ actual fun VideoSurface(
     // so nothing to leak across recompositions.
     val cues by engine.cues.collectAsStateWithLifecycle()
     val subtitleStyle by engine.subtitleStyle.collectAsStateWithLifecycle()
+    // The picture's true shape. Drives the content frame so a 2.39:1 film is letterboxed rather
+    // than stretched to the view. Zero until the first frame; the frame keeps its default until then.
+    val aspectRatio by engine.videoAspectRatio.collectAsStateWithLifecycle()
     // Keep the screen awake while the video is actually running. A bare SurfaceView — unlike Media3's
     // PlayerView — does nothing on its own, so without this the phone dims and locks mid-playback and
     // playback stops. Bound to the play state so a long pause still lets the screen time out normally.
@@ -72,18 +77,28 @@ actual fun VideoSurface(
         factory = { ctx ->
             val surface = SurfaceView(ctx).also(engine::attachSurface)
             val subtitles = SubtitleView(ctx)
-            // Container holds the surface at the bottom and the subtitle layer above it. The
-            // subtitle layer is transparent apart from cue boxes and receives no touches, so
-            // it never blocks the video or the Compose overlay stacked over the whole view.
-            FrameLayout(ctx).apply {
+            // The content frame sizes itself to the picture's aspect ratio (RESIZE_MODE_FIT), so the
+            // surface fills the picture without distortion and the frame shrinks to leave letterbox
+            // bars. Subtitles live inside it, so they sit against the bottom of the picture rather
+            // than the black bar, and the layer is transparent apart from cue boxes and takes no
+            // touches. See CLAUDE.md sections 8 and 12.
+            val content = AspectRatioFrameLayout(ctx).apply {
+                setResizeMode(AspectRatioFrameLayout.RESIZE_MODE_FIT)
                 addView(surface, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
                 addView(subtitles, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
             }
+            // The outer frame is the letterbox: black behind the centred content frame.
+            FrameLayout(ctx).apply {
+                setBackgroundColor(Color.BLACK)
+                addView(content, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT, Gravity.CENTER))
+            }
         },
         update = { root ->
-            val subtitles = root.getChildAt(1) as SubtitleView
+            val content = root.getChildAt(0) as AspectRatioFrameLayout
+            val subtitles = content.getChildAt(1) as SubtitleView
             subtitles.setCues(cues)
             subtitles.applyStyle(subtitleStyle)
+            if (aspectRatio > 0f) content.setAspectRatio(aspectRatio)
             // Setting it on the container keeps the whole window awake while it is attached.
             root.keepScreenOn = keepAwake
         },

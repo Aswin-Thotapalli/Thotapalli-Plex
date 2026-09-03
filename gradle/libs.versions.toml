@@ -12,6 +12,9 @@ sqldelight = "2.3.2"
 coil = "3.5.0"
 jna = "5.17.0"
 okio = "3.9.1"
+# Matches the okhttp media3-datasource-okhttp (1.11.0) resolves to, so the Media3 OkHttp data
+# source and any direct OkHttpClient we build share one aligned version. See player:exo.
+okhttp = "4.12.0"
 # lwjgl3-awt 0.1.8 (the AWT-embedded GL context for the single-window player) calls a JAWT struct
 # API (JAWT.wrap) whose signature changed in lwjgl 3.3.2 → 3.3.3, so a core at 3.3.3+ throws
 # NoSuchMethodError inside AWTGLCanvas at context creation. 3.3.1 is the newest core that still works
@@ -76,6 +79,7 @@ media3-ffmpeg = { module = "androidx.media3:media3-decoder-ffmpeg", version.ref 
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
 okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 
 # LWJGL: an OpenGL context we own, for the single-window desktop player (mpv render API composited
 # with the Compose overlay via Skia). glfw is used only by the render-pipeline proof harness; the
