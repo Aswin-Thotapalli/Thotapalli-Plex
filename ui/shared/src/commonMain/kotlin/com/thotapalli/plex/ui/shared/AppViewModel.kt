@@ -489,7 +489,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
      * a synthetic show built from the episode's own fields when the show is not cached — the
      * season and episode reads key on the show rating key, so navigation still works either way.
      */
-    private fun resolveShow(episode: Episode): Show =
+    private suspend fun resolveShow(episode: Episode): Show =
         (container.repository.cachedItem(episode.showRatingKey) as? Show)
             ?: Show(
                 ratingKey = episode.showRatingKey,
@@ -1010,10 +1010,11 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch { downloads?.delete(ratingKey); refreshDownloads() }
     }
 
-    /** Resolve a completed download to its [MediaItem] so the Downloads screen can play it. The
-     *  player then plays the local file offline via the resolver (§11, #1). */
-    fun playableDownloadItem(entry: DownloadEntry): MediaItem? =
-        container.repository.cachedItem(entry.row.ratingKey)
+    /** Resolve a completed download to its [MediaItem] and hand it back to play offline via the
+     *  resolver (§11, #1). The cache read is off the UI thread, so this resolves asynchronously. */
+    fun playDownload(entry: DownloadEntry, onResolved: (MediaItem) -> Unit) {
+        viewModelScope.launch { container.repository.cachedItem(entry.row.ratingKey)?.let(onResolved) }
+    }
 
     /**
      * The launch update check. At most once per 24 hours, and it never blocks anything:

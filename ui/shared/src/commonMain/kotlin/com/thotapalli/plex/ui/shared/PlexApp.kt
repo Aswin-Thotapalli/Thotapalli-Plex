@@ -328,7 +328,7 @@ private fun ReadyContent(
                 onPlayDownload = { entry ->
                     // Resolve the downloaded row to its item; the player then serves the local file
                     // offline via the resolver (§11, #1). Resume from where it was left off.
-                    viewModel.playableDownloadItem(entry)?.let { onPlay(it, it.viewOffsetMs) }
+                    viewModel.playDownload(entry) { onPlay(it, it.viewOffsetMs) }
                 },
                 modifier = bodyModifier.then(topSafe),
             )

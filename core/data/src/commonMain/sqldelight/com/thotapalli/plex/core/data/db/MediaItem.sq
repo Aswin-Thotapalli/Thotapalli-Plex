@@ -24,8 +24,16 @@ CREATE TABLE media_item (
   refreshed_at INTEGER NOT NULL
 );
 
-CREATE INDEX media_item_library ON media_item(library_key, title_sort);
+-- The library-grid index carries kind (equality filter) and title_sort with the SAME collation the
+-- grid orders by (NOCASE), so one index satisfies both the WHERE and the ORDER BY — no separate sort
+-- pass. The unwatched variant additionally filters view_count, kept just after kind.
+CREATE INDEX media_item_library ON media_item(library_key, kind, view_count, title_sort COLLATE NOCASE);
 CREATE INDEX media_item_parent  ON media_item(parent_key, season_index, episode_index);
+-- A show's episodes are read whole on every Show-detail open (next-unwatched); without this the query
+-- scans the entire table (movies, other shows, seasons included).
+CREATE INDEX media_item_show    ON media_item(show_rating_key, season_index, episode_index);
+-- The offline continue-watching fallback filters view_offset_ms > 0 and orders by refreshed_at.
+CREATE INDEX media_item_in_progress ON media_item(refreshed_at) WHERE view_offset_ms > 0;
 
 upsert:
 INSERT OR REPLACE INTO media_item(
@@ -34,6 +42,24 @@ INSERT OR REPLACE INTO media_item(
   season_index, episode_index, show_rating_key, show_title,
   child_count, leaf_count, viewed_leaf_count, refreshed_at
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+-- Continue-watching write-back: insert a new item fully, but on an existing row update ONLY the
+-- volatile watch/display fields — never the child/leaf counts a lean hub payload would zero out. This
+-- stops a Show's badge counts degrading to 0 when its on-deck representation flows through the hub.
+upsertProgress:
+INSERT INTO media_item(
+  rating_key, library_key, parent_key, kind, title, title_sort, year, summary,
+  thumb_path, art_path, duration_ms, view_offset_ms, view_count,
+  season_index, episode_index, show_rating_key, show_title,
+  child_count, leaf_count, viewed_leaf_count, refreshed_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(rating_key) DO UPDATE SET
+  view_offset_ms = excluded.view_offset_ms,
+  view_count = excluded.view_count,
+  duration_ms = excluded.duration_ms,
+  thumb_path = excluded.thumb_path,
+  art_path = excluded.art_path,
+  refreshed_at = excluded.refreshed_at;
 
 selectByRatingKey:
 SELECT * FROM media_item WHERE rating_key = ?;
@@ -88,6 +114,12 @@ SELECT COUNT(*) FROM media_item WHERE library_key = ? AND kind = ?;
 
 newestRefreshInLibrary:
 SELECT MAX(refreshed_at) FROM media_item WHERE library_key = ? AND kind = ?;
+
+newestRefreshOfChildren:
+SELECT MAX(refreshed_at) FROM media_item WHERE parent_key = ?;
+
+newestRefreshOfShowEpisodes:
+SELECT MAX(refreshed_at) FROM media_item WHERE show_rating_key = ? AND kind = 'EPISODE';
 
 search:
 SELECT * FROM media_item

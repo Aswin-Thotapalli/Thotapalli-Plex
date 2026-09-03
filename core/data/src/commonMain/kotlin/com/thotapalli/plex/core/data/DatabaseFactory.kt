@@ -21,3 +21,12 @@ fun createPlexDatabase(factory: DatabaseDriverFactory): PlexDatabase =
     PlexDatabase(factory.create())
 
 const val PLEX_DATABASE_NAME = "thotapalli_plex.db"
+
+/**
+ * The cache's schema epoch. Bump this whenever the tables, columns or indices in the `.sq` files
+ * change. Because the database is a disposable cache (never the source of truth), a stored epoch that
+ * does not match this value means the on-disk schema is from an older build, and the driver drops and
+ * rebuilds rather than crashing on a missing column — the "drop and rebuild on schema change"
+ * behaviour CLAUDE.md section 7 relies on. It is stored in SQLite's `user_version`.
+ */
+const val SCHEMA_EPOCH = 2L

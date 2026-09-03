@@ -128,7 +128,7 @@ fun PlayerScreen(
             recordLocalOffset = { ratingKey, positionMs ->
                 container.repository.recordLocalOffset(ratingKey, positionMs)
             },
-            recordLocalWatched = { ratingKey ->
+            recordLocalWatched = { ratingKey: String ->
                 container.repository.recordLocalWatched(ratingKey)
             },
         )

@@ -79,8 +79,8 @@ class PlaybackController(
      * a just-finished episode still looks unwatched with a stale resume point, and "Play" resumes an
      * already-watched episode or an earlier point in the current one. Null on targets with no cache.
      */
-    private val recordLocalOffset: ((ratingKey: String, positionMs: Long) -> Unit)? = null,
-    private val recordLocalWatched: ((ratingKey: String) -> Unit)? = null,
+    private val recordLocalOffset: (suspend (ratingKey: String, positionMs: Long) -> Unit)? = null,
+    private val recordLocalWatched: (suspend (ratingKey: String) -> Unit)? = null,
 ) {
 
     private val _state = MutableStateFlow(PlayerScreenState())

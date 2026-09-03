@@ -14,8 +14,11 @@ import com.thotapalli.plex.core.model.MediaItem
 import com.thotapalli.plex.core.model.Movie
 import com.thotapalli.plex.core.model.Season
 import com.thotapalli.plex.core.model.Show
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Cache-first reads with a background refresh.
@@ -24,6 +27,12 @@ import kotlinx.coroutines.launch
  * refresh in the background. A cold cache waits on the network, because there is nothing
  * else to show. The database is a cache and never the source of truth for anything the
  * server also knows. See CLAUDE.md section 7.
+ *
+ * SQLDelight calls block the calling thread, so every database access here is confined to
+ * [dbContext] — a single-slot dispatcher shared with the download and timeline stores. That keeps
+ * the library grid and continue-watching queries off the UI thread (they are launched from
+ * viewModelScope, which is the main thread) and serialises access to the desktop's single JDBC
+ * connection so two threads never touch it at once. Network work stays off [dbContext].
  */
 class LibraryRepository(
     private val api: PlexServerSource,
@@ -31,6 +40,7 @@ class LibraryRepository(
     private val scope: CoroutineScope,
     private val nowMs: () -> Long,
     private val staleAfterMs: Long = DEFAULT_STALE_AFTER_MS,
+    private val dbContext: CoroutineDispatcher = defaultDbDispatcher(),
 ) {
 
     private val libraries = database.libraryQueries
@@ -38,8 +48,10 @@ class LibraryRepository(
 
     /** Libraries on the server, movie and show only, sorted by title ascending. */
     suspend fun libraries(server: ServerScope, machineIdentifier: String): List<Library> {
-        val cached = libraries.selectAll(machineIdentifier).executeAsList().map { it.toLibrary() }
-        val refreshedAt = libraries.oldestRefresh(machineIdentifier).executeAsOne().MIN
+        val (cached, refreshedAt) = withContext(dbContext) {
+            libraries.selectAll(machineIdentifier).executeAsList().map { it.toLibrary() } to
+                libraries.oldestRefresh(machineIdentifier).executeAsOne().MIN
+        }
 
         if (cached.isNotEmpty()) {
             if (isStale(refreshedAt)) refreshInBackground { refreshLibraries(server, machineIdentifier) }
@@ -52,17 +64,19 @@ class LibraryRepository(
     suspend fun refreshLibraries(server: ServerScope, machineIdentifier: String): List<Library> {
         val fresh = api.libraries(server)
         val at = nowMs()
-        database.transaction {
-            libraries.deleteForServer(machineIdentifier)
-            fresh.forEach {
-                libraries.upsert(
-                    key = it.key,
-                    title = it.title,
-                    kind = it.kind.name,
-                    uuid = it.uuid,
-                    server_id = machineIdentifier,
-                    refreshed_at = at,
-                )
+        withContext(dbContext) {
+            database.transaction {
+                libraries.deleteForServer(machineIdentifier)
+                fresh.forEach {
+                    libraries.upsert(
+                        key = it.key,
+                        title = it.title,
+                        kind = it.kind.name,
+                        uuid = it.uuid,
+                        server_id = machineIdentifier,
+                        refreshed_at = at,
+                    )
+                }
             }
         }
         return fresh
@@ -79,8 +93,10 @@ class LibraryRepository(
     ): List<MediaItem> {
         val kind = library.kind.itemKind() ?: return emptyList()
 
-        val cached = readContents(library.key, kind, unwatchedOnly)
-        val refreshedAt = items.newestRefreshInLibrary(library.key, kind.name).executeAsOne().MAX
+        val (cached, refreshedAt) = withContext(dbContext) {
+            readContents(library.key, kind, unwatchedOnly) to
+                items.newestRefreshInLibrary(library.key, kind.name).executeAsOne().MAX
+        }
 
         if (cached.isNotEmpty()) {
             if (isStale(refreshedAt)) {
@@ -90,7 +106,7 @@ class LibraryRepository(
         }
 
         refreshLibraryContents(server, library)
-        return readContents(library.key, kind, unwatchedOnly)
+        return withContext(dbContext) { readContents(library.key, kind, unwatchedOnly) }
     }
 
     suspend fun refreshLibraryContents(server: ServerScope, library: Library) {
@@ -105,13 +121,16 @@ class LibraryRepository(
         val collections = runCatching { api.collections(server, library.key) }.getOrDefault(emptyList())
         val at = nowMs()
 
-        database.transaction {
-            items.deleteInLibrary(library.key, kind.name)
-            items.deleteInLibrary(library.key, ItemKind.COLLECTION.name)
-            (fresh + collections).forEach { write(it, library.key, at) }
+        withContext(dbContext) {
+            database.transaction {
+                items.deleteInLibrary(library.key, kind.name)
+                items.deleteInLibrary(library.key, ItemKind.COLLECTION.name)
+                (fresh + collections).forEach { write(it, library.key, at) }
+            }
         }
     }
 
+    // Must be called inside a withContext(dbContext) block.
     private fun readContents(
         libraryKey: String,
         kind: ItemKind,
@@ -136,44 +155,50 @@ class LibraryRepository(
 
     /** Seasons of a show, ordered by index. */
     suspend fun seasons(server: ServerScope, show: Show): List<Season> {
-        val cached = items.selectChildren(show.ratingKey).executeAsList()
-            .toMediaItems().filterIsInstance<Season>()
+        val (cached, refreshedAt) = withContext(dbContext) {
+            items.selectChildren(show.ratingKey).executeAsList().toMediaItems().filterIsInstance<Season>() to
+                items.newestRefreshOfChildren(show.ratingKey).executeAsOne().MAX
+        }
 
         if (cached.isNotEmpty()) {
-            refreshInBackground { refreshSeasons(server, show) }
+            if (isStale(refreshedAt)) refreshInBackground { refreshSeasons(server, show) }
             return cached
         }
 
         refreshSeasons(server, show)
-        return items.selectChildren(show.ratingKey).executeAsList()
-            .toMediaItems().filterIsInstance<Season>()
+        return withContext(dbContext) {
+            items.selectChildren(show.ratingKey).executeAsList().toMediaItems().filterIsInstance<Season>()
+        }
     }
 
     suspend fun refreshSeasons(server: ServerScope, show: Show) {
         val fresh = api.seasons(server, show.ratingKey)
         val at = nowMs()
-        database.transaction { fresh.forEach { write(it, show.libraryKey, at) } }
+        withContext(dbContext) { database.transaction { fresh.forEach { write(it, show.libraryKey, at) } } }
     }
 
     /** Every episode of a show, which is how the next unwatched one is found. */
     suspend fun episodes(server: ServerScope, show: Show): List<Episode> {
-        val cached = items.selectEpisodesOfShow(show.ratingKey).executeAsList()
-            .toMediaItems().filterIsInstance<Episode>()
+        val (cached, refreshedAt) = withContext(dbContext) {
+            items.selectEpisodesOfShow(show.ratingKey).executeAsList().toMediaItems().filterIsInstance<Episode>() to
+                items.newestRefreshOfShowEpisodes(show.ratingKey).executeAsOne().MAX
+        }
 
         if (cached.isNotEmpty()) {
-            refreshInBackground { refreshEpisodes(server, show) }
+            if (isStale(refreshedAt)) refreshInBackground { refreshEpisodes(server, show) }
             return cached
         }
 
         refreshEpisodes(server, show)
-        return items.selectEpisodesOfShow(show.ratingKey).executeAsList()
-            .toMediaItems().filterIsInstance<Episode>()
+        return withContext(dbContext) {
+            items.selectEpisodesOfShow(show.ratingKey).executeAsList().toMediaItems().filterIsInstance<Episode>()
+        }
     }
 
     suspend fun refreshEpisodes(server: ServerScope, show: Show) {
         val fresh = api.allEpisodes(server, show.ratingKey)
         val at = nowMs()
-        database.transaction { fresh.forEach { write(it, show.libraryKey, at) } }
+        withContext(dbContext) { database.transaction { fresh.forEach { write(it, show.libraryKey, at) } } }
     }
 
     /** The next unwatched episode, which is the show detail screen's primary action. */
@@ -185,18 +210,32 @@ class LibraryRepository(
     }
 
     suspend fun collectionChildren(server: ServerScope, collection: MediaCollection): List<MediaItem> {
-        val cached = items.selectChildren(collection.ratingKey).executeAsList().toMediaItems()
-        if (cached.isNotEmpty()) return cached
+        val (cached, refreshedAt) = withContext(dbContext) {
+            items.selectChildren(collection.ratingKey).executeAsList().toMediaItems() to
+                items.newestRefreshOfChildren(collection.ratingKey).executeAsOne().MAX
+        }
 
+        if (cached.isNotEmpty()) {
+            if (isStale(refreshedAt)) refreshInBackground { refreshCollectionChildren(server, collection) }
+            return cached
+        }
+
+        refreshCollectionChildren(server, collection)
+        return withContext(dbContext) {
+            items.selectChildren(collection.ratingKey).executeAsList().toMediaItems()
+        }
+    }
+
+    suspend fun refreshCollectionChildren(server: ServerScope, collection: MediaCollection) {
         val fresh = api.children(server, collection.ratingKey)
         val at = nowMs()
-        database.transaction {
-            fresh.forEach { item ->
-                val row = item.toRow(collection.libraryKey, at).copy(parentKey = collection.ratingKey)
-                write(row)
+        withContext(dbContext) {
+            database.transaction {
+                fresh.forEach { item ->
+                    write(item.toRow(collection.libraryKey, at).copy(parentKey = collection.ratingKey))
+                }
             }
         }
-        return fresh
     }
 
     /**
@@ -217,12 +256,15 @@ class LibraryRepository(
 
         if (fresh != null) {
             val at = nowMs()
-            database.transaction { fresh.forEach { write(it, it.libraryKeyOrEmpty(), at) } }
+            // Count-preserving upsert: a lean on-deck row must not zero a browsed Show's badge counts.
+            withContext(dbContext) {
+                database.transaction { fresh.forEach { writeProgress(it, it.libraryKeyOrEmpty(), at) } }
+            }
             return fresh
         }
 
         // Offline. The cache still knows what was part way through.
-        return items.selectInProgress().executeAsList().toMediaItems()
+        return withContext(dbContext) { items.selectInProgress().executeAsList().toMediaItems() }
     }
 
     /** Search across every library from one field. See CLAUDE.md section 14. */
@@ -230,8 +272,12 @@ class LibraryRepository(
         if (query.length < MIN_QUERY_LENGTH) return SearchResults(emptyList(), emptyList(), emptyList())
 
         return runCatching { api.search(server, query) }.getOrElse {
-            // Offline search falls back to the cache rather than showing nothing.
-            val cached = items.search(query, SEARCH_LIMIT.toLong()).executeAsList().toMediaItems()
+            // Offline search falls back to the cache rather than showing nothing. A substring LIKE on a
+            // small, disposable cache is a deliberate fallback-only full scan (prefix-only would miss
+            // mid-title matches, which matters more here than the scan on a few thousand rows).
+            val cached = withContext(dbContext) {
+                items.search(query, SEARCH_LIMIT.toLong()).executeAsList().toMediaItems()
+            }
             SearchResults(
                 movies = cached.filterIsInstance<Movie>().take(GROUP_LIMIT),
                 shows = cached.filterIsInstance<Show>().take(GROUP_LIMIT),
@@ -241,8 +287,8 @@ class LibraryRepository(
     }
 
     /** Records a local watch state change so the interface updates before the server replies. */
-    fun recordProgress(ratingKey: String, positionMs: Long, viewCount: Int) {
-        items.updateProgress(positionMs, viewCount.toLong(), ratingKey)
+    suspend fun recordProgress(ratingKey: String, positionMs: Long, viewCount: Int) {
+        withContext(dbContext) { runCatching { items.updateProgress(positionMs, viewCount.toLong(), ratingKey) } }
     }
 
     /**
@@ -254,17 +300,17 @@ class LibraryRepository(
      * stale resume point until the next refresh — so "Play" resumes an already-watched episode, or an
      * earlier point in the current one. Called from the same place progress is reported (§5).
      */
-    fun recordLocalOffset(ratingKey: String, positionMs: Long) {
-        runCatching { items.updateOffset(positionMs, ratingKey) }
+    suspend fun recordLocalOffset(ratingKey: String, positionMs: Long) {
+        withContext(dbContext) { runCatching { items.updateOffset(positionMs, ratingKey) } }
     }
 
     /** Marks an item watched in the cache once it passes the scrobble threshold (§5). */
-    fun recordLocalWatched(ratingKey: String) {
-        runCatching { items.markWatchedLocal(ratingKey) }
+    suspend fun recordLocalWatched(ratingKey: String) {
+        withContext(dbContext) { runCatching { items.markWatchedLocal(ratingKey) } }
     }
 
-    fun cachedItem(ratingKey: String): MediaItem? =
-        items.selectByRatingKey(ratingKey).executeAsOneOrNull()?.toMediaItem()
+    suspend fun cachedItem(ratingKey: String): MediaItem? =
+        withContext(dbContext) { items.selectByRatingKey(ratingKey).executeAsOneOrNull()?.toMediaItem() }
 
     private fun MediaItem.libraryKeyOrEmpty(): String = when (this) {
         is Movie -> libraryKey
@@ -300,6 +346,34 @@ class LibraryRepository(
         refreshed_at = row.refreshedAt,
     )
 
+    // Insert-or-update-volatile-only, for the continue-watching write-back (see upsertProgress).
+    private fun writeProgress(item: MediaItem, libraryKey: String, atMs: Long) {
+        val row = item.toRow(libraryKey, atMs)
+        items.upsertProgress(
+            rating_key = row.ratingKey,
+            library_key = row.libraryKey,
+            parent_key = row.parentKey,
+            kind = row.kind,
+            title = row.title,
+            title_sort = row.titleSort,
+            year = row.year,
+            summary = row.summary,
+            thumb_path = row.thumbPath,
+            art_path = row.artPath,
+            duration_ms = row.durationMs,
+            view_offset_ms = row.viewOffsetMs,
+            view_count = row.viewCount,
+            season_index = row.seasonIndex,
+            episode_index = row.episodeIndex,
+            show_rating_key = row.showRatingKey,
+            show_title = row.showTitle,
+            child_count = row.childCount,
+            leaf_count = row.leafCount,
+            viewed_leaf_count = row.viewedLeafCount,
+            refreshed_at = row.refreshedAt,
+        )
+    }
+
     private fun isStale(refreshedAtMs: Long?): Boolean =
         refreshedAtMs == null || nowMs() - refreshedAtMs >= staleAfterMs
 
@@ -325,3 +399,13 @@ class LibraryRepository(
         const val GROUP_LIMIT = 20
     }
 }
+
+/**
+ * A single-slot dispatcher for all database work. Used as the default so tests get off-thread,
+ * serialised access without extra wiring; production shares one instance across the repository and
+ * the download/timeline stores (see AppContainer) so the desktop's single JDBC connection is never
+ * touched concurrently. limitedParallelism(1) over Default keeps it off the main thread while
+ * guaranteeing one DB operation at a time.
+ */
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+fun defaultDbDispatcher(): CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1)

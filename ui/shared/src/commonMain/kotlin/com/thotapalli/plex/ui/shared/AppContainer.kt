@@ -13,6 +13,7 @@ import com.thotapalli.plex.core.data.LibraryRepository
 import com.thotapalli.plex.core.data.SqlDownloadStore
 import com.thotapalli.plex.core.data.SqlPendingTimelineStore
 import com.thotapalli.plex.core.data.createPlexDatabase
+import com.thotapalli.plex.core.data.defaultDbDispatcher
 import com.thotapalli.plex.core.download.DownloadFileSystem
 import com.thotapalli.plex.core.download.DownloadQueue
 import com.thotapalli.plex.core.download.DownloadStore
@@ -92,11 +93,19 @@ class AppContainer(
 
     private val database = createPlexDatabase(driverFactory)
 
+    /**
+     * One single-slot dispatcher for every database access — the repository and all three stores —
+     * so blocking SQLDelight never runs on the UI thread and the desktop's single JDBC connection is
+     * never touched by two threads at once. See [LibraryRepository].
+     */
+    private val dbDispatcher = defaultDbDispatcher()
+
     val repository = LibraryRepository(
         api = serverApi,
         database = database,
         scope = scope,
         nowMs = nowMs,
+        dbContext = dbDispatcher,
     )
 
     /** The database, exposed for the download queue and the offline timeline queue. */
@@ -111,7 +120,7 @@ class AppContainer(
     val playerBridge = com.thotapalli.plex.ui.shared.player.PlayerBridge()
 
     val downloadStore: DownloadStore? =
-        if (downloadFileSystem != null) SqlDownloadStore(database) else null
+        if (downloadFileSystem != null) SqlDownloadStore(database, dbDispatcher) else null
 
     /**
      * Part and subtitle keys, recorded as items are queued.
@@ -137,7 +146,7 @@ class AppContainer(
     val downloadQueue: DownloadQueue? =
         if (downloadFileSystem != null && networkConditions != null) {
             DownloadQueue(
-                store = SqlDownloadStore(database),
+                store = SqlDownloadStore(database, dbDispatcher),
                 transport = transport,
                 files = downloadFileSystem,
                 network = networkConditions,
@@ -155,14 +164,14 @@ class AppContainer(
         files?.subtitlePathFor(ratingKey, streamId, language).orEmpty()
 
     val offlineResolver: OfflineResolver? = downloadFileSystem?.let {
-        OfflineResolver(SqlDownloadStore(database), it)
+        OfflineResolver(SqlDownloadStore(database, dbDispatcher), it)
     }
 
     /**
      * Progress recorded while the server was unreachable, replayed on reconnection.
      * See CLAUDE.md section 11.
      */
-    val offlineTimeline = OfflineTimelineQueue(SqlPendingTimelineStore(database), nowMs)
+    val offlineTimeline = OfflineTimelineQueue(SqlPendingTimelineStore(database, dbDispatcher), nowMs)
 
     /**
      * The launch update check from CLAUDE.md section 17 point 4.

@@ -61,6 +61,9 @@ sqldelight {
     databases {
         create("PlexDatabase") {
             packageName.set("com.thotapalli.plex.core.data.db")
+            // SQLite 3.30 dialect so ON CONFLICT DO UPDATE (upsertProgress) and partial indexes
+            // validate at compile time. The default is 3.18, which predates them.
+            dialect(libs.sqldelight.dialect.sqlite330)
             // The cache is safe to delete and is never the source of truth for anything
             // the server also knows, so a schema change drops and rebuilds rather than
             // migrating. See CLAUDE.md section 7.

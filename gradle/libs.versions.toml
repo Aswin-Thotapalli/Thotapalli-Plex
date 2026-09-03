@@ -54,6 +54,9 @@ ktor-logging = { module = "io.ktor:ktor-client-logging", version.ref = "ktor" }
 sqldelight-android = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
 sqldelight-jvm = { module = "app.cash.sqldelight:sqlite-driver", version.ref = "sqldelight" }
 sqldelight-coroutines = { module = "app.cash.sqldelight:coroutines-extensions", version.ref = "sqldelight" }
+# SQLite 3.30 compile-time dialect (default is 3.18, which predates UPSERT / ON CONFLICT DO UPDATE).
+# 3.30 features are all present in Android 12's SQLite (3.32) and the desktop xerial driver.
+sqldelight-dialect-sqlite330 = { module = "app.cash.sqldelight:sqlite-3-30-dialect", version.ref = "sqldelight" }
 
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network = { module = "io.coil-kt.coil3:coil-network-ktor3", version.ref = "coil" }

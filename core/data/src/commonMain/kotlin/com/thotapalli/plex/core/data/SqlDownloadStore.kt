@@ -11,55 +11,75 @@ import com.thotapalli.plex.core.download.SubtitleRow
 import com.thotapalli.plex.core.data.db.Download as DownloadDbRow
 import com.thotapalli.plex.core.data.db.Download_subtitle as SubtitleDbRow
 import com.thotapalli.plex.core.data.db.Pending_timeline as PendingDbRow
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.withContext
 
-/** The section 7 download tables, behind the section 11 queue's interface. */
-class SqlDownloadStore(database: PlexDatabase) : DownloadStore {
+/**
+ * The section 7 download tables, behind the section 11 queue's interface.
+ *
+ * Every query runs on [dbContext] — the same single-slot dispatcher [LibraryRepository] uses — so DB
+ * work never blocks the caller's thread and the desktop's single JDBC connection is never touched
+ * concurrently by the queue and a library read.
+ */
+class SqlDownloadStore(
+    database: PlexDatabase,
+    private val dbContext: CoroutineDispatcher = defaultDbDispatcher(),
+) : DownloadStore {
 
     private val downloads = database.downloadQueries
     private val subtitles = database.downloadSubtitleQueries
 
     override suspend fun insert(row: DownloadRow) {
-        downloads.insert(
-            rating_key = row.ratingKey,
-            part_id = row.partId,
-            local_path = row.localPath,
-            total_bytes = row.totalBytes,
-            received_bytes = row.receivedBytes,
-            state = row.state.name,
-            queued_at = row.queuedAtMs,
-        )
+        withContext(dbContext) {
+            downloads.insert(
+                rating_key = row.ratingKey,
+                part_id = row.partId,
+                local_path = row.localPath,
+                total_bytes = row.totalBytes,
+                received_bytes = row.receivedBytes,
+                state = row.state.name,
+                queued_at = row.queuedAtMs,
+            )
+        }
     }
 
     override suspend fun insertSubtitle(ratingKey: String, subtitle: SubtitleRequest) {
-        subtitles.insert(
-            rating_key = ratingKey,
-            stream_id = subtitle.streamId,
-            language = subtitle.language,
-            local_path = subtitle.localPath,
-        )
+        withContext(dbContext) {
+            subtitles.insert(
+                rating_key = ratingKey,
+                stream_id = subtitle.streamId,
+                language = subtitle.language,
+                local_path = subtitle.localPath,
+            )
+        }
     }
 
-    override suspend fun nextQueued(): DownloadRow? =
+    override suspend fun nextQueued(): DownloadRow? = withContext(dbContext) {
         downloads.selectNextQueued().executeAsOneOrNull()?.toDownloadRow()
+    }
 
-    override suspend fun byRatingKey(ratingKey: String): DownloadRow? =
+    override suspend fun byRatingKey(ratingKey: String): DownloadRow? = withContext(dbContext) {
         downloads.selectByRatingKey(ratingKey).executeAsOneOrNull()?.toDownloadRow()
+    }
 
-    override suspend fun all(): List<DownloadRow> =
+    override suspend fun all(): List<DownloadRow> = withContext(dbContext) {
         downloads.selectAll().executeAsList().map { it.toDownloadRow() }
+    }
 
-    override suspend fun completed(): List<DownloadRow> =
+    override suspend fun completed(): List<DownloadRow> = withContext(dbContext) {
         downloads.selectCompleted().executeAsList().map { it.toDownloadRow() }
+    }
 
-    override suspend fun subtitlesFor(ratingKey: String): List<SubtitleRow> =
+    override suspend fun subtitlesFor(ratingKey: String): List<SubtitleRow> = withContext(dbContext) {
         subtitles.selectForItem(ratingKey).executeAsList().map { it.toSubtitleRow() }
+    }
 
     override suspend fun updateProgress(ratingKey: String, receivedBytes: Long) {
-        downloads.updateProgress(receivedBytes, ratingKey)
+        withContext(dbContext) { downloads.updateProgress(receivedBytes, ratingKey) }
     }
 
     override suspend fun updateState(ratingKey: String, state: DownloadState) {
-        downloads.updateState(state.name, ratingKey)
+        withContext(dbContext) { downloads.updateState(state.name, ratingKey) }
     }
 
     override suspend fun updateStateAndProgress(
@@ -67,19 +87,20 @@ class SqlDownloadStore(database: PlexDatabase) : DownloadStore {
         state: DownloadState,
         receivedBytes: Long,
     ) {
-        downloads.updateStateAndProgress(state.name, receivedBytes, ratingKey)
+        withContext(dbContext) { downloads.updateStateAndProgress(state.name, receivedBytes, ratingKey) }
     }
 
     override suspend fun delete(ratingKey: String) {
-        downloads.delete(ratingKey)
+        withContext(dbContext) { downloads.delete(ratingKey) }
     }
 
     override suspend fun deleteSubtitles(ratingKey: String) {
-        subtitles.deleteForItem(ratingKey)
+        withContext(dbContext) { subtitles.deleteForItem(ratingKey) }
     }
 
-    override suspend fun totalBytesOnDisk(): Long =
+    override suspend fun totalBytesOnDisk(): Long = withContext(dbContext) {
         downloads.totalBytesOnDisk().executeAsOne().SUM ?: 0L
+    }
 }
 
 private fun DownloadDbRow.toDownloadRow() = DownloadRow(
@@ -102,34 +123,41 @@ private fun SubtitleDbRow.toSubtitleRow() = SubtitleRow(
 )
 
 /** The section 7 pending_timeline table, behind the offline queue's interface. */
-class SqlPendingTimelineStore(database: PlexDatabase) : PendingTimelineStore {
+class SqlPendingTimelineStore(
+    database: PlexDatabase,
+    private val dbContext: CoroutineDispatcher = defaultDbDispatcher(),
+) : PendingTimelineStore {
 
     private val queries = database.pendingTimelineQueries
 
     override suspend fun insert(row: PendingTimelineRow) {
-        queries.insert(
-            rating_key = row.ratingKey,
-            position_ms = row.positionMs,
-            duration_ms = row.durationMs,
-            state = row.state,
-            recorded_at = row.recordedAtMs,
-        )
+        withContext(dbContext) {
+            queries.insert(
+                rating_key = row.ratingKey,
+                position_ms = row.positionMs,
+                duration_ms = row.durationMs,
+                state = row.state,
+                recorded_at = row.recordedAtMs,
+            )
+        }
     }
 
-    override suspend fun collapsed(): List<PendingTimelineRow> =
+    override suspend fun collapsed(): List<PendingTimelineRow> = withContext(dbContext) {
         queries.selectCollapsed().executeAsList().map { it.toRow() }
+    }
 
-    override suspend fun all(): List<PendingTimelineRow> =
+    override suspend fun all(): List<PendingTimelineRow> = withContext(dbContext) {
         queries.selectAll().executeAsList().map { it.toRow() }
+    }
 
-    override suspend fun count(): Long = queries.count().executeAsOne()
+    override suspend fun count(): Long = withContext(dbContext) { queries.count().executeAsOne() }
 
     override suspend fun deleteUpTo(ratingKey: String, recordedAtMs: Long) {
-        queries.deleteUpTo(ratingKey, recordedAtMs)
+        withContext(dbContext) { queries.deleteUpTo(ratingKey, recordedAtMs) }
     }
 
     override suspend fun deleteAll() {
-        queries.deleteAll()
+        withContext(dbContext) { queries.deleteAll() }
     }
 }
 
