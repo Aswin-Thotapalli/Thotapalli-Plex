@@ -2,6 +2,8 @@ package com.thotapalli.plex.core.api
 
 import com.thotapalli.plex.core.download.DownloadTransport
 import com.thotapalli.plex.core.model.MediaPart
+import io.ktor.client.plugins.HttpTimeoutConfig
+import io.ktor.client.plugins.timeout
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
 import io.ktor.client.request.header
@@ -53,6 +55,15 @@ class RangedDownloadSource(
         return client.prepareGet(urls.partKey(key)) {
             applyIdentity(this)
             header(HttpHeaders.Range, "bytes=$startByte-$endByte")
+            // The shared client's 15 s whole-request timeout is right for a metadata call and wrong
+            // for a download: an 8 MB segment over a slow relay legitimately takes longer than that,
+            // and killing it would fail a download that is actually progressing. Instead cap only the
+            // gap between bytes — a socket that goes quiet for SEGMENT_STALL_MS is a real stall the
+            // queue should retry, a steady trickle is not. See CLAUDE.md section 11.
+            timeout {
+                requestTimeoutMillis = HttpTimeoutConfig.INFINITE_TIMEOUT_MS
+                socketTimeoutMillis = SEGMENT_STALL_MS
+            }
         }.execute { response ->
             when (response.status) {
                 HttpStatusCode.PartialContent -> {
@@ -138,6 +149,10 @@ class RangedDownloadSource(
     }
 
     private companion object {
+        /** No bytes for this long on a segment read is a stall worth failing (and retrying), not a
+         *  slow-but-alive transfer. Well above a normal inter-packet gap on any working link. */
+        const val SEGMENT_STALL_MS = 30_000L
+
         /** `bytes 8388608-16777215/20971520` reduced to its first number. */
         fun contentRangeStart(value: String?): Long? = value
             ?.substringAfter("bytes ", "")

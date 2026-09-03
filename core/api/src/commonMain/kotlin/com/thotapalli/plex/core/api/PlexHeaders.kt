@@ -26,6 +26,11 @@ object PlexHeaderNames {
 
     /** Carries a client capability profile on the playback decision request. */
     const val CLIENT_PROFILE_EXTRA = "X-Plex-Client-Profile-Extra"
+
+    /** Paging window into a list endpoint: the first item index and the page length. Sent as query
+     *  parameters (they work as headers too) so a large library is fetched a page at a time. */
+    const val CONTAINER_START = "X-Plex-Container-Start"
+    const val CONTAINER_SIZE = "X-Plex-Container-Size"
 }
 
 /** Fixed product name. Sent on every request and shown on the account's device list. */

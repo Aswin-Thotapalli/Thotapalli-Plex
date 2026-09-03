@@ -2,6 +2,7 @@ package com.thotapalli.plex.core.api
 
 import io.ktor.client.HttpClient
 import io.ktor.client.HttpClientConfig
+import io.ktor.client.plugins.HttpRequestRetry
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.get
@@ -56,6 +57,9 @@ class PlexHttp internal constructor(
     }
 
     companion object {
+        /** Retry a transient failure at most twice before surfacing it. */
+        private const val MAX_RETRIES = 2
+
         /**
          * @param requestTimeoutMs whole-request budget. Connection probing overrides this
          *   with the 3000 ms in CLAUDE.md section 5; ordinary calls use the default.
@@ -75,6 +79,17 @@ class PlexHttp internal constructor(
                     requestTimeoutMillis = requestTimeoutMs
                     connectTimeoutMillis = connectTimeoutMs
                     socketTimeoutMillis = requestTimeoutMs
+                }
+
+                // Ride out a transient blip — a 5xx while the server is busy, a connection reset on a
+                // flaky link — rather than surfacing it as a hard failure. Bounded and backed off so a
+                // genuinely down server is still reported quickly. A timeout is NOT retried (the
+                // caller's own timeout already expresses the budget), and the connection probe opts out
+                // per-request because its parallel race is its own retry. See ConnectionSelector.
+                install(HttpRequestRetry) {
+                    retryOnServerErrors(maxRetries = MAX_RETRIES)
+                    retryOnException(maxRetries = MAX_RETRIES, retryOnTimeout = false)
+                    exponentialDelay(base = 2.0, baseDelayMs = 500L)
                 }
             },
         )

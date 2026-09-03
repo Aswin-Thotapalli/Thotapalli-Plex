@@ -92,18 +92,38 @@ class PlexServerApi(
         sort: LibrarySort,
         filter: LibraryFilter,
     ): List<MediaItem> {
-        val response = client.get("${scope.baseUri}/library/sections/$libraryKey/all") {
-            parameter("type", kind.code)
-            parameter("sort", sort.wire)
-            filter.genre?.takeIf { it.isNotBlank() }?.let { parameter("genre", it) }
-            filter.year?.let { parameter("year", it) }
-            filter.resolution?.takeIf { it.isNotBlank() }?.let { parameter("resolution", it) }
-            if (filter.unwatchedOnly) parameter("unwatched", "1")
-            scope.apply(this)
+        // Paged rather than fetched whole. A large library answered in one response is a multi-megabyte
+        // body that can outrun the 15 s request timeout on a slow link and holds the whole list in
+        // memory twice while it parses; asking for PAGE_SIZE items at a time keeps each response small
+        // and bounded. The server reports totalSize, so the loop knows when it has them all. Plex reads
+        // the window from the X-Plex-Container-Start / X-Plex-Container-Size query parameters.
+        val all = mutableListOf<MediaItem>()
+        var start = 0
+        while (true) {
+            val response = client.get("${scope.baseUri}/library/sections/$libraryKey/all") {
+                parameter("type", kind.code)
+                parameter("sort", sort.wire)
+                filter.genre?.takeIf { it.isNotBlank() }?.let { parameter("genre", it) }
+                filter.year?.let { parameter("year", it) }
+                filter.resolution?.takeIf { it.isNotBlank() }?.let { parameter("resolution", it) }
+                if (filter.unwatchedOnly) parameter("unwatched", "1")
+                parameter(PlexHeaderNames.CONTAINER_START, start)
+                parameter(PlexHeaderNames.CONTAINER_SIZE, PAGE_SIZE)
+                scope.apply(this)
+            }
+            response.requireSuccess("library $libraryKey contents")
+            val container = response.body<MediaContainerResponse<MetadataContainer>>().mediaContainer
+
+            val page = container.metadata
+            all += page.toMediaItems(libraryKey)
+
+            // Stop when this page came back short (the last page), when nothing came back, or when the
+            // server's totalSize says everything collected so far is the whole set.
+            val total = container.totalSize ?: container.size
+            start += page.size
+            if (page.isEmpty() || page.size < PAGE_SIZE || start >= total) break
         }
-        response.requireSuccess("library $libraryKey contents")
-        return response.body<MediaContainerResponse<MetadataContainer>>()
-            .mediaContainer.metadata.toMediaItems(libraryKey)
+        return all
     }
 
     /** Collections in a library, shown first in the grid with a stacked poster treatment. */
@@ -453,6 +473,10 @@ class PlexServerApi(
 
         /** At most twenty per group on the search screen. See CLAUDE.md section 14. */
         const val GROUP_LIMIT = 20
+
+        /** Library items fetched per page. Large enough that a typical library is one or two
+         *  requests, small enough that each response stays well inside the request timeout. */
+        const val PAGE_SIZE = 300
 
         /** The decision endpoint's success code for direct play. */
         const val DIRECT_PLAY_OK = 1000

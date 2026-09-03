@@ -4,6 +4,7 @@ import com.thotapalli.plex.core.model.PlexServer
 import com.thotapalli.plex.core.model.SelectedConnection
 import com.thotapalli.plex.core.model.ServerConnection
 import io.ktor.client.call.body
+import io.ktor.client.plugins.retry
 import io.ktor.client.plugins.timeout
 import io.ktor.client.request.HttpRequestBuilder
 import io.ktor.client.request.get
@@ -116,6 +117,10 @@ class ConnectionSelector(
         val startedAt = elapsedMs()
         val response = client.get("${connection.uri.trimEnd('/')}/identity") {
             timeout { requestTimeoutMillis = PROBE_TIMEOUT_MS }
+            // The parallel race across every connection is this probe's retry. Letting the client's
+            // retry plugin also back off and retry a dead connection would defeat the 3 s ceiling that
+            // keeps a fast local connection from waiting on a slow one.
+            retry { noRetry() }
             applyIdentity(server.accessToken)
         }
         if (!response.status.isSuccess()) {
