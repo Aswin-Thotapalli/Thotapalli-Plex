@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Plex media servers on a LAN are reached over plain http at an arbitrary private address, so
+  cleartext stays permitted by default. But plex.tv (which mints and carries the account token) and
+  the GitHub release hosts (which serve the update artefact that then gets installed) must never be
+  reachable over cleartext, so a network attacker cannot strip their TLS and downgrade a token
+  exchange or swap a signed build for a tampered one. See CLAUDE.md sections 5 and 17.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">plex.tv</domain>
+        <domain includeSubdomains="true">github.com</domain>
+        <domain includeSubdomains="true">githubusercontent.com</domain>
+    </domain-config>
+</network-security-config>

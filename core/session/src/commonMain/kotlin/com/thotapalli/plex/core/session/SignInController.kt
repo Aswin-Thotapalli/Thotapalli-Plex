@@ -32,14 +32,23 @@ class SignInController(
         emit(SignInState.AwaitingApproval(code = pin.code, authUrl = url))
 
         var waitedMs = 0L
+        var consecutiveFailures = 0
         while (waitedMs < TIMEOUT_MS) {
             delay(POLL_INTERVAL_MS)
             waitedMs += POLL_INTERVAL_MS
 
             val polled = runCatching { api.checkPin(pin.id) }.getOrElse { error ->
-                emit(SignInState.Failed(error))
-                return@flow
+                // The approval wait runs up to 300 s, during which a single dropped poll — a Wi-Fi
+                // hiccup, a DNS blip — is expected and must not abort a sign-in the user may be
+                // partway through. Keep polling, and only surface a failure once the endpoint has
+                // stayed unreachable for several tries in a row (a genuine outage, not a blip).
+                if (++consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+                    emit(SignInState.Failed(error))
+                    return@flow
+                }
+                continue
             }
+            consecutiveFailures = 0
 
             if (polled.expired) {
                 emit(SignInState.TimedOut)
@@ -64,6 +73,9 @@ class SignInController(
     private companion object {
         const val POLL_INTERVAL_MS = 1_000L
         const val TIMEOUT_MS = 300_000L
+
+        /** Consecutive failed polls (roughly this many seconds of a dead endpoint) before giving up. */
+        const val MAX_CONSECUTIVE_FAILURES = 5
     }
 }
 

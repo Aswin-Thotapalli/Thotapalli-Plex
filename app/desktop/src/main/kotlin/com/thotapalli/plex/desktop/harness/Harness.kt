@@ -122,7 +122,9 @@ private suspend fun signIn(api: PlexTvApi, tokens: TokenStore) {
                 println("Signed in.")
                 println("  account:      ${state.account.title} (${state.account.username})")
                 println("  account id:   ${state.account.id}")
-                println("  account token: ${state.token}")
+                // Masked: a full account token printed to a terminal or CI log is a live credential.
+                // The prefix and length are enough to confirm it was received. See readBackToken.
+                println("  account token: ${state.token.take(6)}... (${state.token.length} characters)")
                 println()
                 println("The token is now stored encrypted with DPAPI under")
                 println("  ${DpapiSecureStore.defaultDirectory()}")

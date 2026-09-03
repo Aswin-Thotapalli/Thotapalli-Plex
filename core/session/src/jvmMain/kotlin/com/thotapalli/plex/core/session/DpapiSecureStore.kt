@@ -45,10 +45,20 @@ class DpapiSecureStore(
         val encoded = Base64.getEncoder().encode(cipherText)
         val target = fileFor(key)
         // Written beside the target and moved into place, so an interrupted write cannot
-        // leave a half token that decrypts to nothing.
-        val temp = Files.createTempFile(directory, "tmp", ".dat")
-        Files.write(temp, encoded)
-        Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING)
+        // leave a half token that decrypts to nothing. The temp is removed if anything between
+        // creating it and the move throws, so a failed write leaves no stray file behind.
+        val temp = Files.createTempFile(directory, "tmp", TEMP_SUFFIX)
+        try {
+            Files.write(temp, encoded)
+            // Prefer a truly atomic swap; fall back to a replace on a filesystem that cannot.
+            runCatching {
+                Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            }.onFailure {
+                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING)
+            }
+        } finally {
+            Files.deleteIfExists(temp)
+        }
     }
 
     override fun removeSecret(key: String) {
@@ -68,6 +78,9 @@ class DpapiSecureStore(
 
     companion object {
         private const val SUFFIX = ".dpapi"
+
+        /** Distinct from [SUFFIX] so an in-flight write is never matched by [clear]'s listing. */
+        private const val TEMP_SUFFIX = ".tmp"
 
         fun defaultDirectory(): Path {
             val localAppData = System.getenv("LOCALAPPDATA")

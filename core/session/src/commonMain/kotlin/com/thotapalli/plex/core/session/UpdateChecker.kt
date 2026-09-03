@@ -200,6 +200,12 @@ private fun UpdateTarget.readEntry(entry: JsonObjectValue): AvailableUpdate {
         ?: throw ManifestFormatException("$manifestKey carries no versionName")
     val url = entry.entries["url"].stringOrNull()
         ?: throw ManifestFormatException("$manifestKey carries no url")
+    // The manifest itself is fetched over HTTPS from the release host, but it names the artefact URL,
+    // and that artefact is downloaded and then installed. A cleartext URL there would let a network
+    // attacker swap the download for a tampered build, so anything but HTTPS is rejected outright.
+    if (!url.startsWith("https://", ignoreCase = true)) {
+        throw ManifestFormatException("$manifestKey url is not https")
+    }
 
     return AvailableUpdate(
         target = this,
