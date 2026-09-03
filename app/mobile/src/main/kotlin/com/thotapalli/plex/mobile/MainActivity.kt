@@ -18,6 +18,9 @@ import androidx.activity.addCallback
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import androidx.lifecycle.ViewModelProvider
@@ -35,6 +38,10 @@ import com.thotapalli.plex.ui.shared.PlexApp
 class MainActivity : ComponentActivity() {
 
     private lateinit var viewModel: AppViewModel
+
+    /** Mirrors the activity's Picture-in-Picture state into composition so the player overlay can
+     *  collapse to a bare picture while in the PiP thumbnail. See [onPictureInPictureModeChanged]. */
+    private var inPictureInPicture by mutableStateOf(false)
 
     // A single network transition (Wi-Fi to cellular, a VPN coming up) fires several
     // onLost/onAvailable/onCapabilitiesChanged in quick succession. They are coalesced into one
@@ -66,6 +73,17 @@ class MainActivity : ComponentActivity() {
             viewModelFactory { initializer { AppViewModel(container) } },
         )[AppViewModel::class.java]
 
+        // Process-death restore: the OS can reclaim a backgrounded process, then recreate this
+        // activity with the breadcrumb saved in onSaveInstanceState (which survives that reclaim but
+        // not an explicit swipe-away). Reopen the library/item the viewer was on. Best-effort — a
+        // stale id just leaves them on Home. Not on a fresh launch (savedInstanceState is null then).
+        savedInstanceState?.let { saved ->
+            viewModel.restoreLocation(
+                libraryKey = saved.getString(SAVED_LIBRARY_KEY),
+                detailRatingKey = saved.getString(SAVED_DETAIL_RATING_KEY),
+            )
+        }
+
         // Hardware and gesture Back pop the in-app stack (player, detail, collection,
         // library) and only leave the app once there is nowhere left to go. See CLAUDE.md
         // section 13: Back never exits from below the home screen.
@@ -83,6 +101,7 @@ class MainActivity : ComponentActivity() {
                 viewModel = viewModel,
                 onOpenUrl = ::openUrl,
                 onPlay = viewModel::play,
+                isInPictureInPicture = inPictureInPicture,
             )
         }
     }
@@ -120,6 +139,20 @@ class MainActivity : ComponentActivity() {
         super.onStop()
     }
 
+    /**
+     * Saves the current in-app location so a process death can restore it. The Bundle survives the
+     * OS reclaiming the process but not an explicit swipe-away, which is exactly the restore we want.
+     * The player is deliberately not saved — resuming a video on relaunch is jarring, and the
+     * server-side resume position brings the viewer back to the right spot when they replay.
+     */
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        if (!::viewModel.isInitialized) return
+        val state = viewModel.state.value
+        state.library?.library?.key?.let { outState.putString(SAVED_LIBRARY_KEY, it) }
+        state.detail?.item?.ratingKey?.let { outState.putString(SAVED_DETAIL_RATING_KEY, it) }
+    }
+
     /** Coalesce a burst of connectivity callbacks into a single re-probe on the main thread. */
     private fun scheduleReprobe() {
         mainHandler.removeCallbacks(reprobe)
@@ -154,16 +187,17 @@ class MainActivity : ComponentActivity() {
 
     /**
      * PiP mode changes are delivered here. The player keeps rendering in the small window either
-     * way, which is the requirement. Hiding the Compose control overlay while in PiP would need a
-     * signal into the shared UI (a flag on AppViewModel/AppState), which lives in another module —
-     * out of bounds for this change. TODO: expose an isInPip flag on AppViewModel so the overlay
-     * can collapse to a bare surface while in PiP.
+     * way; [inPictureInPicture] is mirrored into composition so the shared player collapses its
+     * transport overlay to a bare picture while in the thumbnail (a PiP window is too small for
+     * controls, and the system supplies its own). Leaving PiP flips it back and the overlay
+     * returns with no reload. See [PlexApp]'s isInPictureInPicture.
      */
     override fun onPictureInPictureModeChanged(
         isInPictureInPictureMode: Boolean,
         newConfig: Configuration,
     ) {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        inPictureInPicture = isInPictureInPictureMode
     }
 
     /**
@@ -199,5 +233,9 @@ class MainActivity : ComponentActivity() {
     private companion object {
         /** Window over which rapid connectivity callbacks collapse into one re-probe. */
         const val NETWORK_CHANGE_DEBOUNCE_MS = 800L
+
+        /** Saved-instance-state keys for the process-death location restore. */
+        const val SAVED_LIBRARY_KEY = "thotapalli.saved.libraryKey"
+        const val SAVED_DETAIL_RATING_KEY = "thotapalli.saved.detailRatingKey"
     }
 }

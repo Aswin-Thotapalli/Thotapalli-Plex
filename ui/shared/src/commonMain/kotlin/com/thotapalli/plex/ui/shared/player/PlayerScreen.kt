@@ -79,6 +79,10 @@ fun PlayerScreen(
     /** Emits when connectivity returns, so a failed stream retries from its last position without an
      *  app restart (§10, #1). Null on targets that do not surface network changes. */
     networkRegained: SharedFlow<Unit>? = null,
+    /** True while the activity is folded into a Picture-in-Picture window (mobile only). The video
+     *  keeps rendering, but the transport overlay and any open track sheet are hidden: a PiP window
+     *  is too small for controls, and the system supplies its own. See the mobile MainActivity. */
+    collapseControls: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     // The player owns the screen in landscape; leaving it hands orientation back to the system.
@@ -364,26 +368,32 @@ fun PlayerScreen(
             ) {
                 VideoSurface(bind = { engine = it }, onPointerActivity = {}, modifier = Modifier.fillMaxSize())
 
-                PlayerOverlay(state = screenState, actions = actions, modifier = Modifier.fillMaxSize())
+                // In Picture-in-Picture the window is a thumbnail: the transport overlay and any open
+                // sheet are suppressed so only the picture shows, and the system's own PiP controls
+                // stand in. Everything below the surface keeps running, so leaving PiP restores the
+                // controls with no reload.
+                if (!collapseControls) {
+                    PlayerOverlay(state = screenState, actions = actions, modifier = Modifier.fillMaxSize())
 
-                when (screenState.openSheet) {
-                    TrackSheetKind.AUDIO -> TrackSheet(
-                        title = "Audio",
-                        tracks = screenState.audioTracks,
-                        allowNone = false,
-                        onSelect = actions.onSelectAudioTrack,
-                        onDismiss = actions.onDismissSheet,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                    TrackSheetKind.SUBTITLE -> TrackSheet(
-                        title = "Subtitles",
-                        tracks = screenState.subtitleTracks,
-                        allowNone = true,
-                        onSelect = actions.onSelectSubtitleTrack,
-                        onDismiss = actions.onDismissSheet,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                    null -> Unit
+                    when (screenState.openSheet) {
+                        TrackSheetKind.AUDIO -> TrackSheet(
+                            title = "Audio",
+                            tracks = screenState.audioTracks,
+                            allowNone = false,
+                            onSelect = actions.onSelectAudioTrack,
+                            onDismiss = actions.onDismissSheet,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        TrackSheetKind.SUBTITLE -> TrackSheet(
+                            title = "Subtitles",
+                            tracks = screenState.subtitleTracks,
+                            allowNone = true,
+                            onSelect = actions.onSelectSubtitleTrack,
+                            onDismiss = actions.onDismissSheet,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        null -> Unit
+                    }
                 }
             }
         }

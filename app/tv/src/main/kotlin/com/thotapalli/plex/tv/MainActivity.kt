@@ -49,6 +49,16 @@ class MainActivity : ComponentActivity() {
             viewModelFactory { initializer { AppViewModel(container) } },
         )[AppViewModel::class.java]
 
+        // Process-death restore: reopen the library/item the viewer was on if the OS reclaimed the
+        // process and recreated this activity (savedInstanceState is null on a fresh launch). See the
+        // matching onSaveInstanceState and AppViewModel.restoreLocation.
+        savedInstanceState?.let { saved ->
+            viewModel.restoreLocation(
+                libraryKey = saved.getString(SAVED_LIBRARY_KEY),
+                detailRatingKey = saved.getString(SAVED_DETAIL_RATING_KEY),
+            )
+        }
+
         // Hardware and gesture Back pop the in-app stack (player, detail, collection,
         // library) and only leave the app once there is nowhere left to go. See CLAUDE.md
         // section 13: Back never exits from below the home screen.
@@ -110,6 +120,19 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
+     * Saves the current in-app location so a process death can restore it — survives the OS
+     * reclaiming the process but not an explicit exit. The player is deliberately not saved; the
+     * server-side resume position brings the viewer back when they replay. See [restoreLocation].
+     */
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        if (!::viewModel.isInitialized) return
+        val state = viewModel.state.value
+        state.library?.library?.key?.let { outState.putString(SAVED_LIBRARY_KEY, it) }
+        state.detail?.item?.ratingKey?.let { outState.putString(SAVED_DETAIL_RATING_KEY, it) }
+    }
+
+    /**
      * The PIN approval page opens in the system browser rather than inside the app, which
      * is what lets an existing plex.tv session sign the user in without retyping anything.
      * See CLAUDE.md section 5.
@@ -125,5 +148,9 @@ class MainActivity : ComponentActivity() {
     private companion object {
         /** Window over which rapid connectivity callbacks collapse into one re-probe. */
         const val NETWORK_CHANGE_DEBOUNCE_MS = 800L
+
+        /** Saved-instance-state keys for the process-death location restore. */
+        const val SAVED_LIBRARY_KEY = "thotapalli.saved.libraryKey"
+        const val SAVED_DETAIL_RATING_KEY = "thotapalli.saved.detailRatingKey"
     }
 }

@@ -130,6 +130,9 @@ fun PlexApp(
     viewModel: AppViewModel,
     onOpenUrl: (String) -> Unit,
     onPlay: (MediaItem, Long) -> Unit,
+    /** True while the host activity is in a Picture-in-Picture window (mobile only); collapses the
+     *  player's transport overlay to a bare picture. Defaults false on TV and desktop. */
+    isInPictureInPicture: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -189,6 +192,7 @@ fun PlexApp(
                         isFullScreen = state.isFullScreen,
                         // Retry a failed stream when the connection returns, no restart (§10, #1).
                         networkRegained = viewModel.networkRegained,
+                        collapseControls = isInPictureInPicture,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }

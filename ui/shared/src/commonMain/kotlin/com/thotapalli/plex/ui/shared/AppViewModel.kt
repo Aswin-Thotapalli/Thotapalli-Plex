@@ -39,8 +39,10 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * State for every screen below the player.
@@ -90,6 +92,36 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
                 launch { reconcile(cached) }
             } else {
                 connect()
+            }
+        }
+    }
+
+    /**
+     * Reopen the library and/or item the viewer was looking at before the OS reclaimed the process.
+     *
+     * Android kills a backgrounded process under memory pressure and then recreates the activity; the
+     * platform hands the saved breadcrumb (the open library key and detail rating key) back through
+     * onSaveInstanceState, which survives that death but not an explicit swipe-away — so this restores
+     * only after a real reclaim, never turning an intentional exit into a reopen.
+     *
+     * Best-effort and defensive: it waits for the app to finish connecting (bounded), then reopens
+     * through the ordinary navigation, and does nothing on a timeout or an unresolvable breadcrumb —
+     * so a stale id simply leaves the viewer on Home rather than failing. Safe to call once, right
+     * after construction; it waits for [start] to reach [AppPhase.READY].
+     */
+    fun restoreLocation(libraryKey: String?, detailRatingKey: String?) {
+        if (libraryKey == null && detailRatingKey == null) return
+        viewModelScope.launch {
+            val ready = withTimeoutOrNull(RESTORE_TIMEOUT_MS) {
+                state.first { it.phase == AppPhase.READY }
+            } ?: return@launch
+
+            // The library first, so the detail (if any) sits above it with the right back stack.
+            libraryKey?.let { key ->
+                ready.libraries.firstOrNull { it.key == key }?.let(::openLibrary)
+            }
+            detailRatingKey?.let { key ->
+                runCatching { container.repository.cachedItem(key) }.getOrNull()?.let(::openDetail)
             }
         }
     }
@@ -1185,6 +1217,10 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         /** Poll cycles an optimistic scan entry survives without a real activity before it is
          *  assumed finished (§5, #3). 8 × 1.5s ≈ 12s of "Scanning…" feedback for a fast scan. */
         const val OPTIMISTIC_SCAN_CYCLES = 8
+
+        /** How long a process-death location restore waits for the app to reach READY before it
+         *  gives up and leaves the viewer on Home. Generous, since a cold reconnect can be slow. */
+        const val RESTORE_TIMEOUT_MS = 15_000L
     }
 }
 
