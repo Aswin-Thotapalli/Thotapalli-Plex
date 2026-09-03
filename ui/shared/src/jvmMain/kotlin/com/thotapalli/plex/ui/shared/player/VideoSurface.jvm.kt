@@ -144,6 +144,26 @@ private class DesktopGlSurface(
     private var sceneW = 0
     private var sceneH = 0
 
+    // The Skia surface that wraps the default framebuffer, cached across frames and rebuilt only when
+    // the framebuffer size changes. Rebuilding it every frame (the old behaviour) allocated and freed
+    // a BackendRenderTarget and a GPU-backed Surface 60 times a second.
+    private var skiaSurface: Surface? = null
+    private var skiaTarget: BackendRenderTarget? = null
+    private var skiaSurfaceW = 0
+    private var skiaSurfaceH = 0
+
+    /**
+     * Set whenever the Compose overlay needs to be redrawn (an animation frame, a state change). The
+     * render loop reads it so that, while paused with a still overlay, it stops repainting entirely
+     * rather than burning a core and the GPU on identical frames. Volatile: the scene may invalidate
+     * from a thread other than the render loop.
+     */
+    @Volatile private var overlayDirty = true
+
+    /** The canvas size the loop last rendered, so a resize forces a repaint even with no new frame. */
+    private var lastRenderedW = 0
+    private var lastRenderedH = 0
+
     /** The display scale seen on the last paint, read by the (EDT) pointer listeners. */
     @Volatile private var lastScale = 1.0
 
@@ -162,15 +182,33 @@ private class DesktopGlSurface(
         running = true
         loopJob = scope.launch(glDispatcher) {
             while (isActive && running) {
+                // Render only when there is something new to show: a fresh decoded video frame, an
+                // overlay animation or state change, or a resize. A paused player with a settled
+                // overlay draws nothing at all rather than repainting identical frames forever.
+                val resized = canvas.width != lastRenderedW || canvas.height != lastRenderedH
+                val newVideoFrame = runCatching { engine.hasFrameReady() }.getOrDefault(false)
+                if (!(overlayDirty || newVideoFrame || resized) || !canvas.isValid) {
+                    // Nothing to draw. Yield the thread and poll again shortly — short enough that a
+                    // seek while paused, or the overlay appearing, shows without a perceptible lag.
+                    yield()
+                    delay(IDLE_POLL_MS)
+                    continue
+                }
+
+                overlayDirty = false
+                lastRenderedW = canvas.width
+                lastRenderedH = canvas.height
+
                 val startNs = System.nanoTime()
-                if (canvas.isValid) runCatching { canvas.render() }
-                    .onFailure { it.printStackTrace() }
+                runCatching { canvas.render() }.onFailure { it.printStackTrace() }
                 val elapsedMs = (System.nanoTime() - startNs) / 1_000_000
                 // Let queued input and recomposition effects run on this thread between frames.
                 yield()
-                // With vsync the swap already paced the frame (~16ms); only add sleep when a driver
-                // ignored vsync and the frame came back fast, so the loop never spins the GPU.
-                if (elapsedMs < FRAME_CAP_MS) delay(FRAME_CAP_MS - elapsedMs)
+                // With vsync the swap already paced the frame to the display rate — 8 ms at 120 Hz,
+                // 4 ms at 240 Hz — so no extra sleep is added and a high-refresh display is not
+                // throttled. MIN_FRAME_MS is only a floor against a tight spin if a driver ignores
+                // vsync; it is well below any real refresh interval so it never caps the frame rate.
+                if (elapsedMs < MIN_FRAME_MS) delay(MIN_FRAME_MS - elapsedMs)
             }
         }
     }
@@ -185,8 +223,12 @@ private class DesktopGlSurface(
         runCatching {
             val cleanup = glExecutor.submit {
                 runCatching { engine.detachRenderContext() }
+                runCatching { skiaSurface?.close() }
+                runCatching { skiaTarget?.close() }
                 runCatching { scene?.close() }
                 runCatching { skia?.close() }
+                skiaSurface = null
+                skiaTarget = null
                 scene = null
                 skia = null
             }
@@ -227,24 +269,45 @@ private class DesktopGlSurface(
         skia?.let { context ->
             // mpv left GL state changed; resync Skia's view of it before it draws.
             context.resetGLAll()
-            val renderTarget = BackendRenderTarget.makeGL(fbW, fbH, 0, STENCIL_BITS, 0, GL_RGBA8)
-            val surface = Surface.makeFromBackendRenderTarget(
-                context,
-                renderTarget,
-                SurfaceOrigin.BOTTOM_LEFT,
-                SurfaceColorFormat.RGBA_8888,
-                ColorSpace.sRGB,
-            )
-            if (surface != null) {
+            ensureSkiaSurface(context, fbW, fbH)?.let { surface ->
                 scene.render(surface.canvas.asComposeCanvas(), System.nanoTime())
                 surface.flushAndSubmit()
-                surface.close()
             }
-            renderTarget.close()
         }
 
         canvas.swapBuffers()
         if (renderReady) engine.reportSwap()
+    }
+
+    /**
+     * The Skia surface over the default framebuffer, rebuilt only when the framebuffer size changes.
+     * The surface and its render target are GPU objects; recreating them every frame was pure waste.
+     */
+    private fun ensureSkiaSurface(context: DirectContext, width: Int, height: Int): Surface? {
+        if (skiaSurface != null && skiaSurfaceW == width && skiaSurfaceH == height) return skiaSurface
+
+        skiaSurface?.close()
+        skiaTarget?.close()
+        skiaSurface = null
+        skiaTarget = null
+
+        val target = BackendRenderTarget.makeGL(width, height, 0, STENCIL_BITS, 0, GL_RGBA8)
+        val surface = Surface.makeFromBackendRenderTarget(
+            context,
+            target,
+            SurfaceOrigin.BOTTOM_LEFT,
+            SurfaceColorFormat.RGBA_8888,
+            ColorSpace.sRGB,
+        )
+        if (surface == null) {
+            target.close()
+            return null
+        }
+        skiaTarget = target
+        skiaSurface = surface
+        skiaSurfaceW = width
+        skiaSurfaceH = height
+        return surface
     }
 
     /**
@@ -267,7 +330,10 @@ private class DesktopGlSurface(
             layoutDirection = LayoutDirection.Ltr,
             size = IntSize(width, height),
             coroutineContext = glDispatcher,
-            invalidate = {},
+            // The scene calls this whenever it needs to be redrawn — a recomposition, or a frame of a
+            // running animation (the control fade, the next-episode countdown). It is what lets the
+            // render loop repaint the overlay on demand instead of every frame. See [start].
+            invalidate = { overlayDirty = true },
         )
         created.setContent { overlay.value() }
         scene = created
@@ -346,8 +412,13 @@ private class DesktopGlSurface(
     private companion object {
         const val STENCIL_BITS = 8
         const val GL_RGBA8 = 0x8058
-        // Frame-time floor in ms (~70fps) applied only when vsync did not pace the frame.
-        const val FRAME_CAP_MS = 14L
+        // Spin-guard floor only, well under any real refresh interval (2 ms = 500 fps), so vsync,
+        // not this, sets the frame rate. Applied solely when a driver ignores vsync and a rendered
+        // frame returns implausibly fast; it never throttles a 120/144/240 Hz display.
+        const val MIN_FRAME_MS = 2L
+        // How long to idle when there is nothing new to draw. 8 ms keeps a paused seek or the
+        // overlay appearing responsive while the loop is otherwise asleep.
+        const val IDLE_POLL_MS = 8L
     }
 }
 

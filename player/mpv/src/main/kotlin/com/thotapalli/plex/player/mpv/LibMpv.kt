@@ -97,6 +97,14 @@ val MPV_OPTIONS: List<Pair<String, String>> = listOf(
     // Frames stay untouched. Judder is solved by section 9 instead.
     "interpolation" to "no",
 
+    // Highest-quality scaling, driving the gpu-next renderer in both the windowed and the
+    // single-window (render-API) paths. ewa_lanczossharp is the sharpest antiringing upscaler for
+    // luma and chroma; mitchell downscales without the aliasing a plain lanczos leaves. This is the
+    // quality ceiling section 8's "correct frame pacing" leaves room for, not a change to pacing.
+    "scale" to "ewa_lanczossharp",
+    "cscale" to "ewa_lanczossharp",
+    "dscale" to "mitchell",
+
     "hr-seek" to "yes",
     "hr-seek-framedrop" to "no",
     "keep-open" to "yes",

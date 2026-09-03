@@ -50,11 +50,20 @@ class MpvPlayerEngine(
 
     // Render-API state (single-window desktop player). Held as fields so the JNA callback and its
     // parameter memory are never garbage-collected while mpv still holds pointers to them.
-    private var renderCtx: Pointer? = null
+    // renderCtx is @Volatile because [detachRenderContext] may null it from the teardown thread while
+    // the GL thread is between reading it and calling into it; the volatile read gives that visibility.
+    @Volatile private var renderCtx: Pointer? = null
     private var glInitParams: MpvOpenGLInitParams? = null
     private var glGetProc: MpvGetProcAddressFn? = null
     private var glUpdateCb: MpvRenderUpdateFn? = null
     private var glApiType: com.sun.jna.Memory? = null
+
+    // Per-frame render parameters, allocated once and mutated each frame rather than rebuilt. renderInto
+    // runs only on the GL thread, so these need no synchronisation; caching them keeps a 60 fps render
+    // loop from churning native malloc/free (and JNA GC pins) every single frame. See [renderInto].
+    private var fboStruct: MpvOpenGLFbo? = null
+    private var flipMem: com.sun.jna.Memory? = null
+    private var renderParams: MpvRenderParams? = null
 
     /** True when [initialise] ran with render mode, so [load] defers until the render context exists. */
     private var renderModeActive = false
@@ -79,6 +88,10 @@ class MpvPlayerEngine(
      * [load] so auto-play-next, which reuses this engine, re-evaluates for the next episode.
      */
     private var rateMatchAttempted = false
+
+    /** Logged once per file, the first time playback is actually running, so a silent fall back from
+     *  hardware to software decode is visible in the logs rather than only felt as a hot CPU. */
+    private var hwdecLogged = false
 
     /**
      * Creates the mpv instance and applies the section 8 options.
@@ -210,14 +223,28 @@ class MpvPlayerEngine(
      */
     fun renderInto(fbo: Int, w: Int, h: Int, flipY: Boolean = true) {
         val ctx = renderCtx ?: return
-        val fboStruct = MpvOpenGLFbo(fbo = fbo, w = w, h = h, internal_format = 0).apply { write() }
-        val flip = com.sun.jna.Memory(4).apply { setInt(0, if (flipY) 1 else 0) }
-        val params = MpvRenderParams(
+
+        // Reuse the same native structures every frame, only updating the values. The pointers the
+        // render-param block holds stay valid because the structs behind them are never reallocated.
+        val fs = fboStruct ?: MpvOpenGLFbo().also { fboStruct = it }
+        fs.fbo = fbo
+        fs.w = w
+        fs.h = h
+        // Naming the framebuffer's real format (GL_RGBA8, matching the RGBA8 default framebuffer the
+        // AWT canvas was created with) rather than 0 stops mpv from having to guess it, which on some
+        // drivers it guesses wrong — producing banding or a washed-out picture.
+        fs.internal_format = GL_RGBA8
+        fs.write()
+
+        val fm = flipMem ?: com.sun.jna.Memory(4).also { flipMem = it }
+        fm.setInt(0, if (flipY) 1 else 0)
+
+        val params = renderParams ?: MpvRenderParams(
             listOf(
-                LibMpvRender.MPV_RENDER_PARAM_OPENGL_FBO to fboStruct.pointer,
-                LibMpvRender.MPV_RENDER_PARAM_FLIP_Y to flip,
+                LibMpvRender.MPV_RENDER_PARAM_OPENGL_FBO to fs.pointer,
+                LibMpvRender.MPV_RENDER_PARAM_FLIP_Y to fm,
             ),
-        )
+        ).also { renderParams = it }
         render.mpv_render_context_render(ctx, params.pointer)
     }
 
@@ -260,6 +287,7 @@ class MpvPlayerEngine(
 
         _state.value = PlaybackState.Buffering
         rateMatchAttempted = false
+        hwdecLogged = false
 
         // Plex needs the token and the identity headers on the stream request too, since
         // mpv fetches it itself rather than through this client's HTTP stack.
@@ -445,6 +473,15 @@ class MpvPlayerEngine(
             else -> PlaybackState.Playing
         }
 
+        if (!hwdecLogged && _state.value is PlaybackState.Playing) {
+            hwdecLogged = true
+            val hwdec = property(h, "hwdec-current")
+            System.err.println(
+                "libmpv hwdec-current=$hwdec" +
+                    if (hwdec.isNullOrBlank() || hwdec == "no") " (software decode — CPU-bound)" else "",
+            )
+        }
+
         maybeMatchDisplayRate(h)
     }
 
@@ -475,6 +512,9 @@ class MpvPlayerEngine(
     private companion object {
         const val POSITION_POLL_MS = 250L
         const val EVENT_WAIT_SECONDS = 0.5
+
+        /** GL_RGBA8, the internal format of the default framebuffer the AWT canvas creates. */
+        const val GL_RGBA8 = 0x8058
     }
 }
 
