@@ -73,6 +73,15 @@ android {
             // Null when no keystore resolved, which leaves the release build unsigned rather
             // than failing configuration for everyone who has no keystore.
             signingConfig = signingConfigs.findByName("release")
+
+            // R8: shrink and obfuscate the release. See proguard-rules.pro for the app-specific
+            // keeps (reflection, the FFmpeg extension renderer); the libraries ship the rest.
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 
