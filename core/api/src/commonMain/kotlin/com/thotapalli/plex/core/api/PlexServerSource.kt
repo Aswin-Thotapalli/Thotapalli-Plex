@@ -83,4 +83,11 @@ interface PlexServerSource {
     suspend fun scrobble(scope: ServerScope, ratingKey: String)
 
     suspend fun unscrobble(scope: ServerScope, ratingKey: String)
+
+    /**
+     * The server's `lastViewedAt` for an item, in seconds, or null if unknown/unreachable. Used to
+     * resolve offline-vs-server watch-state conflicts by recency on reconnection (§11 point 3): an
+     * offline position older than the server's must not overwrite it. Never throws.
+     */
+    suspend fun lastViewedAtSeconds(scope: ServerScope, ratingKey: String): Long? = null
 }

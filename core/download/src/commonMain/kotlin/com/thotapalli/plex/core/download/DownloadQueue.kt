@@ -9,6 +9,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * The download queue from CLAUDE.md section 11.
@@ -33,7 +35,13 @@ class DownloadQueue(
 
     private val wakeUp = Channel<Unit>(Channel.CONFLATED)
     private var worker: Job? = null
-    private var pausedByUser = mutableSetOf<String>()
+
+    // The worker coroutine and the suspend API (enqueue/pause/resume/delete) can run on different
+    // threads of the shared scope, so these two collections are guarded by [stateLock] rather than
+    // mutated bare — otherwise a pause racing the worker's paused-check corrupts the set / loses the
+    // update.
+    private val stateLock = Mutex()
+    private val pausedByUser = mutableSetOf<String>()
 
     /**
      * Consecutive transport failures per item.
@@ -43,6 +51,17 @@ class DownloadQueue(
      * the viewer.
      */
     private val failedAttempts = mutableMapOf<String, Int>()
+
+    private suspend fun isPaused(ratingKey: String): Boolean = stateLock.withLock { ratingKey in pausedByUser }
+    private suspend fun setPaused(ratingKey: String, paused: Boolean) = stateLock.withLock {
+        if (paused) pausedByUser += ratingKey else pausedByUser -= ratingKey
+    }
+    private suspend fun bumpAttempts(ratingKey: String): Int = stateLock.withLock {
+        val next = (failedAttempts[ratingKey] ?: 0) + 1
+        failedAttempts[ratingKey] = next
+        next
+    }
+    private suspend fun clearAttempts(ratingKey: String) = stateLock.withLock { failedAttempts.remove(ratingKey) }
 
     /** Starts the serial worker. Idempotent. */
     fun start() {
@@ -99,12 +118,12 @@ class DownloadQueue(
             ),
         )
         request.subtitles.forEach { store.insertSubtitle(request.ratingKey, it) }
-        pausedByUser.remove(request.ratingKey)
+        setPaused(request.ratingKey, false)
         wakeUp.trySend(Unit)
     }
 
     suspend fun pause(ratingKey: String) {
-        pausedByUser += ratingKey
+        setPaused(ratingKey, true)
         store.updateState(ratingKey, DownloadState.PAUSED)
         if (_active.value?.ratingKey == ratingKey) _active.value = null
     }
@@ -116,15 +135,15 @@ class DownloadQueue(
      * the partial file is left alone so this resumes rather than starts over.
      */
     suspend fun resume(ratingKey: String) {
-        pausedByUser -= ratingKey
-        failedAttempts.remove(ratingKey)
+        setPaused(ratingKey, false)
+        clearAttempts(ratingKey)
         store.updateState(ratingKey, DownloadState.QUEUED)
         wakeUp.trySend(Unit)
     }
 
     /** Deletes the row, the file and any sidecar subtitles. */
     suspend fun delete(ratingKey: String) {
-        pausedByUser -= ratingKey
+        setPaused(ratingKey, false)
         store.byRatingKey(ratingKey)?.let { files.delete(it.localPath) }
         store.subtitlesFor(ratingKey).forEach { files.delete(it.localPath) }
         store.deleteSubtitles(ratingKey)
@@ -133,7 +152,7 @@ class DownloadQueue(
     }
 
     private suspend fun runOne(row: DownloadRow) {
-        if (row.ratingKey in pausedByUser) {
+        if (isPaused(row.ratingKey)) {
             store.updateState(row.ratingKey, DownloadState.PAUSED)
             return
         }
@@ -154,7 +173,7 @@ class DownloadQueue(
 
         try {
             while (received < row.totalBytes) {
-                if (row.ratingKey in pausedByUser) {
+                if (isPaused(row.ratingKey)) {
                     store.updateState(row.ratingKey, DownloadState.PAUSED)
                     _active.value = null
                     return
@@ -192,7 +211,7 @@ class DownloadQueue(
 
             downloadSubtitles(row.ratingKey)
 
-            failedAttempts.remove(row.ratingKey)
+            clearAttempts(row.ratingKey)
             store.updateStateAndProgress(row.ratingKey, DownloadState.COMPLETED, onDisk)
             _active.value = null
         } catch (_: kotlinx.coroutines.CancellationException) {
@@ -206,8 +225,7 @@ class DownloadQueue(
             _active.value = null
             lastError = error
 
-            val attempts = (failedAttempts[row.ratingKey] ?: 0) + 1
-            failedAttempts[row.ratingKey] = attempts
+            val attempts = bumpAttempts(row.ratingKey)
 
             if (attempts >= MAX_ATTEMPTS) {
                 // Stop retrying and let the viewer see it. The bytes stay on disk, so

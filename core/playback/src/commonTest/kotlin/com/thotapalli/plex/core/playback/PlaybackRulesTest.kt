@@ -154,9 +154,15 @@ class TimelineReporterTest {
         reporter.startItem("k")
         reporter.onTick("k", TimelineState.PLAYING, 0, duration)
 
+        // A pause is a discrete event, reported through onImmediate rather than the tick path.
+        // onTick is now purely interval-gated and is only fed while playing, so a paused tick must
+        // NOT report — that special case turned every sub-second paused/buffering tick into a
+        // server write. See TimelineReporter.onTick.
         now = 1_000
-        val action = reporter.onTick("k", TimelineState.PAUSED, 1_000, duration)
+        assertEquals(TimelineAction.SKIPPED, reporter.onTick("k", TimelineState.PAUSED, 1_000, duration))
 
+        now = 1_500
+        val action = reporter.onImmediate("k", TimelineState.PAUSED, 1_500, duration)
         assertEquals(TimelineAction.SENT, action)
         assertEquals(TimelineState.PAUSED, sink.timelines.last().second)
     }
@@ -269,14 +275,11 @@ class MarkerControllerTest {
     }
 
     @Test
-    fun creditsSkipAutomaticallyWhenThereIsANextEpisode() {
-        assertTrue(controller(hasNext = true).shouldAutoSkipCredits(2_620_000))
-    }
-
-    @Test
-    fun theLastEpisodeOfAShowPlaysItsCreditsOut() {
-        // Nothing to skip into, so skipping would just end playback early.
-        assertFalse(controller(hasNext = false).shouldAutoSkipCredits(2_620_000))
+    fun theSkipCreditsButtonShowsWhileTheCreditsMarkerIsActive() {
+        // Credits are skipped manually via the Skip Credits button (never auto-skipped), so the
+        // button is offered while the position is inside the credits marker.
+        assertTrue(controller(hasNext = true).showSkipCredits(2_620_000))
+        assertFalse(controller(hasNext = true).showSkipCredits(2_500_000))
     }
 
     @Test

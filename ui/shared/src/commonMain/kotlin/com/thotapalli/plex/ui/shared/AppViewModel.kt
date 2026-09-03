@@ -184,19 +184,27 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             val sid = container.identity.newSessionIdentifier()
             runCatching {
                 container.offlineTimeline.replay { row ->
-                    runCatching {
-                        container.serverApi.timeline(
-                            scope = server.scope,
-                            ratingKey = row.ratingKey,
-                            state = com.thotapalli.plex.core.api.TimelineState.STOPPED,
-                            positionMs = row.positionMs,
-                            durationMs = row.durationMs,
-                            sessionIdentifier = sid,
+                    // Recency conflict resolution (§11 point 3): if the server saw this item more
+                    // recently than we recorded the offline position, the server's position wins and
+                    // the offline one is dropped rather than dragging it backwards across devices.
+                    val serverLastViewed = container.serverApi.lastViewedAtSeconds(server.scope, row.ratingKey)
+                    if (!container.offlineTimeline.localWins(row.recordedAtMs, serverLastViewed)) {
+                        com.thotapalli.plex.core.download.ReplayOutcome.SERVER_IS_NEWER
+                    } else {
+                        runCatching {
+                            container.serverApi.timeline(
+                                scope = server.scope,
+                                ratingKey = row.ratingKey,
+                                state = com.thotapalli.plex.core.api.TimelineState.STOPPED,
+                                positionMs = row.positionMs,
+                                durationMs = row.durationMs,
+                                sessionIdentifier = sid,
+                            )
+                        }.fold(
+                            onSuccess = { com.thotapalli.plex.core.download.ReplayOutcome.ACCEPTED },
+                            onFailure = { com.thotapalli.plex.core.download.ReplayOutcome.FAILED },
                         )
-                    }.fold(
-                        onSuccess = { com.thotapalli.plex.core.download.ReplayOutcome.ACCEPTED },
-                        onFailure = { com.thotapalli.plex.core.download.ReplayOutcome.FAILED },
-                    )
+                    }
                 }
             }
         }

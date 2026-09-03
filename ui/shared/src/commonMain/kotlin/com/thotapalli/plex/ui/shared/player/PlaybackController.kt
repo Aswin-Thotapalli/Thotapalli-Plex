@@ -101,6 +101,17 @@ class PlaybackController(
     private var chipJob: Job? = null
     private var sleepTimerJob: Job? = null
 
+    /** The engine-observing collectors, cancelled before [engine] is released so a post-release state
+     *  emission can't drive [handleFailure] against a dead engine. */
+    private val engineJobs = mutableListOf<Job>()
+
+    /** Once true, no further loads/failure-recovery run — the engine is being torn down. */
+    private var released = false
+
+    /** One-shot latch so an episode advance fires exactly once, even when the auto-play countdown and
+     *  the engine's Ended event both request it. Cleared per item in [start]. */
+    private var advancing = false
+
     /** The video bitrate cap for the chosen quality (§11). Null is "Original" / direct play. */
     private var selectedMaxVideoBitrateKbps: Int? = null
 
@@ -152,6 +163,7 @@ class PlaybackController(
             stickySubtitleOff = false
         }
         stickyApplied = false
+        advancing = false
         reporter.startItem(item.ratingKey)
 
         markers = MarkerController(
@@ -275,8 +287,9 @@ class PlaybackController(
     // --- engine observation ---------------------------------------------------------------
 
     private fun observeEngine() {
-        scope.launch {
+        engineJobs += scope.launch {
             engine.state.collect { playbackState ->
+                if (released) return@collect
                 _state.update { it.copy(playbackState = playbackState) }
 
                 if (playbackState is PlaybackState.Failed) {
@@ -288,13 +301,13 @@ class PlaybackController(
             }
         }
 
-        scope.launch {
+        engineJobs += scope.launch {
             engine.positionMs.collect { position ->
                 _state.update { it.copy(positionMs = position) }
             }
         }
 
-        scope.launch {
+        engineJobs += scope.launch {
             engine.tracks.collect { tracks ->
                 _state.update { it.copy(audioTracks = tracks.audio, subtitleTracks = tracks.subtitle) }
                 applyStickyTracks(tracks)
@@ -335,6 +348,7 @@ class PlaybackController(
      * ends the chain and surfaces as an error instead.
      */
     private suspend fun handleFailure(failed: PlaybackState.Failed) {
+        if (released) return
         val next = fallback.next(failed.reason)
         if (next == null) {
             // Nothing left to try — most often the server or the internet dropped mid-stream. Surface
@@ -355,8 +369,19 @@ class PlaybackController(
         val position = _state.value.positionMs
 
         if (next == PlaybackFallbackChain.Attempt.DIRECT_SECONDARY) {
-            onRequestSecondaryEngine?.invoke()
-            return
+            val requestSecondary = onRequestSecondaryEngine
+            if (requestSecondary != null) {
+                requestSecondary()
+                return
+            }
+            // No secondary engine is wired on this target: don't dead-end on the secondary attempt —
+            // advance the chain to the transcode fallback instead. (In practice the secondary attempt
+            // only exists on Android phone/tablet, where the callback is always present.)
+            if (fallback.next(failed.reason) == null) {
+                engine.pause()
+                _state.update { it.copy(errorMessage = "Playback stopped. Go back to watch a download offline.") }
+                return
+            }
         }
 
         loadCurrentAttempt(position)
@@ -406,12 +431,16 @@ class PlaybackController(
         val snapshot = _state.value
         val position = snapshot.positionMs
 
-        reporter.onTick(
-            ratingKey = item.ratingKey,
-            state = if (snapshot.isPlaying) TimelineState.PLAYING else TimelineState.PAUSED,
-            positionMs = position,
-            durationMs = snapshot.durationMs,
-        )
+        // Only report while actually playing. Pause/seek/stop report through onImmediate/onStop, so a
+        // periodic report while paused or buffering would be a duplicate flood. See §5 and onTick.
+        if (snapshot.isPlaying) {
+            reporter.onTick(
+                ratingKey = item.ratingKey,
+                state = TimelineState.PLAYING,
+                positionMs = position,
+                durationMs = snapshot.durationMs,
+            )
+        }
 
         // Credits are never skipped automatically — the viewer chooses via the Skip Credits button.
         val showPrompt = markers.showNextEpisodePrompt(position)
@@ -441,7 +470,11 @@ class PlaybackController(
     }
 
     private fun playNext() {
+        if (advancing) return
         val next = nextEpisode ?: return
+        // Latch: the auto-play countdown and the engine's Ended event can both land near the true end;
+        // this makes the advance fire exactly once. Cleared when the next item's start() runs.
+        advancing = true
         countdown.reset()
         onPlayNextEpisode?.invoke(next)
     }
@@ -665,6 +698,11 @@ class PlaybackController(
      * See CLAUDE.md section 5.
      */
     suspend fun stopAndRelease() {
+        // Stop reacting to the engine before releasing it, so a state emission during teardown can't
+        // drive handleFailure()/loadCurrentAttempt() against a released engine (use-after-release).
+        released = true
+        engineJobs.forEach { it.cancel() }
+        engineJobs.clear()
         tickJob?.cancel()
         chipJob?.cancel()
         sleepTimerJob?.cancel()

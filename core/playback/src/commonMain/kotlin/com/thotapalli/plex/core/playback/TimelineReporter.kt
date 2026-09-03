@@ -52,13 +52,14 @@ class TimelineReporter(
         }
         if (scrobbled) return TimelineAction.SUPPRESSED
 
-        val immediate = state != TimelineState.PLAYING
         val lastSent = lastSentAtMs
-        // The first report of an item always goes, because playback has just started and
-        // the interval has nothing to measure from.
+        // Purely interval-gated: one report per REPORT_INTERVAL_MS. The first report of an item
+        // always goes (nothing to measure the interval from yet). Discrete play/pause/seek/stop
+        // events report separately through onImmediate/onStop, so this must NOT special-case a
+        // non-playing state — doing so turned every 500 ms tick while paused or buffering into a
+        // report, flooding the server (and the local cache, and the offline queue). See §5.
         val due = lastSent == null || nowMs() - lastSent >= REPORT_INTERVAL_MS
-
-        if (!immediate && !due) return TimelineAction.SKIPPED
+        if (!due) return TimelineAction.SKIPPED
 
         lastSentAtMs = nowMs()
         sink.timeline(ratingKey, state, positionMs, durationMs)
@@ -87,7 +88,12 @@ class TimelineReporter(
      * scrobble suppression exists to stop position updates, not the end of the session.
      */
     suspend fun onStop(ratingKey: String, positionMs: Long, durationMs: Long) {
-        sink.timeline(ratingKey, TimelineState.STOPPED, positionMs, durationMs)
+        // If this item was already scrobbled (watched), report the stop at the full duration rather
+        // than the live position. Otherwise seeking backward below the threshold and then stopping
+        // would send an older position and revive a resume point on an item the server already marked
+        // watched — the exact regression the scrobble suppression exists to prevent.
+        val reported = if (scrobbled && ratingKey == currentRatingKey && durationMs > 0) durationMs else positionMs
+        sink.timeline(ratingKey, TimelineState.STOPPED, reported, durationMs)
     }
 
     companion object {

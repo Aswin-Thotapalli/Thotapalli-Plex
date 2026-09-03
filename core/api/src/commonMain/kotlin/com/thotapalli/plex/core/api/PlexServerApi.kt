@@ -130,6 +130,14 @@ class PlexServerApi(
             .mediaContainer.metadata.firstOrNull()?.toMediaDetail()
     }
 
+    /** The item's server-side lastViewedAt (seconds), for offline recency resolution. Never throws. */
+    override suspend fun lastViewedAtSeconds(scope: ServerScope, ratingKey: String): Long? =
+        runCatching {
+            client.get("${scope.baseUri}/library/metadata/$ratingKey") { scope.apply(this) }
+                .body<MediaContainerResponse<MetadataContainer>>()
+                .mediaContainer.metadata.firstOrNull()?.lastViewedAt
+        }.getOrNull()
+
     /**
      * Ask the server whether this part can be direct-played, sending the client's capability
      * profile so the server judges against what this client can actually decode. See
