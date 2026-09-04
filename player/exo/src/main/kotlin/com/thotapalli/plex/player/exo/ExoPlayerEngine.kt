@@ -177,9 +177,19 @@ class ExoPlayerEngine(
     @androidx.annotation.OptIn(ExperimentalApi::class)
     private fun buildPlayer(): ExoPlayer {
         val renderers = DefaultRenderersFactory(context)
-            // The bundled FFmpeg decoder handles audio formats the device decoder rejects,
-            // which avoids a server transcode triggered by audio alone.
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER)
+            // EXTENSION_RENDERER_MODE_ON, not PREFER — a deliberate revisit of CLAUDE.md §8 in service
+            // of §18.3 ("passthrough where the device supports it") and the best-audio goal.
+            //
+            // PREFER puts the bundled FFmpeg audio renderer FIRST, so Dolby/DTS are always DECODED to
+            // PCM and bitstream passthrough never happens — a home-theatre receiver never receives the
+            // Atmos/DTS-HD object or lossless stream. ON puts the platform MediaCodec audio renderer
+            // first, which (via DefaultAudioSink's device AudioCapabilities) passes those formats
+            // through to an AVR that reports the capability and decodes on a device — a phone speaker —
+            // that does not. FFmpeg stays as the fallback for anything the platform rejects, so the §8
+            // goal (audio never forces a server transcode) is fully preserved, and decoder fallback
+            // covers a buggy platform decoder. Net: passthrough where it matters, no regression where
+            // it does not. Needs an AVR to confirm on real hardware; one line reverts it to PREFER.
+            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             .setEnableDecoderFallback(true)
 
         // Tuned for direct play of large, high-bitrate files over the LAN or a relay rather than for
