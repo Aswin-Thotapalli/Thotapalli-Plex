@@ -182,7 +182,11 @@ class PlaybackController(
             hasNextEpisode = nextEpisode != null,
             controlsVisible = true,
             trickplayUrlAt = { positionMs ->
-                partId?.takeIf { detail?.primaryPart != null }?.let { urls.trickplay(it, positionMs) }
+                // Only offer a preview URL when the server actually has trickplay thumbnails for this
+                // part; otherwise the endpoint returns nothing and the overlay would show an empty
+                // card. The overlay shows the scrubbed time alone in that case. See CLAUDE.md §12.
+                partId?.takeIf { detail?.primaryPart?.hasTrickplay == true }
+                    ?.let { urls.trickplay(it, positionMs) }
             },
             // Wave 2: reset speed, seed chapters, subtitle appearance, the quality ladder and
             // a minimal Up Next queue for the new item.

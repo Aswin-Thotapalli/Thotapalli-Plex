@@ -187,6 +187,7 @@ fun PartDto.toMediaPart(fallbackContainer: String? = null) = MediaPart(
     videoStreams = stream.filter { it.streamType == STREAM_VIDEO }.map { it.toVideoStream() },
     audioStreams = stream.filter { it.streamType == STREAM_AUDIO }.map { it.toAudioStream() },
     subtitleStreams = stream.filter { it.streamType == STREAM_SUBTITLE }.map { it.toSubtitleStream() },
+    hasTrickplay = hasTrickplay,
 )
 
 fun StreamDto.toVideoStream() = VideoStream(

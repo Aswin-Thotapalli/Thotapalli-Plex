@@ -10,6 +10,12 @@ data class MediaPart(
     val videoStreams: List<VideoStream>,
     val audioStreams: List<AudioStream>,
     val subtitleStreams: List<SubtitleStream>,
+    /**
+     * Whether the server has generated trickplay preview thumbnails for this part. When false the
+     * seek-preview endpoint returns nothing, so the overlay shows the scrubbed time alone rather than
+     * an empty thumbnail card. Off unless the server reports an "sd" index. See CLAUDE.md section 12.
+     */
+    val hasTrickplay: Boolean = false,
 ) {
     /**
      * The content frame rate, which drives the refresh rate match in CLAUDE.md section 9.

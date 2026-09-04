@@ -976,14 +976,17 @@ private fun TrickplayPreview(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(Spacing.xxs),
     ) {
-        Box(
-            Modifier
-                .width(PREVIEW_WIDTH)
-                .aspectRatio(16f / 9f)
-                // A glass-framed card above the handle. See CLAUDE.md section 12.
-                .liquidGlass(shape = Radius.card),
-        ) {
-            if (url != null) {
+        // Only draw the thumbnail card when the server actually has a preview image for this offset.
+        // With no trickplay thumbnails, an empty glass box above the handle reads as a broken preview,
+        // so the scrubbed time below stands alone instead. See CLAUDE.md section 12.
+        if (url != null) {
+            Box(
+                Modifier
+                    .width(PREVIEW_WIDTH)
+                    .aspectRatio(16f / 9f)
+                    // A glass-framed card above the handle. See CLAUDE.md section 12.
+                    .liquidGlass(shape = Radius.card),
+            ) {
                 Artwork(
                     url = url,
                     contentDescription = null,
