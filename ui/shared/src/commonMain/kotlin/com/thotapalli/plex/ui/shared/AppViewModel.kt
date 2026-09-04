@@ -111,6 +111,13 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
      */
     fun restoreLocation(libraryKey: String?, detailRatingKey: String?) {
         if (libraryKey == null && detailRatingKey == null) return
+        // Only restore into a genuinely fresh view model — a real process death. A configuration-change
+        // recreation (rotation, a window resize on a tablet) keeps the SAME view model, whose
+        // navigation is already intact; re-running the restore there would re-open the library/detail
+        // and throw the viewer back to an earlier section/episode. A fresh view model is still at
+        // STARTING when the activity calls this (start() runs later, from PlexApp); a survivor is past
+        // it. This check is synchronous, before the launch, so it reflects the state at call time.
+        if (_state.value.phase != AppPhase.STARTING) return
         viewModelScope.launch {
             // Wait for READY, and — when a library is being restored — until the libraries have
             // actually loaded. applyTarget flips phase to READY before the separate refreshHome
@@ -1172,12 +1179,20 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
         viewModelScope.launch {
             runCatching { container.session.onNetworkChanged() }
             if (_state.value.phase == AppPhase.READY || _state.value.phase == AppPhase.ERROR) {
-                // Re-probe done; now repopulate whatever the viewer is looking at so a dropped-then-
-                // restored connection recovers on its own, with no app restart (per request). Home
-                // always reloads; the open library and detail reload too so their content returns.
+                // Re-probe done. Recover ONLY content that failed to load while the connection was
+                // down — never re-open a populated screen. Re-opening rebuilds the library/detail from
+                // scratch (openDetail recomputes the selected season/episode to defaults, a library
+                // reload drops the open collection), which throws the viewer back to an earlier
+                // section/episode on every network change. A populated screen is still valid after a
+                // reconnect and is left exactly as it is; the repository refreshes it in the background
+                // on the next natural interaction. Home carries no fragile selection, so it refreshes.
                 loadHome()
-                _state.value.library?.let { loadLibraryContents(it.library, it.unwatchedOnly) }
-                _state.value.detail?.item?.let { openDetail(it) }
+                _state.value.library
+                    ?.takeIf { it.items.isEmpty() && it.collections.isEmpty() }
+                    ?.let { loadLibraryContents(it.library, it.unwatchedOnly) }
+                _state.value.detail
+                    ?.takeIf { it.detail == null && it.seasons.isEmpty() && it.episodes.isEmpty() }
+                    ?.item?.let { openDetail(it) }
             }
             // Signal any active player to retry from its last position if it had stalled/failed.
             _networkRegained.tryEmit(Unit)
