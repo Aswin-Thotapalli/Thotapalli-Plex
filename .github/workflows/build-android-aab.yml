@@ -119,4 +119,26 @@ jobs:
           name: android-aab
           path: artefacts/*.aab
           if-no-files-found: error
-          retention-days: 7
+          # 90 days (the plan maximum) so a bundle is still there weeks after a release is cut,
+          # rather than vanishing after a week before it reaches the Play Console.
+          retention-days: 90
+
+      # The bundles are workflow artefacts (Play distributes them, not GitHub Releases), which live
+      # on THIS run's page rather than the Releases page. Spell out exactly where to click, so the
+      # .aab is never something to hunt for.
+      - name: Where to download the AAB
+        if: always()
+        run: |
+          {
+            echo "## Android App Bundles ready to upload to Play"
+            echo ""
+            echo "Scroll to the **Artifacts** section at the bottom of this run's summary and download **android-aab**:"
+            echo ""
+            echo "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo ""
+            echo "It contains:"
+            echo "- \`thotapalli-plex-mobile.aab\` — upload to the Play Console (phone & tablet)"
+            echo "- \`thotapalli-plex-tv.aab\` — upload to the Play Console (Android TV)"
+            echo ""
+            echo "Play versionCode for this run: \`${{ steps.versioncode.outputs.epoch }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
