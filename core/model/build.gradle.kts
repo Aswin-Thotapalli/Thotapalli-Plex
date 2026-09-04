@@ -16,4 +16,11 @@ kotlin {
 
     jvm()
 
+    sourceSets {
+        commonMain.dependencies {
+            // For the Diagnostics recorder's observable event flow. core:model stays otherwise
+            // dependency-free; coroutines-core is a foundational, platform-neutral primitive.
+            api(libs.coroutines.core)
+        }
+    }
 }

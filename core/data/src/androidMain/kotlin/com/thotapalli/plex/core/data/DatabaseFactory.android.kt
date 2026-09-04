@@ -14,6 +14,10 @@ actual class DatabaseDriverFactory(private val context: Context) {
         // SQLite enables WAL by default; onOpen adds busy_timeout + foreign_keys and stamps the epoch.
         val dbFile = context.applicationContext.getDatabasePath(PLEX_DATABASE_NAME)
         if (dbFile.exists() && storedEpoch(dbFile) != SCHEMA_EPOCH) {
+            com.thotapalli.plex.core.model.Diagnostics.record(
+                com.thotapalli.plex.core.model.DiagnosticCategory.CACHE,
+                "Cache schema changed; rebuilding the local database",
+            )
             runCatching { SQLiteDatabase.deleteDatabase(dbFile) }
         }
 

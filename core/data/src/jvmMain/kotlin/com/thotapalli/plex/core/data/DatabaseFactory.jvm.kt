@@ -28,6 +28,10 @@ actual class DatabaseDriverFactory(
         // file (and its WAL sidecars) and start fresh, rather than opening an older schema and failing
         // on a missing column. See SCHEMA_EPOCH.
         if (Files.exists(databaseFile) && storedEpoch(databaseFile) != SCHEMA_EPOCH) {
+            com.thotapalli.plex.core.model.Diagnostics.record(
+                com.thotapalli.plex.core.model.DiagnosticCategory.CACHE,
+                "Cache schema changed; rebuilding the local database",
+            )
             deleteWithSidecars(databaseFile)
         }
 

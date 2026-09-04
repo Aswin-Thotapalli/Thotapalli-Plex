@@ -70,6 +70,12 @@ class AppContainer(
     private val updateManifestUrl: String? = null,
 ) {
 
+    // Give the diagnostics recorder this app's clock before anything can record — the cache rebuild
+    // in createPlexDatabase below is one of the first things that might. See Diagnostics.
+    init {
+        com.thotapalli.plex.core.model.Diagnostics.clock = nowMs
+    }
+
     val http: PlexHttp = PlexHttp.create()
 
     val identity = IdentityHeaderProvider(keyValueStore, device)

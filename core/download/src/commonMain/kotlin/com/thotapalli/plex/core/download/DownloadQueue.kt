@@ -230,6 +230,10 @@ class DownloadQueue(
             if (attempts >= MAX_ATTEMPTS) {
                 // Stop retrying and let the viewer see it. The bytes stay on disk, so
                 // resume() picks up where this left off rather than starting again.
+                com.thotapalli.plex.core.model.Diagnostics.record(
+                    com.thotapalli.plex.core.model.DiagnosticCategory.DOWNLOAD,
+                    "Download failed after $attempts attempts (${row.ratingKey}): ${error.message ?: "unknown error"}",
+                )
                 store.updateState(row.ratingKey, DownloadState.FAILED)
             } else {
                 store.updateState(row.ratingKey, DownloadState.QUEUED)

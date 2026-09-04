@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,6 +34,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -44,6 +47,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.thotapalli.plex.core.model.Diagnostics
 import com.thotapalli.plex.core.model.PlexServer
 import com.thotapalli.plex.core.model.ServerUpdate
 import com.thotapalli.plex.ui.design.GlassRole
@@ -306,6 +310,13 @@ fun SettingsScreen(
                 }
             }
 
+            // Diagnostics: the in-memory event log for this no-telemetry app. See Diagnostics.
+            item {
+                SettingsSection("Diagnostics") {
+                    SettingsCard { DiagnosticsBody() }
+                }
+            }
+
             // A single non-blocking notice for a newer client build. See CLAUDE.md section 17.
             state.updateAvailable?.let { update ->
                 item {
@@ -541,6 +552,11 @@ private fun WideSettings(
                 }
             }
 
+            // Diagnostics: the in-memory event log for this no-telemetry app. See Diagnostics.
+            item {
+                GroupedSection("Diagnostics") { DiagnosticsBody() }
+            }
+
             // A single non-blocking notice for a newer client build, in the About/footer area.
             // See CLAUDE.md section 17.
             state.updateAvailable?.let { update ->
@@ -650,6 +666,60 @@ private fun VersionFooter(state: SettingsScreenState) {
         modifier = Modifier.fillMaxWidth().padding(top = Spacing.sm, start = Spacing.xs),
     )
 }
+
+/**
+ * The Diagnostics section body (rows only; the caller supplies the card).
+ *
+ * A live view of the in-memory [Diagnostics] log, for an app that ships no telemetry: the viewer can
+ * see and copy what has gone wrong this session — connection choices, playback fallbacks, cache
+ * rebuilds, download failures — without anything being reported off-device. Reads the process-wide
+ * singleton directly, so it needs no view-model plumbing. See Diagnostics.
+ */
+@Composable
+private fun DiagnosticsBody() {
+    val events by Diagnostics.events.collectAsState()
+    val clipboard = LocalClipboardManager.current
+    val colours = PlexTheme.colours
+
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(Spacing.md),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            PlexText(
+                text = if (events.isEmpty()) {
+                    "No events this session"
+                } else {
+                    "${events.size} event${if (events.size == 1) "" else "s"} this session"
+                },
+                style = PlexTheme.type.label,
+                colour = colours.textSecondary,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
+                TextChip(
+                    label = "Copy",
+                    selected = false,
+                    onClick = { clipboard.setText(AnnotatedString(Diagnostics.exportText())) },
+                )
+                TextChip(label = "Clear", selected = false, onClick = { Diagnostics.clear() })
+            }
+        }
+        // Newest first, capped so the section stays compact; Copy exports the full log.
+        events.asReversed().take(DIAGNOSTICS_SHOWN).forEach { event ->
+            PlexText(
+                text = "${event.category.name}  ${event.message}",
+                style = PlexTheme.type.caption,
+                colour = colours.textSecondary,
+            )
+        }
+    }
+}
+
+private const val DIAGNOSTICS_SHOWN = 12
 
 /** The human label for a stored language code, falling back to the raw code when unknown. */
 private fun languageLabel(code: String): String =

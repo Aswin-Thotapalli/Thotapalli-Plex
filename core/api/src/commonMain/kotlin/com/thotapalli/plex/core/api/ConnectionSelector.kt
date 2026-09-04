@@ -1,5 +1,7 @@
 package com.thotapalli.plex.core.api
 
+import com.thotapalli.plex.core.model.DiagnosticCategory
+import com.thotapalli.plex.core.model.Diagnostics
 import com.thotapalli.plex.core.model.PlexServer
 import com.thotapalli.plex.core.model.SelectedConnection
 import com.thotapalli.plex.core.model.ServerConnection
@@ -81,6 +83,19 @@ class ConnectionSelector(
             probeJobs.forEach { it.cancel() }
             closer.cancel()
             results.cancel()
+        }
+
+        if (winner == null) {
+            Diagnostics.record(
+                DiagnosticCategory.CONNECTION,
+                "No connection answered for ${server.name} (${server.connections.size} tried)",
+            )
+        } else {
+            val kind = if (winner.connection.local) "local" else if (winner.connection.relay) "relay" else "remote"
+            Diagnostics.record(
+                DiagnosticCategory.CONNECTION,
+                "Using $kind connection for ${server.name} (${winner.roundTripMs} ms)",
+            )
         }
 
         winner?.let {

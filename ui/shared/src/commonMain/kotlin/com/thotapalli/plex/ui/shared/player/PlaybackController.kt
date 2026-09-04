@@ -350,6 +350,11 @@ class PlaybackController(
     private suspend fun handleFailure(failed: PlaybackState.Failed) {
         if (released) return
         val next = fallback.next(failed.reason)
+        com.thotapalli.plex.core.model.Diagnostics.record(
+            com.thotapalli.plex.core.model.DiagnosticCategory.PLAYBACK,
+            "Playback failure (${failed.reason})" +
+                if (next == null) " — no fallback left" else " — falling back to ${next.name}",
+        )
         if (next == null) {
             // Nothing left to try — most often the server or the internet dropped mid-stream. Surface
             // a clear message with a way out rather than freezing on a black frame or crashing (#1).
