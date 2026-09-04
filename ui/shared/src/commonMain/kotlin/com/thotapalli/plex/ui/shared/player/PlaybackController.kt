@@ -239,8 +239,18 @@ class PlaybackController(
                     true
                 }
                 val direct = if (allowed) directUri() else null
-                if (direct != null) direct to PlaybackMode.DIRECT
-                else transcodeUri(item, startAtMs) to PlaybackMode.TRANSCODE
+                if (direct != null) {
+                    direct to PlaybackMode.DIRECT
+                } else {
+                    // A server "must transcode" verdict up front, before direct play was even tried.
+                    // Record it so needless transcodes (the biggest quality-and-server-load cost for a
+                    // self-hoster) are visible rather than silent. See Diagnostics and CLAUDE.md §10.
+                    com.thotapalli.plex.core.model.Diagnostics.record(
+                        com.thotapalli.plex.core.model.DiagnosticCategory.PLAYBACK,
+                        "Server decided to transcode ${titleFor(item)} (direct play not permitted)",
+                    )
+                    transcodeUri(item, startAtMs) to PlaybackMode.TRANSCODE
+                }
             }
         }
 
