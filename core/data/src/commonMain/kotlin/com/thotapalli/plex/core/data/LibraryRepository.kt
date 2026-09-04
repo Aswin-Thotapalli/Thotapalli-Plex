@@ -401,11 +401,17 @@ class LibraryRepository(
 }
 
 /**
- * A single-slot dispatcher for all database work. Used as the default so tests get off-thread,
- * serialised access without extra wiring; production shares one instance across the repository and
- * the download/timeline stores (see AppContainer) so the desktop's single JDBC connection is never
- * touched concurrently. limitedParallelism(1) over Default keeps it off the main thread while
- * guaranteeing one DB operation at a time.
+ * The single-slot dispatcher for all database work: one process-wide instance, so every component
+ * that takes the default (the repository and the download/timeline stores) serialises against the
+ * SAME slot rather than getting its own. There is one database, so one slot is right — it keeps DB
+ * work off the main thread and guarantees exactly one operation at a time, which is what the
+ * desktop's single JDBC connection needs. AppContainer passes this same instance explicitly.
+ *
+ * It must be a shared singleton, not a fresh limitedParallelism(1) per call: two independent
+ * limiters would each admit one task, so two default-using components could touch the connection
+ * concurrently — the very race this exists to prevent.
  */
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-fun defaultDbDispatcher(): CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1)
+private val sharedDbDispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1)
+
+fun defaultDbDispatcher(): CoroutineDispatcher = sharedDbDispatcher

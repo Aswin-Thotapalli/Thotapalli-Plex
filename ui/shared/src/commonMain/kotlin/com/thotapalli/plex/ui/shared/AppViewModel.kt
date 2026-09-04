@@ -112,8 +112,14 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
     fun restoreLocation(libraryKey: String?, detailRatingKey: String?) {
         if (libraryKey == null && detailRatingKey == null) return
         viewModelScope.launch {
+            // Wait for READY, and — when a library is being restored — until the libraries have
+            // actually loaded. applyTarget flips phase to READY before the separate refreshHome
+            // coroutine populates state.libraries, so waiting on phase alone would read an empty list
+            // and never reopen the library. Bounded; a timeout just leaves the viewer on Home.
             val ready = withTimeoutOrNull(RESTORE_TIMEOUT_MS) {
-                state.first { it.phase == AppPhase.READY }
+                state.first {
+                    it.phase == AppPhase.READY && (libraryKey == null || it.libraries.isNotEmpty())
+                }
             } ?: return@launch
 
             // The library first, so the detail (if any) sits above it with the right back stack.

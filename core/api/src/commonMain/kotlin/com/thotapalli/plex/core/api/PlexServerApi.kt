@@ -116,12 +116,15 @@ class PlexServerApi(
 
             val page = container.metadata
             all += page.toMediaItems(libraryKey)
-
-            // Stop when this page came back short (the last page), when nothing came back, or when the
-            // server's totalSize says everything collected so far is the whole set.
-            val total = container.totalSize ?: container.size
             start += page.size
-            if (page.isEmpty() || page.size < PAGE_SIZE || start >= total) break
+
+            // A short or empty page is the definitive end of the list and always terminates the loop,
+            // so pagination is correct even when the server omits totalSize. totalSize, when present,
+            // additionally stops on an exactly-full final page (where the next fetch would be empty).
+            // Using container.size as a totalSize fallback would wrongly equal the page size and cut a
+            // large library off after page one.
+            val total = container.totalSize
+            if (page.isEmpty() || page.size < PAGE_SIZE || (total != null && start >= total)) break
         }
         return all
     }

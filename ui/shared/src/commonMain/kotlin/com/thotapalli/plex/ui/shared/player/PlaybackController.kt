@@ -374,14 +374,11 @@ class PlaybackController(
                 requestSecondary()
                 return
             }
-            // No secondary engine is wired on this target: don't dead-end on the secondary attempt —
-            // advance the chain to the transcode fallback instead. (In practice the secondary attempt
-            // only exists on Android phone/tablet, where the callback is always present.)
-            if (fallback.next(failed.reason) == null) {
-                engine.pause()
-                _state.update { it.copy(errorMessage = "Playback stopped. Go back to watch a download offline.") }
-                return
-            }
+            // No secondary engine is wired on this target: don't dead-end on the secondary attempt.
+            // Advance the chain once more (DIRECT_SECONDARY -> TRANSCODE, always non-null) so the load
+            // below runs the transcode fallback. In practice the secondary attempt only arises on
+            // Android phone/tablet, where the callback is always present, so this is belt-and-braces.
+            fallback.next(failed.reason)
         }
 
         loadCurrentAttempt(position)
