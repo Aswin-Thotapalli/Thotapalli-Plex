@@ -228,29 +228,18 @@ class PlaybackController(
                 transcodeUri(item, startAtMs) to PlaybackMode.TRANSCODE
 
             else -> {
-                // Online DIRECT attempt. Ask the server first (§10 decision): a false answer
-                // transcodes up front instead of burning eight seconds on a doomed direct play.
-                // A thrown decision proceeds with direct, and the failure-driven fallback in
-                // handleFailure stays as the safety net either way.
-                val pid = partId
-                val allowed = if (pid != null) {
-                    runCatching { api.canDirectPlay(serverScope, item.ratingKey, pid) }.getOrDefault(true)
-                } else {
-                    true
-                }
-                val direct = if (allowed) directUri() else null
-                if (direct != null) {
-                    direct to PlaybackMode.DIRECT
-                } else {
-                    // A server "must transcode" verdict up front, before direct play was even tried.
-                    // Record it so needless transcodes (the biggest quality-and-server-load cost for a
-                    // self-hoster) are visible rather than silent. See Diagnostics and CLAUDE.md §10.
-                    com.thotapalli.plex.core.model.Diagnostics.record(
-                        com.thotapalli.plex.core.model.DiagnosticCategory.PLAYBACK,
-                        "Server decided to transcode ${titleFor(item)} (direct play not permitted)",
-                    )
-                    transcodeUri(item, startAtMs) to PlaybackMode.TRANSCODE
-                }
+                // Online DIRECT attempt — always tried first, maximizing direct play. This client
+                // decodes far more than the server's generic decision assumes (it bundles an FFmpeg
+                // audio decoder and retries through a second engine on phone/tablet), so the server's
+                // conservative "must transcode" verdict would refuse content this client plays fine.
+                // Genuine incompatibility is caught by the 8 s no-first-frame watchdog and the
+                // failure-driven fallback in handleFailure, which then transcodes and records why.
+                // Skipping the decision round-trip also shaves it off the time-to-first-frame.
+                // Preserving the original video and offloading the server's transcoder is the whole
+                // point of a quality-first self-hosted client. See CLAUDE.md sections 8 and 10.
+                val direct = directUri()
+                if (direct != null) direct to PlaybackMode.DIRECT
+                else transcodeUri(item, startAtMs) to PlaybackMode.TRANSCODE
             }
         }
 
