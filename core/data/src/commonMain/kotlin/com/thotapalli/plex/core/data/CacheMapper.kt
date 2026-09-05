@@ -1,6 +1,7 @@
 package com.thotapalli.plex.core.data
 
-import com.thotapalli.plex.core.data.db.Media_item
+import com.thotapalli.plex.core.data.db.Continue_watching_view
+import com.thotapalli.plex.core.data.db.Media_item_view
 import com.thotapalli.plex.core.model.Episode
 import com.thotapalli.plex.core.model.Library
 import com.thotapalli.plex.core.model.LibraryKind
@@ -34,104 +35,12 @@ fun LibraryRow.toLibrary() = Library(
 )
 
 /**
- * A cached row back into a domain item.
+ * One row's worth of cached item, independent of which table it came from.
  *
- * Returns null for a kind this build does not know, which happens only when a database
- * written by a newer build is read by an older one. Dropping the row is correct: the cache
- * is never the source of truth, so the next refresh restores it.
+ * Both catalogue reads (media_item_view) and the continue-watching snapshot
+ * (continue_watching_view) land here, so the mapping to a domain item is written once and the two
+ * paths cannot drift. It is also the shape writes are built in, so a round trip is symmetrical.
  */
-fun Media_item.toMediaItem(): MediaItem? = when (runCatching { ItemKind.valueOf(kind) }.getOrNull()) {
-    ItemKind.MOVIE -> Movie(
-        ratingKey = rating_key,
-        title = title,
-        year = year?.toInt(),
-        summary = summary,
-        thumbPath = thumb_path,
-        artPath = art_path,
-        logoPath = null,
-        durationMs = duration_ms,
-        viewOffsetMs = view_offset_ms,
-        viewCount = view_count.toInt(),
-        titleSort = title_sort,
-        libraryKey = library_key,
-    )
-
-    ItemKind.SHOW -> Show(
-        ratingKey = rating_key,
-        title = title,
-        year = year?.toInt(),
-        summary = summary,
-        thumbPath = thumb_path,
-        artPath = art_path,
-        logoPath = null,
-        durationMs = duration_ms,
-        viewOffsetMs = view_offset_ms,
-        viewCount = view_count.toInt(),
-        titleSort = title_sort,
-        libraryKey = library_key,
-        childCount = child_count.toInt(),
-        leafCount = leaf_count.toInt(),
-        viewedLeafCount = viewed_leaf_count.toInt(),
-    )
-
-    ItemKind.SEASON -> Season(
-        ratingKey = rating_key,
-        title = title,
-        year = year?.toInt(),
-        summary = summary,
-        thumbPath = thumb_path,
-        artPath = art_path,
-        logoPath = null,
-        durationMs = duration_ms,
-        viewOffsetMs = view_offset_ms,
-        viewCount = view_count.toInt(),
-        showRatingKey = show_rating_key.orEmpty(),
-        showTitle = show_title.orEmpty(),
-        index = season_index?.toInt() ?: 0,
-        leafCount = leaf_count.toInt(),
-        viewedLeafCount = viewed_leaf_count.toInt(),
-    )
-
-    ItemKind.EPISODE -> Episode(
-        ratingKey = rating_key,
-        title = title,
-        year = year?.toInt(),
-        summary = summary,
-        thumbPath = thumb_path,
-        artPath = art_path,
-        logoPath = null,
-        durationMs = duration_ms,
-        viewOffsetMs = view_offset_ms,
-        viewCount = view_count.toInt(),
-        showRatingKey = show_rating_key.orEmpty(),
-        seasonRatingKey = parent_key.orEmpty(),
-        showTitle = show_title.orEmpty(),
-        seasonIndex = season_index?.toInt() ?: 0,
-        episodeIndex = episode_index?.toInt() ?: 0,
-    )
-
-    ItemKind.COLLECTION -> MediaCollection(
-        ratingKey = rating_key,
-        title = title,
-        year = year?.toInt(),
-        summary = summary,
-        thumbPath = thumb_path,
-        artPath = art_path,
-        logoPath = null,
-        durationMs = duration_ms,
-        viewOffsetMs = view_offset_ms,
-        viewCount = view_count.toInt(),
-        titleSort = title_sort,
-        libraryKey = library_key,
-        childCount = child_count.toInt(),
-    )
-
-    null -> null
-}
-
-fun List<Media_item>.toMediaItems(): List<MediaItem> = mapNotNull { it.toMediaItem() }
-
-/** Everything the media_item table needs to hold one domain item. */
 data class ItemRow(
     val ratingKey: String,
     val libraryKey: String,
@@ -155,6 +64,155 @@ data class ItemRow(
     val viewedLeafCount: Long,
     val refreshedAt: Long,
 )
+
+fun Media_item_view.toItemRow() = ItemRow(
+    ratingKey = rating_key,
+    libraryKey = library_key,
+    parentKey = parent_key,
+    kind = kind,
+    title = title,
+    titleSort = title_sort,
+    year = year,
+    summary = summary,
+    thumbPath = thumb_path,
+    artPath = art_path,
+    durationMs = duration_ms,
+    viewOffsetMs = view_offset_ms,
+    viewCount = view_count,
+    seasonIndex = season_index,
+    episodeIndex = episode_index,
+    showRatingKey = show_rating_key,
+    showTitle = show_title,
+    childCount = child_count,
+    leafCount = leaf_count,
+    viewedLeafCount = viewed_leaf_count,
+    refreshedAt = refreshed_at,
+)
+
+fun Continue_watching_view.toItemRow() = ItemRow(
+    ratingKey = rating_key,
+    libraryKey = library_key,
+    parentKey = parent_key,
+    kind = kind,
+    title = title,
+    titleSort = title_sort,
+    year = year,
+    summary = summary,
+    thumbPath = thumb_path,
+    artPath = art_path,
+    durationMs = duration_ms,
+    viewOffsetMs = view_offset_ms,
+    viewCount = view_count,
+    seasonIndex = season_index,
+    episodeIndex = episode_index,
+    showRatingKey = show_rating_key,
+    showTitle = show_title,
+    childCount = child_count,
+    leafCount = leaf_count,
+    viewedLeafCount = viewed_leaf_count,
+    refreshedAt = refreshed_at,
+)
+
+/**
+ * A cached row back into a domain item.
+ *
+ * Returns null for a kind this build does not know, which happens only when a database
+ * written by a newer build is read by an older one. Dropping the row is correct: the cache
+ * is never the source of truth, so the next refresh restores it.
+ */
+fun ItemRow.toMediaItem(): MediaItem? = when (runCatching { ItemKind.valueOf(kind) }.getOrNull()) {
+    ItemKind.MOVIE -> Movie(
+        ratingKey = ratingKey,
+        title = title,
+        year = year?.toInt(),
+        summary = summary,
+        thumbPath = thumbPath,
+        artPath = artPath,
+        logoPath = null,
+        durationMs = durationMs,
+        viewOffsetMs = viewOffsetMs,
+        viewCount = viewCount.toInt(),
+        titleSort = titleSort,
+        libraryKey = libraryKey,
+    )
+
+    ItemKind.SHOW -> Show(
+        ratingKey = ratingKey,
+        title = title,
+        year = year?.toInt(),
+        summary = summary,
+        thumbPath = thumbPath,
+        artPath = artPath,
+        logoPath = null,
+        durationMs = durationMs,
+        viewOffsetMs = viewOffsetMs,
+        viewCount = viewCount.toInt(),
+        titleSort = titleSort,
+        libraryKey = libraryKey,
+        childCount = childCount.toInt(),
+        leafCount = leafCount.toInt(),
+        viewedLeafCount = viewedLeafCount.toInt(),
+    )
+
+    ItemKind.SEASON -> Season(
+        ratingKey = ratingKey,
+        title = title,
+        year = year?.toInt(),
+        summary = summary,
+        thumbPath = thumbPath,
+        artPath = artPath,
+        logoPath = null,
+        durationMs = durationMs,
+        viewOffsetMs = viewOffsetMs,
+        viewCount = viewCount.toInt(),
+        showRatingKey = showRatingKey.orEmpty(),
+        showTitle = showTitle.orEmpty(),
+        index = seasonIndex?.toInt() ?: 0,
+        leafCount = leafCount.toInt(),
+        viewedLeafCount = viewedLeafCount.toInt(),
+    )
+
+    ItemKind.EPISODE -> Episode(
+        ratingKey = ratingKey,
+        title = title,
+        year = year?.toInt(),
+        summary = summary,
+        thumbPath = thumbPath,
+        artPath = artPath,
+        logoPath = null,
+        durationMs = durationMs,
+        viewOffsetMs = viewOffsetMs,
+        viewCount = viewCount.toInt(),
+        showRatingKey = showRatingKey.orEmpty(),
+        seasonRatingKey = parentKey.orEmpty(),
+        showTitle = showTitle.orEmpty(),
+        seasonIndex = seasonIndex?.toInt() ?: 0,
+        episodeIndex = episodeIndex?.toInt() ?: 0,
+    )
+
+    ItemKind.COLLECTION -> MediaCollection(
+        ratingKey = ratingKey,
+        title = title,
+        year = year?.toInt(),
+        summary = summary,
+        thumbPath = thumbPath,
+        artPath = artPath,
+        logoPath = null,
+        durationMs = durationMs,
+        viewOffsetMs = viewOffsetMs,
+        viewCount = viewCount.toInt(),
+        titleSort = titleSort,
+        libraryKey = libraryKey,
+        childCount = childCount.toInt(),
+    )
+
+    null -> null
+}
+
+fun List<Media_item_view>.toMediaItems(): List<MediaItem> = mapNotNull { it.toItemRow().toMediaItem() }
+
+fun List<Continue_watching_view>.toSnapshotItems(): List<MediaItem> =
+    mapNotNull { it.toItemRow().toMediaItem() }
 
 fun MediaItem.toRow(libraryKey: String, refreshedAtMs: Long): ItemRow {
     val sort = when (this) {

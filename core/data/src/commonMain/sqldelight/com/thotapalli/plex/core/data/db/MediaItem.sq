@@ -1,5 +1,13 @@
--- Cached items. Never the source of truth for anything the server also knows.
+-- The catalogue: what exists on the server. A cache, never the source of truth.
 -- See CLAUDE.md section 7.
+--
+-- ONE RULE GOVERNS THIS TABLE: it is written only by a complete set fetch — every title in a
+-- library, every season of a show, every episode of a show, every child of a collection. Nothing
+-- writes a single row here. That is what makes "rows exist for this parent" mean "a complete fetch
+-- for this parent happened", which is the whole basis on which reads trust the cache.
+--
+-- Watch state is NOT here. A resume position arrives one item at a time and would break the rule
+-- above; it lives in watch_state and is joined back in by media_item_view. See WatchState.sq.
 CREATE TABLE media_item (
   rating_key TEXT NOT NULL PRIMARY KEY,
   library_key TEXT NOT NULL,
@@ -12,8 +20,6 @@ CREATE TABLE media_item (
   thumb_path TEXT,
   art_path TEXT,
   duration_ms INTEGER NOT NULL DEFAULT 0,
-  view_offset_ms INTEGER NOT NULL DEFAULT 0,
-  view_count INTEGER NOT NULL DEFAULT 0,
   season_index INTEGER,
   episode_index INTEGER,
   show_rating_key TEXT,
@@ -26,85 +32,74 @@ CREATE TABLE media_item (
 
 -- The library-grid index carries kind (equality filter) and title_sort with the SAME collation the
 -- grid orders by (NOCASE), so one index satisfies both the WHERE and the ORDER BY — no separate sort
--- pass. The unwatched variant additionally filters view_count, kept just after kind.
-CREATE INDEX media_item_library ON media_item(library_key, kind, view_count, title_sort COLLATE NOCASE);
+-- pass.
+CREATE INDEX media_item_library ON media_item(library_key, kind, title_sort COLLATE NOCASE);
 CREATE INDEX media_item_parent  ON media_item(parent_key, season_index, episode_index);
 -- A show's episodes are read whole on every Show-detail open (next-unwatched); without this the query
 -- scans the entire table (movies, other shows, seasons included).
 CREATE INDEX media_item_show    ON media_item(show_rating_key, season_index, episode_index);
--- The offline continue-watching fallback filters view_offset_ms > 0 and orders by refreshed_at.
-CREATE INDEX media_item_in_progress ON media_item(refreshed_at) WHERE view_offset_ms > 0;
+
+-- Catalogue joined to watch state. Every read goes through this, so an item's position comes from the
+-- one place that holds positions and there is no second copy to drift. A LEFT JOIN because most of
+-- the catalogue has never been played: no row in watch_state means offset 0, watched 0.
+CREATE VIEW media_item_view AS
+SELECT
+  m.rating_key,
+  m.library_key,
+  m.parent_key,
+  m.kind,
+  m.title,
+  m.title_sort,
+  m.year,
+  m.summary,
+  m.thumb_path,
+  m.art_path,
+  m.duration_ms,
+  COALESCE(w.view_offset_ms, 0) AS view_offset_ms,
+  COALESCE(w.view_count, 0) AS view_count,
+  m.season_index,
+  m.episode_index,
+  m.show_rating_key,
+  m.show_title,
+  m.child_count,
+  m.leaf_count,
+  m.viewed_leaf_count,
+  m.refreshed_at
+FROM media_item m
+LEFT JOIN watch_state w ON w.rating_key = m.rating_key;
 
 upsert:
 INSERT OR REPLACE INTO media_item(
   rating_key, library_key, parent_key, kind, title, title_sort, year, summary,
-  thumb_path, art_path, duration_ms, view_offset_ms, view_count,
+  thumb_path, art_path, duration_ms,
   season_index, episode_index, show_rating_key, show_title,
   child_count, leaf_count, viewed_leaf_count, refreshed_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-
--- Continue-watching write-back: insert a new item fully, but on an existing row update ONLY the
--- volatile watch/display fields — never the child/leaf counts a lean hub payload would zero out. This
--- stops a Show's badge counts degrading to 0 when its on-deck representation flows through the hub.
-upsertProgress:
-INSERT INTO media_item(
-  rating_key, library_key, parent_key, kind, title, title_sort, year, summary,
-  thumb_path, art_path, duration_ms, view_offset_ms, view_count,
-  season_index, episode_index, show_rating_key, show_title,
-  child_count, leaf_count, viewed_leaf_count, refreshed_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(rating_key) DO UPDATE SET
-  view_offset_ms = excluded.view_offset_ms,
-  view_count = excluded.view_count,
-  duration_ms = excluded.duration_ms,
-  thumb_path = excluded.thumb_path,
-  art_path = excluded.art_path,
-  refreshed_at = excluded.refreshed_at;
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
 
 selectByRatingKey:
-SELECT * FROM media_item WHERE rating_key = ?;
+SELECT * FROM media_item_view WHERE rating_key = ?;
 
 -- The library grid. Sorted by title ascending, which is fixed and has no control.
 selectInLibrary:
-SELECT * FROM media_item
+SELECT * FROM media_item_view
 WHERE library_key = ? AND kind = ?
 ORDER BY title_sort COLLATE NOCASE ASC;
 
 selectUnwatchedInLibrary:
-SELECT * FROM media_item
+SELECT * FROM media_item_view
 WHERE library_key = ? AND kind = ? AND view_count = 0
 ORDER BY title_sort COLLATE NOCASE ASC;
 
 -- Seasons of a show, or episodes of a season.
 selectChildren:
-SELECT * FROM media_item
+SELECT * FROM media_item_view
 WHERE parent_key = ?
 ORDER BY season_index ASC, episode_index ASC;
 
 selectEpisodesOfShow:
-SELECT * FROM media_item
+SELECT * FROM media_item_view
 WHERE show_rating_key = ? AND kind = 'EPISODE'
 ORDER BY season_index ASC, episode_index ASC;
-
--- Continue watching, newest first, driven by the server's resume positions.
-selectInProgress:
-SELECT * FROM media_item
-WHERE view_offset_ms > 0 AND duration_ms > 0 AND view_offset_ms < duration_ms
-ORDER BY refreshed_at DESC;
-
-updateProgress:
-UPDATE media_item SET view_offset_ms = ?, view_count = ? WHERE rating_key = ?;
-
--- Live playback progress: move the resume point without touching the watch count, so a partly
--- watched item reflects where the viewer actually got to (before the next server refresh) and the
--- detail screen's "next unwatched" and the library badges stay honest. See the timeline reporter.
-updateOffset:
-UPDATE media_item SET view_offset_ms = ? WHERE rating_key = ?;
-
--- Past the watched threshold: clear the resume point and mark the item watched, without lowering a
--- real rewatch count. This is what stops "Play" resuming an episode that was already finished.
-markWatchedLocal:
-UPDATE media_item SET view_offset_ms = 0, view_count = MAX(view_count, 1) WHERE rating_key = ?;
 
 deleteInLibrary:
 DELETE FROM media_item WHERE library_key = ? AND kind = ?;
@@ -122,7 +117,7 @@ newestRefreshOfShowEpisodes:
 SELECT MAX(refreshed_at) FROM media_item WHERE show_rating_key = ? AND kind = 'EPISODE';
 
 search:
-SELECT * FROM media_item
+SELECT * FROM media_item_view
 WHERE title LIKE '%' || ? || '%'
 ORDER BY title_sort COLLATE NOCASE ASC
 LIMIT ?;

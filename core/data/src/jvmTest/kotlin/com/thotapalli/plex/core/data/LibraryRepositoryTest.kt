@@ -314,4 +314,110 @@ class LibraryRepositoryTest {
         val contents = repository.libraryContents(scope, filmsLibrary)
         assertEquals(listOf("1"), contents.map { it.ratingKey })
     }
+
+    // --- continue watching must not be able to reach the catalogue ------------------------
+    //
+    // These pin the separation itself rather than any one symptom of losing it. Watch state is a
+    // point fact keyed by rating key; the catalogue is only ever written as a complete set. While
+    // both lived in media_item, the hub's single on-deck episode was stored as a catalogue row and
+    // was then indistinguishable from a browsed one — so a show mid-watch showed exactly one episode
+    // and every other season came up empty.
+
+    @Test
+    fun oneOnDeckEpisodeCannotStandInForAShowsWholeEpisodeList() = runTest {
+        // Part way through season 2, exactly as the hub would report it.
+        val onDeckEpisode = episode("s2e2", "Halfway", seasonIndex = 2, episodeIndex = 2, viewOffsetMs = 600_000)
+        val everyEpisode = (1..3).flatMap { season ->
+            (1..5).map { number -> episode("s${season}e$number", "S${season}E$number", season, number) }
+        }
+        val source = CountingServerSource(onDeck = listOf(onDeckEpisode), episodes = everyEpisode)
+        val (repository, _) = fixture(source)
+
+        // Home loads first and puts the hub's answer in the cache.
+        repository.continueWatching(scope)
+
+        // leafCount 0 is the show synthesised from an episode, the case with no server total to
+        // check against. The episode list must still be complete, because nothing partial can have
+        // reached the catalogue in the first place.
+        val listed = repository.episodes(scope, show("show-1", "A Show", leafCount = 0))
+
+        assertEquals(15, listed.size, "the whole show, not the one episode the hub mentioned")
+        assertEquals(listOf(1, 2, 3), listed.map { it.seasonIndex }.distinct())
+    }
+
+    @Test
+    fun continueWatchingWritesNoCatalogueRowAtAll() = runTest {
+        val source = CountingServerSource(
+            onDeck = listOf(episode("s2e2", "Halfway", seasonIndex = 2, episodeIndex = 2)),
+        )
+        val (repository, database) = fixture(source)
+
+        repository.continueWatching(scope)
+
+        assertEquals(
+            0L,
+            database.mediaItemQueries.countInLibrary("", ItemKind.EPISODE.name).executeAsOne(),
+            "the hub may record where a viewer got to, never what the library contains",
+        )
+        assertNull(repository.cachedItem("s2e2"), "no catalogue row exists for a hub-only item")
+    }
+
+    @Test
+    fun theHubsResumePositionStillReachesTheBrowsedEpisodeList() = runTest {
+        // The half of the relationship that is wanted: one position, one place, visible everywhere.
+        val source = CountingServerSource(
+            onDeck = listOf(episode("s1e2", "Halfway", episodeIndex = 2, viewOffsetMs = 600_000)),
+            episodes = listOf(
+                episode("s1e1", "First", episodeIndex = 1),
+                episode("s1e2", "Halfway", episodeIndex = 2),
+                episode("s1e3", "Third", episodeIndex = 3),
+            ),
+        )
+        val (repository, _) = fixture(source)
+
+        // Browse the show first, then let Home refresh the hub — the ordering that actually happens,
+        // and the one where a position has to cross from one feature to the other.
+        repository.episodes(scope, show("show-1", "A Show"))
+        repository.continueWatching(scope)
+
+        // Served entirely from the cache now, so the position can only have arrived through the
+        // join against watch_state. Nothing rewrote the episode's catalogue row.
+        val listed = repository.episodes(scope, show("show-1", "A Show"))
+
+        assertEquals(3, listed.size)
+        assertEquals(600_000L, listed.single { it.ratingKey == "s1e2" }.viewOffsetMs)
+        assertEquals("Halfway", assertNotNull(repository.nextUnwatchedEpisode(scope, show("show-1", "A Show"))).title)
+    }
+
+    @Test
+    fun offlineContinueWatchingStillListsItemsTheCatalogueNeverHeld() = runTest {
+        val source = CountingServerSource(
+            onDeck = listOf(episode("s2e2", "Halfway", seasonIndex = 2, episodeIndex = 2, viewOffsetMs = 600_000)),
+        )
+        val database = createPlexDatabase(DatabaseDriverFactory.inMemory())
+        LibraryRepository(source, database, TestScope(), { 1L }).continueWatching(scope)
+
+        val offline = LibraryRepository(OfflineServerSource(), database, TestScope(), { 2L })
+        val cached = offline.continueWatching(scope)
+
+        assertEquals(listOf("s2e2"), cached.map { it.ratingKey })
+        assertEquals(600_000L, cached.single().viewOffsetMs)
+    }
+
+    @Test
+    fun aRefreshedHubDropsWhatIsNoLongerOnDeck() = runTest {
+        val source = CountingServerSource(
+            onDeck = listOf(movie("1", "Started"), movie("2", "Also started")),
+        )
+        val (repository, database) = fixture(source)
+        repository.continueWatching(scope)
+
+        // One of them was finished on another device.
+        source.onDeck = listOf(movie("2", "Also started"))
+        repository.continueWatching(scope)
+
+        // Read the snapshot back through the offline path rather than the live one.
+        val offline = LibraryRepository(OfflineServerSource(), database, TestScope(), { 3L })
+        assertEquals(listOf("2"), offline.continueWatching(scope).map { it.ratingKey })
+    }
 }

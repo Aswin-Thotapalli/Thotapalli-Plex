@@ -29,4 +29,4 @@ const val PLEX_DATABASE_NAME = "thotapalli_plex.db"
  * rebuilds rather than crashing on a missing column — the "drop and rebuild on schema change"
  * behaviour CLAUDE.md section 7 relies on. It is stored in SQLite's `user_version`.
  */
-const val SCHEMA_EPOCH = 2L
+const val SCHEMA_EPOCH = 3L

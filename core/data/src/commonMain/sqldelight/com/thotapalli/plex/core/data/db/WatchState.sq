@@ -1,0 +1,55 @@
+-- Where a viewer got to, keyed by rating key and nothing else.
+--
+-- This is deliberately its own table, with no catalogue columns and no foreign key to media_item.
+--
+-- A resume position is a POINT fact. It arrives for one item at a time, from three unrelated places:
+-- the continue-watching hub, live playback, and the scrobble threshold. None of them know anything
+-- about sets. Catalogue data is the opposite: it is only ever true as a complete set ("every episode
+-- of this show"), and it arrives that way.
+--
+-- While position was a column on media_item, those two had to share storage, and recording a point
+-- fact meant inventing a catalogue row to hold it. That invented row was then indistinguishable from
+-- a browsed one — which is how a single continue-watching entry could pass for a show's entire
+-- episode list. Splitting the tables removes the ability to express that, rather than detecting it
+-- after the fact.
+--
+-- Rows here for items that are not in the catalogue (never browsed, or since removed) are harmless:
+-- the join in media_item_view simply drops them. That is why no foreign key and no cleanup is wanted.
+CREATE TABLE watch_state (
+  rating_key TEXT NOT NULL PRIMARY KEY,
+  view_offset_ms INTEGER NOT NULL DEFAULT 0,
+  view_count INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL
+);
+
+-- The server's answer for one item: both fields are authoritative and both are replaced.
+upsert:
+INSERT INTO watch_state(rating_key, view_offset_ms, view_count, updated_at)
+VALUES (?, ?, ?, ?)
+ON CONFLICT(rating_key) DO UPDATE SET
+  view_offset_ms = excluded.view_offset_ms,
+  view_count = excluded.view_count,
+  updated_at = excluded.updated_at;
+
+-- Live playback: move the resume point without touching the watch count, so a rewatch in progress
+-- does not read as unwatched. Inserts when nothing is known yet, which is correct — progress on an
+-- item that has never been browsed is still progress.
+setOffset:
+INSERT INTO watch_state(rating_key, view_offset_ms, view_count, updated_at)
+VALUES (?, ?, 0, ?)
+ON CONFLICT(rating_key) DO UPDATE SET
+  view_offset_ms = excluded.view_offset_ms,
+  updated_at = excluded.updated_at;
+
+-- Past the watched threshold: clear the resume point and mark it watched, without lowering a real
+-- rewatch count. This is what stops "Play" resuming an episode that was already finished.
+markWatched:
+INSERT INTO watch_state(rating_key, view_offset_ms, view_count, updated_at)
+VALUES (?, 0, 1, ?)
+ON CONFLICT(rating_key) DO UPDATE SET
+  view_offset_ms = 0,
+  view_count = MAX(watch_state.view_count, 1),
+  updated_at = excluded.updated_at;
+
+selectByRatingKey:
+SELECT * FROM watch_state WHERE rating_key = ?;

@@ -44,7 +44,21 @@ class LibraryRepository(
 ) {
 
     private val libraries = database.libraryQueries
+
+    /**
+     * The catalogue. Written ONLY by the refresh methods below, each of which writes a complete set
+     * in one transaction — every title in a library, every season, every episode, every child of a
+     * collection. Nothing in this class writes a single row into it, and nothing outside this class
+     * touches it at all. That invariant is what lets every read below treat "the cache holds rows for
+     * this parent" as "a complete fetch for this parent happened".
+     */
     private val items = database.mediaItemQueries
+
+    /** Where the viewer got to, keyed by rating key. Point facts, no catalogue side effects. */
+    private val watch = database.watchStateQueries
+
+    /** The offline snapshot of the continue-watching hub. Read by nothing else. */
+    private val onDeck = database.continueWatchingQueries
 
     /** Libraries on the server, movie and show only, sorted by title ascending. */
     suspend fun libraries(server: ServerScope, machineIdentifier: String): List<Library> {
@@ -160,10 +174,7 @@ class LibraryRepository(
                 items.newestRefreshOfChildren(show.ratingKey).executeAsOne().MAX
         }
 
-        // Same completeness rule as [episodes]: a partially populated cache can carry a current
-        // timestamp, so only a set that provably holds every season (childCount) is trusted.
-        val complete = show.childCount > 0 && cached.size >= show.childCount
-        if (cached.isNotEmpty() && complete) {
+        if (cached.isNotEmpty()) {
             if (isStale(refreshedAt)) refreshInBackground { refreshSeasons(server, show) }
             return cached
         }
@@ -188,16 +199,11 @@ class LibraryRepository(
                 items.newestRefreshOfShowEpisodes(show.ratingKey).executeAsOne().MAX
         }
 
-        // Freshness is NOT completeness, and only completeness makes this cache usable. The
-        // continue-watching write-back stores a SINGLE episode of a show with a current timestamp, so
-        // a cache holding 1 of 177 episodes looks perfectly fresh — returning it showed the detail
-        // screen one episode and left every other season empty. Trust the cache only when it provably
-        // holds the whole show (leafCount is the server's episode total); otherwise fetch before
-        // returning. leafCount is 0 on a synthetic show built from an episode, which counts as
-        // unproven, so that path fetches too. An offline fetch failure falls through to whatever is
-        // cached, so this degrades rather than empties.
-        val complete = show.leafCount > 0 && cached.size >= show.leafCount
-        if (cached.isNotEmpty() && complete) {
+        // Rows here mean [refreshEpisodes] ran, which fetches every episode of the show in one
+        // all-or-nothing request. Nothing else can put an episode in the catalogue — continue
+        // watching writes watch_state and its own snapshot, never media_item — so a non-empty cache
+        // is a complete one and needs no size check to prove it.
+        if (cached.isNotEmpty()) {
             if (isStale(refreshedAt)) refreshInBackground { refreshEpisodes(server, show) }
             return cached
         }
@@ -270,15 +276,33 @@ class LibraryRepository(
 
         if (fresh != null) {
             val at = nowMs()
-            // Count-preserving upsert: a lean on-deck row must not zero a browsed Show's badge counts.
             withContext(dbContext) {
-                database.transaction { fresh.forEach { writeProgress(it, it.libraryKeyOrEmpty(), at) } }
+                database.transaction {
+                    // Two writes, neither of which touches the catalogue.
+                    //
+                    // The hub's resume positions are point facts and go to watch_state, where the
+                    // episode list and the library badges pick them up through the join. The hub's
+                    // own shape — which items, in which order — is a snapshot of one endpoint and
+                    // goes to its own table, replaced wholesale so an item finished elsewhere leaves
+                    // the row instead of lingering.
+                    //
+                    // What used to happen here was a write into media_item, and that is the bug this
+                    // separation exists to make impossible: a handful of hub entries landing in the
+                    // catalogue were indistinguishable from a browsed set, so one on-deck episode
+                    // could stand in for a show's entire episode list.
+                    onDeck.deleteAll()
+                    fresh.forEachIndexed { index, item ->
+                        writeWatchState(item, at)
+                        writeSnapshot(item, index, at)
+                    }
+                }
             }
             return fresh
         }
 
-        // Offline. The cache still knows what was part way through.
-        return withContext(dbContext) { items.selectInProgress().executeAsList().toMediaItems() }
+        // Offline. The last snapshot still knows what was part way through, including items the
+        // catalogue has never held because they were never browsed.
+        return withContext(dbContext) { onDeck.selectAll().executeAsList().toSnapshotItems() }
     }
 
     /** Search across every library from one field. See CLAUDE.md section 14. */
@@ -302,7 +326,9 @@ class LibraryRepository(
 
     /** Records a local watch state change so the interface updates before the server replies. */
     suspend fun recordProgress(ratingKey: String, positionMs: Long, viewCount: Int) {
-        withContext(dbContext) { runCatching { items.updateProgress(positionMs, viewCount.toLong(), ratingKey) } }
+        withContext(dbContext) {
+            runCatching { watch.upsert(ratingKey, positionMs, viewCount.toLong(), nowMs()) }
+        }
     }
 
     /**
@@ -315,16 +341,17 @@ class LibraryRepository(
      * earlier point in the current one. Called from the same place progress is reported (§5).
      */
     suspend fun recordLocalOffset(ratingKey: String, positionMs: Long) {
-        withContext(dbContext) { runCatching { items.updateOffset(positionMs, ratingKey) } }
+        withContext(dbContext) { runCatching { watch.setOffset(ratingKey, positionMs, nowMs()) } }
     }
 
     /** Marks an item watched in the cache once it passes the scrobble threshold (§5). */
     suspend fun recordLocalWatched(ratingKey: String) {
-        withContext(dbContext) { runCatching { items.markWatchedLocal(ratingKey) } }
+        withContext(dbContext) { runCatching { watch.markWatched(ratingKey, nowMs()) } }
     }
 
-    suspend fun cachedItem(ratingKey: String): MediaItem? =
-        withContext(dbContext) { items.selectByRatingKey(ratingKey).executeAsOneOrNull()?.toMediaItem() }
+    suspend fun cachedItem(ratingKey: String): MediaItem? = withContext(dbContext) {
+        items.selectByRatingKey(ratingKey).executeAsOneOrNull()?.toItemRow()?.toMediaItem()
+    }
 
     private fun MediaItem.libraryKeyOrEmpty(): String = when (this) {
         is Movie -> libraryKey
@@ -336,34 +363,15 @@ class LibraryRepository(
     private fun write(item: MediaItem, libraryKey: String, atMs: Long) =
         write(item.toRow(libraryKey, atMs))
 
-    private fun write(row: ItemRow) = items.upsert(
-        rating_key = row.ratingKey,
-        library_key = row.libraryKey,
-        parent_key = row.parentKey,
-        kind = row.kind,
-        title = row.title,
-        title_sort = row.titleSort,
-        year = row.year,
-        summary = row.summary,
-        thumb_path = row.thumbPath,
-        art_path = row.artPath,
-        duration_ms = row.durationMs,
-        view_offset_ms = row.viewOffsetMs,
-        view_count = row.viewCount,
-        season_index = row.seasonIndex,
-        episode_index = row.episodeIndex,
-        show_rating_key = row.showRatingKey,
-        show_title = row.showTitle,
-        child_count = row.childCount,
-        leaf_count = row.leafCount,
-        viewed_leaf_count = row.viewedLeafCount,
-        refreshed_at = row.refreshedAt,
-    )
-
-    // Insert-or-update-volatile-only, for the continue-watching write-back (see upsertProgress).
-    private fun writeProgress(item: MediaItem, libraryKey: String, atMs: Long) {
-        val row = item.toRow(libraryKey, atMs)
-        items.upsertProgress(
+    /**
+     * Writes one item of a complete set: the catalogue row, and the server's watch state for it.
+     *
+     * The watch state half matters — the server's view counts are what the unwatched filter and the
+     * badges read, and they now live in their own table. Splitting the write does not weaken it:
+     * both halves run inside the caller's transaction, so a set still lands whole or not at all.
+     */
+    private fun write(row: ItemRow) {
+        items.upsert(
             rating_key = row.ratingKey,
             library_key = row.libraryKey,
             parent_key = row.parentKey,
@@ -375,8 +383,47 @@ class LibraryRepository(
             thumb_path = row.thumbPath,
             art_path = row.artPath,
             duration_ms = row.durationMs,
+            season_index = row.seasonIndex,
+            episode_index = row.episodeIndex,
+            show_rating_key = row.showRatingKey,
+            show_title = row.showTitle,
+            child_count = row.childCount,
+            leaf_count = row.leafCount,
+            viewed_leaf_count = row.viewedLeafCount,
+            refreshed_at = row.refreshedAt,
+        )
+        watch.upsert(
+            rating_key = row.ratingKey,
             view_offset_ms = row.viewOffsetMs,
             view_count = row.viewCount,
+            updated_at = row.refreshedAt,
+        )
+    }
+
+    /** The server's resume position for one item. Carries no catalogue meaning whatsoever. */
+    private fun writeWatchState(item: MediaItem, atMs: Long) = watch.upsert(
+        rating_key = item.ratingKey,
+        view_offset_ms = item.viewOffsetMs,
+        view_count = item.viewCount.toLong(),
+        updated_at = atMs,
+    )
+
+    /** One entry of the continue-watching hub snapshot, in the server's own order. */
+    private fun writeSnapshot(item: MediaItem, sortIndex: Int, atMs: Long) {
+        val row = item.toRow(item.libraryKeyOrEmpty(), atMs)
+        onDeck.upsert(
+            rating_key = row.ratingKey,
+            sort_index = sortIndex.toLong(),
+            library_key = row.libraryKey,
+            parent_key = row.parentKey,
+            kind = row.kind,
+            title = row.title,
+            title_sort = row.titleSort,
+            year = row.year,
+            summary = row.summary,
+            thumb_path = row.thumbPath,
+            art_path = row.artPath,
+            duration_ms = row.durationMs,
             season_index = row.seasonIndex,
             episode_index = row.episodeIndex,
             show_rating_key = row.showRatingKey,
