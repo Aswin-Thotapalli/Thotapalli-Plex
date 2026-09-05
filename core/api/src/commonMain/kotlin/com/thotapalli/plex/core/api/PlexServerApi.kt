@@ -11,6 +11,8 @@ import com.thotapalli.plex.core.api.dto.UpdaterStatusContainer
 import com.thotapalli.plex.core.api.mapper.toLibraries
 import com.thotapalli.plex.core.api.mapper.toMediaDetail
 import com.thotapalli.plex.core.api.mapper.toMediaItems
+import com.thotapalli.plex.core.model.DiagnosticCategory
+import com.thotapalli.plex.core.model.Diagnostics
 import com.thotapalli.plex.core.model.Episode
 import com.thotapalli.plex.core.model.Library
 import com.thotapalli.plex.core.model.MediaCollection
@@ -244,21 +246,35 @@ class PlexServerApi(
      * Falls back to on deck, which older servers expose instead.
      */
     override suspend fun continueWatching(scope: ServerScope): List<MediaItem> {
+        // An empty row is indistinguishable on screen from a broken one — Home just hides it
+        // (CLAUDE.md section 14) — so record which of the two happened. Without this, "nothing to
+        // continue" and "the request failed" look identical to anyone holding the device.
+        var hubOutcome = "not attempted"
         val hub = runCatching {
             val response = client.get("${scope.baseUri}/hubs/continueWatching/items") {
                 scope.apply(this)
             }
-            if (!response.status.value.let { it in 200..299 }) return@runCatching null
+            if (!response.status.value.let { it in 200..299 }) {
+                hubOutcome = "HTTP ${response.status.value}"
+                return@runCatching null
+            }
             response.body<MediaContainerResponse<MetadataContainer>>()
                 .mediaContainer.metadata.toMediaItems()
-        }.getOrNull()
+                .also { hubOutcome = "${it.size} items" }
+        }.onFailure { hubOutcome = it::class.simpleName ?: "failed" }.getOrNull()
 
         if (!hub.isNullOrEmpty()) return hub
 
         val response = client.get("${scope.baseUri}/library/onDeck") { scope.apply(this) }
         response.requireSuccess("on deck")
-        return response.body<MediaContainerResponse<MetadataContainer>>()
+        val onDeck = response.body<MediaContainerResponse<MetadataContainer>>()
             .mediaContainer.metadata.toMediaItems()
+
+        Diagnostics.record(
+            DiagnosticCategory.CONNECTION,
+            "Continue watching: hub gave $hubOutcome, on deck gave ${onDeck.size} items",
+        )
+        return onDeck
     }
 
     /**
