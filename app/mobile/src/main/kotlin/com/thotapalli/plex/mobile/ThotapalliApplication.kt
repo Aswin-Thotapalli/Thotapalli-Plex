@@ -39,6 +39,12 @@ class ThotapalliApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
+        // First thing, before anything can throw: capture an uncaught exception to a file the owner
+        // can retrieve, and re-surface last launch's crash in the Diagnostics section. This is how a
+        // crash we cannot reproduce here (a signed-in-only path, a device-specific one) becomes a
+        // readable stack trace. See CrashReporter.
+        CrashReporter.install(this)
+
         // Install the shared Coil loader (generous memory cache + 512 MB disk cache) before any
         // screen can request a poster, so artwork is cached from its first fetch. See CLAUDE.md
         // sections 5 and 13.
