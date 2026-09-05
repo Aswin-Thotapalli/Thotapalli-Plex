@@ -500,6 +500,16 @@ class PlaybackController(
     }
 
     /**
+     * A remote moving focus between controls. Keeps the controls awake like [noteInput] but leaves a
+     * running next-episode countdown alone: on television the countdown card is itself a pair of
+     * focusable buttons, and stepping between them must not be the "input" that cancels it.
+     */
+    fun noteNavigation() {
+        lastInputAtMs = nowMs()
+        _state.update { it.copy(controlsVisible = true) }
+    }
+
+    /**
      * A single tap on the picture toggles the controls: reveal them if hidden, dismiss them if
      * shown. It never pauses — pausing is the transport button alone. Hiding backdates the last-input
      * time so the tick's idle test keeps them hidden until the next real input.

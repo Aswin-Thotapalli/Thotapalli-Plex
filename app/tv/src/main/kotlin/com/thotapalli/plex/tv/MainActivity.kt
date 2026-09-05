@@ -16,7 +16,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.thotapalli.plex.ui.shared.AppViewModel
-import com.thotapalli.plex.ui.shared.PlexApp
+import com.thotapalli.plex.ui.shared.tv.TvApp
 
 /**
  * Thotapalli Plex on Android TV and Google TV.
@@ -70,8 +70,10 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // The television app is its own root, built for the remote on the TV focus contract; the
+        // shared PlexApp is the pointer-and-touch app for phone, tablet and Windows.
         setContent {
-            PlexApp(
+            TvApp(
                 container = container,
                 viewModel = viewModel,
                 onOpenUrl = ::openUrl,
