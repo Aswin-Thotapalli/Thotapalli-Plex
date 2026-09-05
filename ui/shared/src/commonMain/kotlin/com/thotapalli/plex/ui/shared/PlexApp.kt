@@ -94,7 +94,10 @@ import com.thotapalli.plex.ui.design.Motion
 import com.thotapalli.plex.ui.design.SizeClass
 import com.thotapalli.plex.ui.design.ThotapalliTheme
 import com.thotapalli.plex.ui.design.backgroundBrush
+import androidx.compose.runtime.CompositionLocalProvider
+import com.thotapalli.plex.ui.shared.player.LocalPlaybackTuning
 import com.thotapalli.plex.ui.shared.player.PlayerScreen
+import com.thotapalli.plex.ui.shared.player.rememberPlaybackTuning
 import com.thotapalli.plex.ui.shared.screens.DetailScreen
 import com.thotapalli.plex.ui.shared.screens.DownloadsScreen
 import com.thotapalli.plex.ui.shared.screens.HomeScreen
@@ -189,6 +192,8 @@ fun PlexApp(
                 val playback = state.playback
                 ImmersiveSystemBars(hidden = playback != null)
                 if (playback != null) {
+                    val tuning = rememberPlaybackTuning(container, state.settingsRevision)
+                    CompositionLocalProvider(LocalPlaybackTuning provides tuning) {
                     PlayerScreen(
                         container = container,
                         item = playback.item,
@@ -203,6 +208,7 @@ fun PlexApp(
                         collapseControls = isInPictureInPicture,
                         modifier = Modifier.fillMaxSize(),
                     )
+                    }
                 }
 
                 // The transient result of a menu action (marked watched, deleted, scan

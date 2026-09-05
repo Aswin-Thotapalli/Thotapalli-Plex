@@ -54,7 +54,17 @@ actual fun VideoSurface(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val engine = remember { ExoPlayerEngine(context, scope) }
+    // Read once: the engine is built for the life of this surface, and a setting changed mid-play
+    // applies to the next playback, which is when a renderer change is safe anyway.
+    val tuning = LocalPlaybackTuning.current
+    val engine = remember {
+        ExoPlayerEngine(
+            context = context,
+            scope = scope,
+            tunnelledVideo = tuning.tunnelledVideo,
+            audioPassthrough = tuning.audioPassthrough,
+        )
+    }
 
     LaunchedEffect(engine) { bind(engine) }
 

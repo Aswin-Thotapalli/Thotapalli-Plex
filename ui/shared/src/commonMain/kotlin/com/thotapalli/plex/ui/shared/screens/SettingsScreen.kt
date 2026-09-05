@@ -1478,6 +1478,9 @@ data class SettingsScreenState(
     val subtitleScalePercent: Int = 100,
     val subtitleForegroundArgb: Long = 0xFFFFFFFF,
     val subtitleBackgroundOpacityPercent: Int = 0,
+    // Television playback tuning; only the ten-foot settings screen offers these.
+    val tunnelledPlayback: Boolean = false,
+    val audioPassthrough: Boolean = true,
     val servers: List<PlexServer> = emptyList(),
     val activeServerId: String? = null,
     val signedInAs: String? = null,

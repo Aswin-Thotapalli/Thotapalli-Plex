@@ -23,6 +23,24 @@ class SettingsStore(
         set(value) = store.putString(MATCH_DISPLAY_RATE, value.toString())
 
     /**
+     * Tunnelled video on a television. Off by default: on real televisions a seek left the picture
+     * running with several seconds of silence while the hardware-synced audio track was rebuilt.
+     * See ExoPlayerEngine.
+     */
+    var tunnelledPlayback: Boolean
+        get() = store.getString(TUNNELLED_PLAYBACK)?.toBooleanStrictOrNull() ?: false
+        set(value) = store.putString(TUNNELLED_PLAYBACK, value.toString())
+
+    /**
+     * Dolby and DTS as a bitstream to the audio output where the device reports it can. On by
+     * default so a receiver gets the original stream; off decodes to PCM, which resumes instantly
+     * after a seek on outputs that are slow to re-lock. See CLAUDE.md section 18 item 3.
+     */
+    var audioPassthrough: Boolean
+        get() = store.getString(AUDIO_PASSTHROUGH)?.toBooleanStrictOrNull() ?: true
+        set(value) = store.putString(AUDIO_PASSTHROUGH, value.toString())
+
+    /**
      * "Download on unmetered networks only". Defaults on for Android and off for Windows.
      * See CLAUDE.md section 11.
      */
@@ -107,6 +125,8 @@ class SettingsStore(
     private companion object {
         const val MATCH_DISPLAY_RATE = "setting_match_display_rate"
         const val UNMETERED_ONLY = "setting_unmetered_downloads_only"
+        const val TUNNELLED_PLAYBACK = "setting_tunnelled_playback"
+        const val AUDIO_PASSTHROUGH = "setting_audio_passthrough"
         const val AUDIO_LANGUAGE = "setting_audio_language"
         const val SUBTITLE_LANGUAGE = "setting_subtitle_language"
         const val SUBTITLES_ON = "setting_subtitles_on"

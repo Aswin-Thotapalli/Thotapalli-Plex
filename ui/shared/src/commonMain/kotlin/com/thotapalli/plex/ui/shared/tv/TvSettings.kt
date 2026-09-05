@@ -39,6 +39,8 @@ import com.thotapalli.plex.ui.shared.screens.SettingsScreenState
 internal fun TvSettings(
     state: SettingsScreenState,
     onMatchDisplayRateChange: (Boolean) -> Unit,
+    onTunnelledPlaybackChange: (Boolean) -> Unit,
+    onAudioPassthroughChange: (Boolean) -> Unit,
     onUnmeteredOnlyChange: (Boolean) -> Unit,
     onAudioLanguageChange: (String) -> Unit,
     onSubtitleLanguageChange: (String) -> Unit,
@@ -86,6 +88,22 @@ internal fun TvSettings(
                     modifier = rows,
                 )
             }
+            TvListRow(
+                title = "Dolby and DTS passthrough",
+                key = "passthrough",
+                detail = "Send Dolby and DTS to the TV or receiver as the original bitstream. Turn off if sound takes seconds to return after a seek.",
+                onClick = { onAudioPassthroughChange(!state.audioPassthrough) },
+                trailing = { focused -> TvSwitch(on = state.audioPassthrough, focused = focused) },
+                modifier = rows,
+            )
+            TvListRow(
+                title = "Tunnelled video",
+                key = "tunnelling",
+                detail = "Let the TV hardware sync audio and video. Off by default: on many TVs the picture runs ahead with silent audio after a seek. Applies to the next playback.",
+                onClick = { onTunnelledPlaybackChange(!state.tunnelledPlayback) },
+                trailing = { focused -> TvSwitch(on = state.tunnelledPlayback, focused = focused) },
+                modifier = rows,
+            )
             TvListRow(
                 title = "Streaming quality",
                 key = "quality",

@@ -58,6 +58,13 @@ class ExoPlayerEngine(
     private val context: Context,
     private val scope: CoroutineScope,
     private val preferredAudioLanguage: String = "eng",
+    /**
+     * Tunnelled video on a television: the platform synchronises audio and video in hardware and
+     * the application never sees a decoded frame. Off by default — see the track selector below.
+     */
+    private val tunnelledVideo: Boolean = false,
+    /** Bitstream Dolby and DTS to the audio output where the device reports it can. See [buildPlayer]. */
+    private val audioPassthrough: Boolean = true,
 ) : PlayerEngine {
 
     private val _state = MutableStateFlow<PlaybackState>(PlaybackState.Idle)
@@ -121,11 +128,8 @@ class ExoPlayerEngine(
     private var rateMatchAttempted = false
 
     /**
-     * Television devices only, detected rather than assumed.
-     *
-     * Tunnelling routes decoded video around the application so the hardware performs audio
-     * and video synchronisation. It is a television feature and enabling it on a phone
-     * costs compatibility for nothing.
+     * Television devices only, detected rather than assumed. Gates tunnelling, which is a
+     * television feature and would cost a phone compatibility for nothing.
      */
     private val isTelevision: Boolean by lazy {
         val uiModeManager = context.getSystemService(Context.UI_MODE_SERVICE) as UiModeManager
@@ -134,7 +138,14 @@ class ExoPlayerEngine(
 
     private val trackSelector = DefaultTrackSelector(context).apply {
         parameters = buildUponParameters()
-            .setTunnelingEnabled(isTelevision)
+            // Tunnelling is opt-in, a revisit of CLAUDE.md §8 on evidence from real televisions. In
+            // tunnelled mode the video decoder keeps presenting after a seek while the hardware-synced
+            // AudioTrack is torn down and rebuilt — and with a bitstream output the TV or receiver
+            // must re-lock onto it — which showed as picture with five to twelve seconds of silence
+            // after every seek. Without tunnelling the picture is slaved to the audio clock, so the
+            // two resume together, and §9 rate matching never depended on tunnelling. The setting
+            // remains for hardware that genuinely needs it.
+            .setTunnelingEnabled(isTelevision && tunnelledVideo)
             .setPreferredAudioLanguages(preferredAudioLanguage)
             .build()
     }
@@ -189,8 +200,13 @@ class ExoPlayerEngine(
             // that does not. FFmpeg stays as the fallback for anything the platform rejects, so the §8
             // goal (audio never forces a server transcode) is fully preserved, and decoder fallback
             // covers a buggy platform decoder. Net: passthrough where it matters, no regression where
-            // it does not. Needs an AVR to confirm on real hardware; one line reverts it to PREFER.
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+            // it does not. Passthrough is a setting because a bitstream output has to re-lock after
+            // every seek on some TVs; turning it off decodes to PCM in FFmpeg (PREFER), which resumes
+            // instantly.
+            .setExtensionRendererMode(
+                if (audioPassthrough) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
+                else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER,
+            )
             .setEnableDecoderFallback(true)
 
         // Tuned for direct play of large, high-bitrate files over the LAN or a relay, but MEMORY-
@@ -208,7 +224,9 @@ class ExoPlayerEngine(
             .setBufferDurationsMs(
                 /* minBufferMs = */ if (lowRam) 10_000 else 15_000,
                 /* maxBufferMs = */ if (lowRam) 30_000 else 60_000,
-                /* bufferForPlaybackMs = */ 2_500,
+                // What a seek waits for before the picture resumes. Kept short so a seek feels
+                // immediate; the minimum buffer above keeps filling behind it.
+                /* bufferForPlaybackMs = */ 1_500,
                 /* bufferForPlaybackAfterRebufferMs = */ 5_000,
             )
             .setBackBuffer(

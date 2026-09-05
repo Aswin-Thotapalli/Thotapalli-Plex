@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -32,6 +33,8 @@ import com.thotapalli.plex.ui.shared.BrandSplash
 import com.thotapalli.plex.ui.shared.Destination
 import com.thotapalli.plex.ui.shared.ImmersiveSystemBars
 import com.thotapalli.plex.ui.shared.WithSizeClass
+import com.thotapalli.plex.ui.shared.player.LocalPlaybackTuning
+import com.thotapalli.plex.ui.shared.player.rememberPlaybackTuning
 import kotlinx.coroutines.delay
 
 /**
@@ -90,6 +93,8 @@ fun TvApp(
                 val playback = state.playback
                 ImmersiveSystemBars(hidden = playback != null)
                 if (playback != null) {
+                    val tuning = rememberPlaybackTuning(container, state.settingsRevision)
+                    CompositionLocalProvider(LocalPlaybackTuning provides tuning) {
                     TvPlayer(
                         container = container,
                         item = playback.item,
@@ -100,6 +105,7 @@ fun TvApp(
                         networkRegained = viewModel.networkRegained,
                         modifier = Modifier.fillMaxSize(),
                     )
+                    }
                 }
 
                 // A transient result of an action, as a quiet toast no remote has to dismiss.
@@ -195,6 +201,8 @@ private fun TvReady(
             destination == Destination.SETTINGS -> TvSettings(
                 state = viewModel.settingsState(),
                 onMatchDisplayRateChange = viewModel::setMatchDisplayRate,
+                onTunnelledPlaybackChange = viewModel::setTunnelledPlayback,
+                onAudioPassthroughChange = viewModel::setAudioPassthrough,
                 onUnmeteredOnlyChange = viewModel::setUnmeteredOnly,
                 onAudioLanguageChange = viewModel::setAudioLanguage,
                 onSubtitleLanguageChange = viewModel::setSubtitleLanguage,
