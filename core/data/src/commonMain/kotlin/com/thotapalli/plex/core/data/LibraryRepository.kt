@@ -160,12 +160,16 @@ class LibraryRepository(
                 items.newestRefreshOfChildren(show.ratingKey).executeAsOne().MAX
         }
 
-        if (cached.isNotEmpty()) {
+        // Same completeness rule as [episodes]: a partially populated cache can carry a current
+        // timestamp, so only a set that provably holds every season (childCount) is trusted.
+        val complete = show.childCount > 0 && cached.size >= show.childCount
+        if (cached.isNotEmpty() && complete) {
             if (isStale(refreshedAt)) refreshInBackground { refreshSeasons(server, show) }
             return cached
         }
 
-        refreshSeasons(server, show)
+        // A failed refresh (offline) must not empty the screen — fall through to whatever is cached.
+        runCatching { refreshSeasons(server, show) }
         return withContext(dbContext) {
             items.selectChildren(show.ratingKey).executeAsList().toMediaItems().filterIsInstance<Season>()
         }
@@ -184,12 +188,22 @@ class LibraryRepository(
                 items.newestRefreshOfShowEpisodes(show.ratingKey).executeAsOne().MAX
         }
 
-        if (cached.isNotEmpty()) {
+        // Freshness is NOT completeness, and only completeness makes this cache usable. The
+        // continue-watching write-back stores a SINGLE episode of a show with a current timestamp, so
+        // a cache holding 1 of 177 episodes looks perfectly fresh — returning it showed the detail
+        // screen one episode and left every other season empty. Trust the cache only when it provably
+        // holds the whole show (leafCount is the server's episode total); otherwise fetch before
+        // returning. leafCount is 0 on a synthetic show built from an episode, which counts as
+        // unproven, so that path fetches too. An offline fetch failure falls through to whatever is
+        // cached, so this degrades rather than empties.
+        val complete = show.leafCount > 0 && cached.size >= show.leafCount
+        if (cached.isNotEmpty() && complete) {
             if (isStale(refreshedAt)) refreshInBackground { refreshEpisodes(server, show) }
             return cached
         }
 
-        refreshEpisodes(server, show)
+        // A failed refresh (offline) must not empty the screen — fall through to whatever is cached.
+        runCatching { refreshEpisodes(server, show) }
         return withContext(dbContext) {
             items.selectEpisodesOfShow(show.ratingKey).executeAsList().toMediaItems().filterIsInstance<Episode>()
         }
