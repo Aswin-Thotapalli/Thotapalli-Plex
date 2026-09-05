@@ -1,6 +1,7 @@
 package com.thotapalli.plex.player.exo
 
 import android.app.Activity
+import android.app.ActivityManager
 import android.app.UiModeManager
 import android.content.Context
 import android.content.ContextWrapper
@@ -192,19 +193,33 @@ class ExoPlayerEngine(
             .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
             .setEnableDecoderFallback(true)
 
-        // Tuned for direct play of large, high-bitrate files over the LAN or a relay rather than for
-        // adaptive streaming. A back buffer means the 10 s seek-back replays from memory instead of
-        // re-fetching, and prioritising duration over byte size keeps the forward buffer measured in
-        // seconds even for a 60 Mbps remux. See CLAUDE.md sections 8 and 10.
+        // Tuned for direct play of large, high-bitrate files over the LAN or a relay, but MEMORY-
+        // BOUNDED and scaled to the device. The forward + back buffers are capped by BYTES, not just
+        // duration: a 60 Mbps remux buffered purely by time (the old prioritise-time setting) reaches
+        // ~450 MB, which OOMs or gets a low-RAM tablet's process reclaimed. With a byte cap the buffer
+        // holds whichever comes first — the duration on modest bitrates, the byte ceiling on high
+        // ones (~8 s at 60 Mbps on a normal device) — so playback stays smooth without ballooning.
+        // A back buffer still lets the 10 s seek-back replay from memory. See CLAUDE.md sections 8/10.
+        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+        val memInfo = ActivityManager.MemoryInfo().also { activityManager.getMemoryInfo(it) }
+        val lowRam = activityManager.isLowRamDevice || memInfo.totalMem < LOW_RAM_THRESHOLD_BYTES
+
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                /* minBufferMs = */ 15_000,
-                /* maxBufferMs = */ 60_000,
+                /* minBufferMs = */ if (lowRam) 10_000 else 15_000,
+                /* maxBufferMs = */ if (lowRam) 30_000 else 60_000,
                 /* bufferForPlaybackMs = */ 2_500,
                 /* bufferForPlaybackAfterRebufferMs = */ 5_000,
             )
-            .setBackBuffer(/* backBufferDurationMs = */ 20_000, /* retainBackBufferFromKeyframe = */ true)
-            .setPrioritizeTimeOverSizeThresholds(true)
+            .setBackBuffer(
+                /* backBufferDurationMs = */ if (lowRam) 10_000 else 20_000,
+                /* retainBackBufferFromKeyframe = */ true,
+            )
+            // The hard memory ceiling on the forward buffer. false = respect it (do not let duration
+            // override the byte cap). Smaller on a low-RAM device so the whole app stays well under
+            // what Android will reclaim a backgrounded process for.
+            .setTargetBufferBytes(if (lowRam) LOW_RAM_BUFFER_BYTES else NORMAL_BUFFER_BYTES)
+            .setPrioritizeTimeOverSizeThresholds(false)
             .build()
 
         return ExoPlayer.Builder(context, renderers)
@@ -521,6 +536,13 @@ class ExoPlayerEngine(
         private const val SEEK_BACK_MS = 10_000L
         private const val SEEK_FORWARD_MS = 30_000L
         private const val POSITION_POLL_MS = 250L
+
+        /** Below this much total RAM the device is treated as memory-constrained (a ~3–4 GB tablet). */
+        private const val LOW_RAM_THRESHOLD_BYTES = 4L * 1024 * 1024 * 1024
+
+        /** Forward-buffer byte ceilings: ~8 s at 60 Mbps on a normal device, half that on a low-RAM one. */
+        private const val NORMAL_BUFFER_BYTES = 64 * 1024 * 1024
+        private const val LOW_RAM_BUFFER_BYTES = 24 * 1024 * 1024
 
         /**
          * The MediaSession of the engine currently playing, or null when nothing is playing. The
