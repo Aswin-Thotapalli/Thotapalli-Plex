@@ -620,7 +620,7 @@ private fun TvNextUp(
         TvPanel(
             modifier
                 .widthIn(max = 520.dp)
-                .tvZone(zone)
+                .tvZone(zone, trap = true)
                 .onKeyEvent { event ->
                     // Any input but stepping between the two buttons cancels the countdown (§14.7).
                     if (event.type == KeyEventType.KeyDown && (event.key == Key.DirectionUp || event.key == Key.DirectionDown)) {
@@ -658,7 +658,7 @@ private fun TvTrackPanel(
                 .fillMaxHeight()
                 .width(420.dp)
                 .background(TvPalette.surface)
-                .tvZone(zone)
+                .tvZone(zone, trap = true)
                 .padding(horizontal = Spacing.lg, vertical = TvDims.overscanY),
         ) {
             Column(
@@ -702,7 +702,7 @@ private fun TvPlayerError(
     modifier: Modifier = Modifier,
 ) {
     TvZone(zone) {
-        TvPanel(modifier.widthIn(max = 560.dp).tvZone(zone)) {
+        TvPanel(modifier.widthIn(max = 560.dp).tvZone(zone, trap = true)) {
             Column(Modifier.padding(Spacing.lg), verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 PlexText("Playback stopped", style = PlexTheme.type.title, colour = TvPalette.text)
                 PlexText(message, style = PlexTheme.type.body, colour = TvPalette.textDim)

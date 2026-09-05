@@ -59,7 +59,7 @@ internal fun TvDialog(
         contentAlignment = Alignment.Center,
     ) {
         TvZone(zone) {
-            TvPanel(Modifier.widthIn(max = width).tvZone(zone)) {
+            TvPanel(Modifier.widthIn(max = width).tvZone(zone, trap = true)) {
                 Column(
                     Modifier.fillMaxWidth().padding(Spacing.lg),
                     verticalArrangement = Arrangement.spacedBy(Spacing.sm),

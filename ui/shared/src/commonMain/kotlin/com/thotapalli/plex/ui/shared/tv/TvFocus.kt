@@ -170,6 +170,12 @@ fun Modifier.tvZone(
     exitRight: (() -> FocusRequester?)? = null,
     exitUp: (() -> FocusRequester?)? = null,
     exitDown: (() -> FocusRequester?)? = null,
+    /**
+     * A trapped zone never lets focus search leave it: a dialog, the player's countdown card or
+     * track picker. Without this, DOWN past the last row of a dialog would land on the screen
+     * behind the scrim.
+     */
+    trap: Boolean = false,
 ): Modifier = this
     .focusRequester(zone.entry)
     .focusProperties {
@@ -182,7 +188,7 @@ fun Modifier.tvZone(
                 FocusDirection.Down -> exitDown?.invoke()
                 else -> null
             }
-            target ?: FocusRequester.Default
+            target ?: if (trap) FocusRequester.Cancel else FocusRequester.Default
         }
     }
     .focusGroup()
