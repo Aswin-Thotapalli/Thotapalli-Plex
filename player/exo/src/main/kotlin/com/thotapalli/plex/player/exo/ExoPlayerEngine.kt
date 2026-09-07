@@ -28,6 +28,9 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.AudioTrackAudioOutputProvider
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import com.thotapalli.plex.core.model.DiagnosticCategory
 import com.thotapalli.plex.core.model.Diagnostics
 import androidx.media3.exoplayer.ExoPlayer
@@ -193,7 +196,22 @@ class ExoPlayerEngine(
     // It reduces playback loop wake-ups. See CLAUDE.md section 8 point 3.
     @androidx.annotation.OptIn(ExperimentalApi::class)
     private fun buildPlayer(): ExoPlayer {
-        val renderers = DefaultRenderersFactory(context)
+        // The one departure from the stock factory: an audio sink whose AudioTrack survives seeks.
+        // Everything else — renderer order, decoder fallback — is the stock behaviour configured
+        // below. See TrackKeepingAudioOutputProvider for why this is the seek-audio fix.
+        val renderers = object : DefaultRenderersFactory(context) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean,
+            ): AudioSink = DefaultAudioSink.Builder(context)
+                .setEnableFloatOutput(enableFloatOutput)
+                .setEnableAudioTrackPlaybackParams(enableAudioTrackPlaybackParams)
+                .setAudioOutputProvider(
+                    TrackKeepingAudioOutputProvider(AudioTrackAudioOutputProvider.Builder(context).build()),
+                )
+                .build()
+        }
             // EXTENSION_RENDERER_MODE_ON, not PREFER — a deliberate revisit of CLAUDE.md §8 in service
             // of §18.3 ("passthrough where the device supports it") and the best-audio goal.
             //
@@ -205,9 +223,9 @@ class ExoPlayerEngine(
             // that does not. FFmpeg stays as the fallback for anything the platform rejects, so the §8
             // goal (audio never forces a server transcode) is fully preserved, and decoder fallback
             // covers a buggy platform decoder. Net: passthrough where it matters, no regression where
-            // it does not. Passthrough is a setting because a bitstream output has to re-lock after
-            // every seek on some TVs; turning it off decodes to PCM in FFmpeg (PREFER), which resumes
-            // instantly.
+            // it does not. Passthrough stays a setting as the escape hatch for an output that is slow
+            // to lock even onto a kept track; the sink above no longer destroys the track on a seek,
+            // which was the cause of the multi-second silence.
             .setExtensionRendererMode(
                 if (audioPassthrough) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
                 else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER,

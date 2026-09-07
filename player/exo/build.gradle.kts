@@ -41,4 +41,8 @@ dependencies {
     // unsupported audio simply falls back to a server transcode. See CLAUDE.md sections 8
     // and 10.
     implementation(fileTree("libs") { include("*.aar") })
+
+    // JVM unit tests for the pieces that are pure logic over Media3's interfaces — the seek-safe
+    // audio output provider — which need no device.
+    testImplementation(kotlin("test-junit"))
 }
