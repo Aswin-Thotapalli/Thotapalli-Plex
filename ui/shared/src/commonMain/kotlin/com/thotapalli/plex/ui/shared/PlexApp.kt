@@ -359,6 +359,7 @@ private fun ReadyContent(
             destination == Destination.SETTINGS -> SettingsScreen(
                 state = viewModel.settingsState(),
                 onMatchDisplayRateChange = viewModel::setMatchDisplayRate,
+                onAutoPlayNextChange = viewModel::setAutoPlayNext,
                 onUnmeteredOnlyChange = viewModel::setUnmeteredOnly,
                 onAudioLanguageChange = viewModel::setAudioLanguage,
                 onSubtitleLanguageChange = viewModel::setSubtitleLanguage,

@@ -40,6 +40,8 @@ data class PlayerScreenState(
     val showNextEpisodePrompt: Boolean = false,
     val nextEpisodeTitle: String? = null,
     val countdownSeconds: Int = 10,
+    /** True while the ten second countdown runs; false when the card only offers the next episode. */
+    val countdownActive: Boolean = false,
 
     /** Whether an adjacent episode exists, so the transport can offer explicit previous/next. */
     val hasPreviousEpisode: Boolean = false,

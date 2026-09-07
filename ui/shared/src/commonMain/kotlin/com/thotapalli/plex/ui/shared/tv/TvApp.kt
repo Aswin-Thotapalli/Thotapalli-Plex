@@ -201,6 +201,7 @@ private fun TvReady(
             destination == Destination.SETTINGS -> TvSettings(
                 state = viewModel.settingsState(),
                 onMatchDisplayRateChange = viewModel::setMatchDisplayRate,
+                onAutoPlayNextChange = viewModel::setAutoPlayNext,
                 onTunnelledPlaybackChange = viewModel::setTunnelledPlayback,
                 onAudioPassthroughChange = viewModel::setAudioPassthrough,
                 onUnmeteredOnlyChange = viewModel::setUnmeteredOnly,

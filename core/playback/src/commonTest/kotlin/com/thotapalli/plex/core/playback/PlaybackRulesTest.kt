@@ -283,37 +283,6 @@ class MarkerControllerTest {
     }
 
     @Test
-    fun theNextEpisodePromptFollowsTheCreditsMarker() {
-        val c = controller()
-
-        assertFalse(c.showNextEpisodePrompt(2_609_000))
-        assertTrue(c.showNextEpisodePrompt(2_610_000))
-    }
-
-    @Test
-    fun withoutACreditsMarkerThePromptUsesTheFinalThirtySeconds() {
-        val c = MarkerController(listOf(intro), duration, hasNextEpisode = true)
-
-        assertFalse(c.showNextEpisodePrompt(duration - 31_000))
-        assertTrue(c.showNextEpisodePrompt(duration - 30_000))
-    }
-
-    @Test
-    fun anItemWithNoMarkersOffersNothing() {
-        val c = MarkerController(emptyList(), duration, hasNextEpisode = false)
-
-        assertFalse(c.showSkipIntro(1_000))
-        assertNull(c.skipIntroTargetMs())
-        assertFalse(c.showNextEpisodePrompt(duration - 1))
-    }
-}
-
-class AutoPlayCountdownTest {
-
-    private var now = 0L
-    private val countdown = AutoPlayCountdown { now }
-
-    @Test
     fun countsTenSecondsDown() {
         countdown.start()
 

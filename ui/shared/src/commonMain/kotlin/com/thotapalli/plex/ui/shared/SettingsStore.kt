@@ -23,6 +23,15 @@ class SettingsStore(
         set(value) = store.putString(MATCH_DISPLAY_RATE, value.toString())
 
     /**
+     * "Auto play next episode" (CLAUDE.md section 2). On by default. Read by the playback
+     * controller when an item ends: on, a ten second countdown then the next episode; off, the
+     * next episode is offered and nothing starts on its own.
+     */
+    var autoPlayNext: Boolean
+        get() = store.getString(AUTO_PLAY_NEXT)?.toBooleanStrictOrNull() ?: true
+        set(value) = store.putString(AUTO_PLAY_NEXT, value.toString())
+
+    /**
      * Tunnelled video on a television. Off by default: on real televisions a seek left the picture
      * running with several seconds of silence while the hardware-synced audio track was rebuilt.
      * See ExoPlayerEngine.
@@ -126,6 +135,7 @@ class SettingsStore(
         const val MATCH_DISPLAY_RATE = "setting_match_display_rate"
         const val UNMETERED_ONLY = "setting_unmetered_downloads_only"
         const val TUNNELLED_PLAYBACK = "setting_tunnelled_playback"
+        const val AUTO_PLAY_NEXT = "setting_auto_play_next"
         const val AUDIO_PASSTHROUGH = "setting_audio_passthrough"
         const val AUDIO_LANGUAGE = "setting_audio_language"
         const val SUBTITLE_LANGUAGE = "setting_subtitle_language"

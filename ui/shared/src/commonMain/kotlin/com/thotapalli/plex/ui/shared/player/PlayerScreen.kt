@@ -119,6 +119,7 @@ fun PlayerScreen(
             preferredAudioLanguage = container.settings.preferredAudioLanguage.ifBlank { null },
             preferredSubtitleLanguage = container.settings.preferredSubtitleLanguage.ifBlank { null },
             subtitlesOnByDefault = container.settings.subtitlesOnByDefault,
+            autoPlayNext = container.settings.autoPlayNext,
             // Offline playback (#1) + the saved subtitle appearance (#14).
             offlineResolver = container.offlineResolver,
             initialSubtitleStyle = com.thotapalli.plex.core.playback.SubtitleStyle(

@@ -74,6 +74,7 @@ import com.thotapalli.plex.ui.shared.plexFocusable
 fun SettingsScreen(
     state: SettingsScreenState,
     onMatchDisplayRateChange: (Boolean) -> Unit,
+    onAutoPlayNextChange: (Boolean) -> Unit,
     onUnmeteredOnlyChange: (Boolean) -> Unit,
     onAudioLanguageChange: (String) -> Unit,
     onSubtitleLanguageChange: (String) -> Unit,
@@ -98,6 +99,7 @@ fun SettingsScreen(
         WideSettings(
             state = state,
             onMatchDisplayRateChange = onMatchDisplayRateChange,
+            onAutoPlayNextChange = onAutoPlayNextChange,
             onUnmeteredOnlyChange = onUnmeteredOnlyChange,
             onAudioLanguageChange = onAudioLanguageChange,
             onSubtitleLanguageChange = onSubtitleLanguageChange,
@@ -119,9 +121,7 @@ fun SettingsScreen(
         return
     }
 
-    // Auto play next episode and Delete watched downloads have no backend flag yet, so they are
-    // held in local UI state for a faithful visual match. TODO: persist alongside the other prefs.
-    var autoPlayNext by remember { mutableStateOf(true) }
+    // Delete watched downloads has no backend flag yet, so it is held in local UI state. TODO persist.
     var deleteWatched by remember { mutableStateOf(false) }
 
     ContentWidthCap(modifier) {
@@ -164,9 +164,8 @@ fun SettingsScreen(
                             glyph = SettingGlyph.AUTOPLAY,
                             title = "Auto play next episode",
                             subtitle = "Automatically play the next episode in a series.",
-                            checked = autoPlayNext,
-                            // TODO: persist — no backend flag yet, held in local UI state.
-                            onChange = { autoPlayNext = it },
+                            checked = state.autoPlayNext,
+                            onChange = onAutoPlayNextChange,
                         )
                     }
                 }
@@ -355,6 +354,7 @@ fun SettingsScreen(
 private fun WideSettings(
     state: SettingsScreenState,
     onMatchDisplayRateChange: (Boolean) -> Unit,
+    onAutoPlayNextChange: (Boolean) -> Unit,
     onUnmeteredOnlyChange: (Boolean) -> Unit,
     onAudioLanguageChange: (String) -> Unit,
     onSubtitleLanguageChange: (String) -> Unit,
@@ -373,9 +373,7 @@ private fun WideSettings(
     onApplyServerUpdate: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Neither of these has a backend flag yet, so they mirror the compact branch: local UI state
-    // for a faithful visual match. TODO persist via SettingsStore alongside the other prefs.
-    var autoPlayNext by remember { mutableStateOf(true) }
+    // Show backgrounds has no backend flag yet, so it is held in local UI state. TODO persist.
     var showBackgrounds by remember { mutableStateOf(true) }
 
     ContentWidthCap(modifier) {
@@ -420,9 +418,8 @@ private fun WideSettings(
                         glyph = SettingGlyph.AUTOPLAY,
                         title = "Allow autoplay next episode",
                         subtitle = "Automatically play the next episode in a series.",
-                        checked = autoPlayNext,
-                        // TODO persist via SettingsStore — no backend flag yet, held in local state.
-                        onChange = { autoPlayNext = it },
+                        checked = state.autoPlayNext,
+                        onChange = onAutoPlayNextChange,
                     )
                 }
             }
@@ -1478,6 +1475,7 @@ data class SettingsScreenState(
     val subtitleScalePercent: Int = 100,
     val subtitleForegroundArgb: Long = 0xFFFFFFFF,
     val subtitleBackgroundOpacityPercent: Int = 0,
+    val autoPlayNext: Boolean = true,
     // Television playback tuning; only the ten-foot settings screen offers these.
     val tunnelledPlayback: Boolean = false,
     val audioPassthrough: Boolean = true,

@@ -450,6 +450,7 @@ fun PlayerOverlay(
             NextEpisodePrompt(
                 title = state.nextEpisodeTitle.orEmpty(),
                 secondsRemaining = state.countdownSeconds,
+                counting = state.countdownActive,
                 onPlayNow = actions.onPlayNext,
                 onCancel = actions.onCancelAutoPlay,
             )
@@ -1007,6 +1008,7 @@ private fun TrickplayPreview(
 private fun NextEpisodePrompt(
     title: String,
     secondsRemaining: Int,
+    counting: Boolean,
     onPlayNow: () -> Unit,
     onCancel: () -> Unit,
 ) {
@@ -1021,7 +1023,7 @@ private fun NextEpisodePrompt(
         PlexText("Up next", style = PlexTheme.type.caption, colour = colours.textSecondary)
         PlexText(title, style = PlexTheme.type.label, colour = colours.textPrimary, maxLines = 1)
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-            GlassTextButton("Play now ($secondsRemaining)", onPlayNow, accent = true)
+            GlassTextButton(if (counting) "Play now ($secondsRemaining)" else "Play next", onPlayNow, accent = true)
             GlassTextButton("Cancel", onCancel)
         }
     }

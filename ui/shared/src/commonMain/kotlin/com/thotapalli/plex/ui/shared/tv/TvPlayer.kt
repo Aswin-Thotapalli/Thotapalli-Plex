@@ -133,6 +133,7 @@ internal fun TvPlayer(
             preferredAudioLanguage = container.settings.preferredAudioLanguage.ifBlank { null },
             preferredSubtitleLanguage = container.settings.preferredSubtitleLanguage.ifBlank { null },
             subtitlesOnByDefault = container.settings.subtitlesOnByDefault,
+            autoPlayNext = container.settings.autoPlayNext,
             offlineResolver = container.offlineResolver,
             initialSubtitleStyle = com.thotapalli.plex.core.playback.SubtitleStyle(
                 scalePercent = container.settings.subtitleScalePercent,
@@ -399,6 +400,7 @@ private fun TvPlayerSurface(
             TvNextUp(
                 title = state.nextEpisodeTitle.orEmpty(),
                 secondsRemaining = state.countdownSeconds,
+                counting = state.countdownActive,
                 zone = nextUpZone,
                 onPlayNow = actions.onPlayNext,
                 onCancel = actions.onCancelAutoPlay,
@@ -611,6 +613,7 @@ private fun TvSeekBar(
 private fun TvNextUp(
     title: String,
     secondsRemaining: Int,
+    counting: Boolean,
     zone: TvZoneState,
     onPlayNow: () -> Unit,
     onCancel: () -> Unit,
@@ -634,7 +637,7 @@ private fun TvNextUp(
                 PlexText("Up next", style = PlexTheme.type.caption, colour = TvPalette.textMuted)
                 PlexText(title, style = PlexTheme.type.title, colour = TvPalette.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    TvButton(label = "Play now ($secondsRemaining)", key = "play-now", primary = true, onClick = onPlayNow)
+                    TvButton(label = if (counting) "Play now ($secondsRemaining)" else "Play next", key = "play-now", primary = true, onClick = onPlayNow)
                     TvButton(label = "Cancel", key = "cancel", onClick = onCancel)
                 }
             }

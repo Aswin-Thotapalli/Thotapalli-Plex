@@ -68,6 +68,11 @@ class PlaybackController(
     /** The viewer's saved subtitle appearance (§14), applied to the engine after each load. */
     private val initialSubtitleStyle: SubtitleStyle = SubtitleStyle(),
     /**
+     * "Auto play next episode" (CLAUDE.md §2). On, the ended item counts down ten seconds and
+     * starts the next; off, it offers the next episode and waits. Never fires before the end.
+     */
+    private val autoPlayNext: Boolean = true,
+    /**
      * Resolves a completed download to a local file so playback works offline (§11). Null on a
      * target with no download support, in which case everything streams from the server.
      */
@@ -164,6 +169,7 @@ class PlaybackController(
         }
         stickyApplied = false
         advancing = false
+        _state.update { it.copy(showNextEpisodePrompt = false, countdownActive = false) }
         reporter.startItem(item.ratingKey)
 
         markers = MarkerController(
@@ -300,6 +306,12 @@ class PlaybackController(
                 }
                 if (playbackState is PlaybackState.Ended) {
                     onEnded()
+                }
+                // Playing again after the end (a seek back from the ended picture): the offer is
+                // withdrawn and the countdown, if any, stops. It returns when the item ends again.
+                if (playbackState is PlaybackState.Playing && _state.value.showNextEpisodePrompt && !advancing) {
+                    countdown.reset()
+                    _state.update { it.copy(showNextEpisodePrompt = false, countdownActive = false) }
                 }
             }
         }
@@ -447,9 +459,9 @@ class PlaybackController(
             )
         }
 
-        // Credits are never skipped automatically — the viewer chooses via the Skip Credits button.
-        val showPrompt = markers.showNextEpisodePrompt(position)
-        if (showPrompt) countdown.start()
+        // The countdown only ever runs after the item has ENDED (see onEnded); here it is merely
+        // watched to its zero. Credits are never skipped automatically, and nothing about the next
+        // episode happens while a single frame of this one remains.
         if (countdown.isElapsed()) {
             playNext()
             return
@@ -463,15 +475,29 @@ class PlaybackController(
             it.copy(
                 showSkipIntro = markers.showSkipIntro(position),
                 showSkipCredits = markers.showSkipCredits(position),
-                showNextEpisodePrompt = showPrompt && countdown.isRunning,
                 countdownSeconds = countdown.remainingSeconds(),
                 controlsVisible = controlsVisible,
             )
         }
     }
 
-    private suspend fun onEnded() {
-        if (nextEpisode != null) playNext()
+    /**
+     * The item has played to its last frame. Only now is the next episode offered: with auto-play
+     * on, a ten second countdown that any input cancels; with it off, the same card, waiting.
+     * The viewer keeps every second of the episode either way.
+     */
+    private fun onEnded() {
+        if (nextEpisode == null || advancing) return
+        if (autoPlayNext) countdown.start()
+        lastInputAtMs = nowMs()
+        _state.update {
+            it.copy(
+                showNextEpisodePrompt = true,
+                countdownActive = autoPlayNext && countdown.isRunning,
+                countdownSeconds = countdown.remainingSeconds(),
+                controlsVisible = true,
+            )
+        }
     }
 
     private fun playNext() {
@@ -495,7 +521,10 @@ class PlaybackController(
     /** Any pointer movement, touch or remote key press. */
     fun noteInput() {
         lastInputAtMs = nowMs()
-        if (_state.value.showNextEpisodePrompt) countdown.cancel()
+        if (countdown.isRunning) {
+            countdown.cancel()
+            _state.update { it.copy(countdownActive = false) }
+        }
         _state.update { it.copy(controlsVisible = true) }
     }
 
@@ -584,7 +613,7 @@ class PlaybackController(
         onPlayNextEpisodeNow = { noteInput(); playNext() },
         onCancelAutoPlay = {
             countdown.cancel()
-            _state.update { it.copy(showNextEpisodePrompt = false) }
+            _state.update { it.copy(showNextEpisodePrompt = false, countdownActive = false) }
         },
         onOpenAudioTracks = {
             noteInput()

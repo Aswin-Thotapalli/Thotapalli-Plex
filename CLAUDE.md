@@ -45,7 +45,7 @@ Do not add these, do not scaffold them, do not leave hooks for them.
 | Library sort | Title, ascending, alphabetical |
 | Downloads | In scope, all three targets |
 | Transcode fallback | Silent, with a non-intrusive notice |
-| Auto-play next episode | 10 second countdown, cancellable |
+| Auto-play next episode | Only once the episode has ended: 10 second countdown, cancellable. A setting; off offers the next episode and waits |
 | Intro markers | Skip button shown while the marker is active |
 | Credit markers | Automatic skip into the next episode |
 | Resume behaviour | Resume immediately, no prompt |
@@ -734,8 +734,9 @@ LazyVerticalGrid(
 7. **Player.** Full bleed video with the overlay above. Transport row left to right: play and
    pause, seek back 10 s, seek forward 30 s, position, progress bar, duration, audio selector,
    subtitle selector, full screen toggle on Windows. Next episode prompt appears lower right
-   during the credits marker or the final 30 seconds, with a 10 second countdown cancelled by
-   any input.
+   only once the episode has ended — never during the credits or the final seconds, the viewer
+   keeps every frame — with a 10 second countdown cancelled by any input, and no countdown when
+   auto-play is off.
 8. **Downloads.** List of downloaded and queued items with title, size and state. Active rows
    show progress and a pause action. Completed rows show delete. Total space used at the top.
 9. **Settings.** Match display rate to content. Download on unmetered networks only. Preferred

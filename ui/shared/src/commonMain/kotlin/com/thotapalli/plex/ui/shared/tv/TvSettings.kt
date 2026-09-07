@@ -39,6 +39,7 @@ import com.thotapalli.plex.ui.shared.screens.SettingsScreenState
 internal fun TvSettings(
     state: SettingsScreenState,
     onMatchDisplayRateChange: (Boolean) -> Unit,
+    onAutoPlayNextChange: (Boolean) -> Unit,
     onTunnelledPlaybackChange: (Boolean) -> Unit,
     onAudioPassthroughChange: (Boolean) -> Unit,
     onUnmeteredOnlyChange: (Boolean) -> Unit,
@@ -78,6 +79,14 @@ internal fun TvSettings(
             val rows = Modifier.widthIn(max = 900.dp)
 
             Section("Playback")
+            TvListRow(
+                title = "Auto play next episode",
+                key = "autoplay",
+                detail = "When an episode ends, count down ten seconds and play the next one. Off: the next episode is offered and waits.",
+                onClick = { onAutoPlayNextChange(!state.autoPlayNext) },
+                trailing = { focused -> TvSwitch(on = state.autoPlayNext, focused = focused) },
+                modifier = rows,
+            )
             if (state.showMatchDisplayRate) {
                 TvListRow(
                     title = "Match display rate to content",

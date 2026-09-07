@@ -1102,6 +1102,7 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
             subtitleForegroundArgb = settings.subtitleForegroundArgb,
             subtitleBackgroundOpacityPercent = settings.subtitleBackgroundOpacityPercent,
             tunnelledPlayback = settings.tunnelledPlayback,
+            autoPlayNext = settings.autoPlayNext,
             audioPassthrough = settings.audioPassthrough,
             servers = _state.value.allServers,
             activeServerId = _state.value.server?.machineIdentifier,
@@ -1114,6 +1115,11 @@ class AppViewModel(private val container: AppContainer) : ViewModel() {
 
     fun setMatchDisplayRate(value: Boolean) {
         container.settings.matchDisplayRate = value
+        _state.update { it.copy(settingsRevision = it.settingsRevision + 1) }
+    }
+
+    fun setAutoPlayNext(value: Boolean) {
+        container.settings.autoPlayNext = value
         _state.update { it.copy(settingsRevision = it.settingsRevision + 1) }
     }
 

@@ -4,11 +4,12 @@ import com.thotapalli.plex.core.model.Marker
 import com.thotapalli.plex.core.model.MarkerType
 
 /**
- * Markers and auto-play, from CLAUDE.md section 2.
+ * Markers, from CLAUDE.md section 2.
  *
- * An intro marker shows a skip button while it is active. A credits marker skips
- * automatically into the next episode. The next episode prompt appears during the credits
- * marker or the final thirty seconds, with a ten second countdown cancelled by any input.
+ * An intro marker shows a skip button while it is active; a credits marker shows a skip button
+ * too, never an automatic jump. Neither has anything to do with the next episode: that is offered
+ * only once the item has ended (see PlaybackController.onEnded), so no marker window and no
+ * "final seconds" rule exists here any more — the viewer keeps every frame.
  */
 class MarkerController(
     private val markers: List<Marker> = emptyList(),
@@ -35,19 +36,7 @@ class MarkerController(
     /** Where the Skip Credits button jumps to — the end of the credits (usually the item's end). */
     fun skipCreditsTargetMs(): Long? = credits?.endMs
 
-    /**
-     * The next episode prompt window: the credits marker, or the final thirty seconds when
-     * the server reported no credits marker.
-     */
-    fun showNextEpisodePrompt(positionMs: Long): Boolean {
-        if (!hasNextEpisode) return false
-        credits?.let { return positionMs >= it.startMs }
-        return durationMs > 0 && positionMs >= durationMs - FINAL_WINDOW_MS
-    }
-
     companion object {
-        const val FINAL_WINDOW_MS = 30_000L
-
         /** Cancelled by any input. See CLAUDE.md section 14 item 7. */
         const val COUNTDOWN_MS = 10_000L
     }
