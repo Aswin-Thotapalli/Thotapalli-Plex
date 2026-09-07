@@ -8,6 +8,7 @@ import android.content.ContextWrapper
 import android.content.res.Configuration
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.SurfaceView
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -25,6 +26,10 @@ import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.SeekParameters
+import androidx.media3.exoplayer.analytics.AnalyticsListener
+import com.thotapalli.plex.core.model.DiagnosticCategory
+import com.thotapalli.plex.core.model.Diagnostics
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
@@ -259,9 +264,19 @@ class ExoPlayerEngine(
                 /* handleAudioFocus = */ true,
             )
             .setHandleAudioBecomingNoisy(true)
+            // Tunnelled seeks land on the nearest keyframe. An exact seek has to decode from the
+            // previous keyframe up to the target first, and in tunnelled mode the application cannot
+            // drop those frames — the hardware presents whatever is queued — so the pre-roll is paid
+            // on screen while the rebuilt audio track is still starting. Snapping to the keyframe
+            // removes that pre-roll; a ±10/30 s jump landing a second or two off is invisible on a
+            // sofa. Non-tunnelled playback keeps exact seeks: the picture waits for audio anyway.
+            .setSeekParameters(
+                if (isTelevision && tunnelledVideo) SeekParameters.CLOSEST_SYNC else SeekParameters.EXACT,
+            )
             .build()
             .also {
                 it.addListener(listener)
+                it.addAnalyticsListener(seekAudioProbe)
                 // Hold a CPU + network wakelock while playing so audio keeps flowing with the
                 // screen off; released automatically when playback stops. See CLAUDE.md section 8.
                 it.setWakeMode(C.WAKE_MODE_NETWORK)
@@ -424,8 +439,36 @@ class ExoPlayerEngine(
     }
 
     override fun seekTo(ms: Long) = onMain {
+        seekStartedAtMs = SystemClock.elapsedRealtime()
         player.seekTo(ms)
         _positionMs.value = ms
+    }
+
+    /** When the last seek was asked for, or null once its audio has resumed. See [seekAudioProbe]. */
+    private var seekStartedAtMs: Long? = null
+
+    /**
+     * Measures the one number that decides whether tunnelling is worth keeping on a given
+     * television: how long after a seek the sound comes back. Media3 reports the moment the audio
+     * position starts advancing again after a flush, so the gap between the seek and that moment
+     * is exactly the silence the viewer hears. Logged with the modes in force, so the Diagnostics
+     * screen shows "tunnelled + passthrough: 6 s" against "neither: 400 ms" on real hardware,
+     * which is evidence the emulator can never give (it has no tunnelling HAL).
+     */
+    private val seekAudioProbe = object : AnalyticsListener {
+        override fun onAudioPositionAdvancing(
+            eventTime: AnalyticsListener.EventTime,
+            playoutStartSystemTimeMs: Long,
+        ) {
+            val started = seekStartedAtMs ?: return
+            seekStartedAtMs = null
+            val gapMs = SystemClock.elapsedRealtime() - started
+            Diagnostics.record(
+                DiagnosticCategory.PLAYBACK,
+                "Audio resumed $gapMs ms after seek " +
+                    "(tunnelled=${isTelevision && tunnelledVideo}, passthrough=$audioPassthrough)",
+            )
+        }
     }
 
     /**
